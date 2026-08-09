@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Waypoint — expedition map mockup</title>
+<style>
+  :root {
+    --deep-bark: #3B2617; --bark: #4A2F1B; --walnut: #5C4033; --saddle: #6B4423;
+    --trail: #8B5E34; --harvest: #BA7517; --lantern: #EF9F27; --wheat: #FAC775;
+    --parchment: #FAEEDA; --map-cream: #E8DCC3; --contour: #D4C4A0;
+    --fern: #97C459; --forest: #639922; --pine-text: #173404;
+    --dark-cocoa: #633806; --cocoa: #854F0B; --stone: #B4A78C; --stone-dark: #8B7355;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: system-ui, sans-serif; background: #F5EFE0; padding: 32px; display: flex; justify-content: center; }
+  .app { max-width: 720px; width: 100%; }
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .title { font-size: 18px; font-weight: 600; color: var(--deep-bark); }
+  .subtitle { font-size: 13px; color: var(--stone-dark); margin-top: 2px; }
+  .stats { display: flex; gap: 8px; }
+  .stat { background: #fff; border: 1px solid var(--contour); border-radius: 8px; padding: 6px 14px; text-align: center; }
+  .stat .label { font-size: 11px; color: var(--stone-dark); }
+  .stat .value { font-size: 15px; font-weight: 600; color: var(--deep-bark); }
+  .map { width: 100%; display: block; border-radius: 14px; }
+  .panels { display: flex; gap: 14px; margin-top: 14px; align-items: stretch; }
+  .guide { flex: 3; background: var(--parchment); border-radius: 14px; padding: 16px; display: flex; gap: 12px; }
+  .guide-icon { width: 40px; height: 40px; border-radius: 50%; background: var(--harvest); color: var(--parchment); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  .guide h3 { font-size: 14px; color: var(--dark-cocoa); }
+  .guide p { font-size: 13px; color: var(--cocoa); line-height: 1.55; margin: 4px 0 10px; }
+  .cta { background: var(--saddle); color: var(--parchment); border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+  .cta:hover { background: var(--bark); }
+  .log { flex: 2; background: #fff; border: 1px solid var(--contour); border-radius: 14px; padding: 16px; }
+  .log h3 { font-size: 14px; color: var(--deep-bark); margin-bottom: 8px; }
+  .log .entry { display: flex; gap: 8px; font-size: 12px; color: var(--stone-dark); line-height: 1.5; margin-top: 6px; }
+  .log .day { flex-shrink: 0; width: 34px; color: var(--stone); }
+  .log .entry.now .day { color: var(--harvest); font-weight: 600; }
+  .log .entry.now span:last-child { color: var(--deep-bark); }
+  .waypoint { cursor: pointer; }
+  .waypoint.locked { cursor: not-allowed; }
+  @keyframes flicker { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  .campfire-node { transform-origin: center; animation: flicker 2.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .campfire-node { animation: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <div class="title">🧭 Expedition: Q3 launch</div>
+      <div class="subtitle">Day 2 on the trail · 2 waypoints reached</div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="label">Traveled</div><div class="value">3.1 mi</div></div>
+      <div class="stat"><div class="label">To summit</div><div class="value">2.4 mi</div></div>
+    </div>
+  </div>
+
+  <svg class="map" viewBox="0 0 640 300" role="img" aria-label="Trail map: trailhead and creek crossing completed, currently at the ridge, lookout and summit locked">
+    <rect width="640" height="300" fill="#E8DCC3"/>
+    <path d="M0 80 Q 120 40, 240 75 T 480 60 T 640 85" fill="none" stroke="#D4C4A0" stroke-width="1.5"/>
+    <path d="M0 130 Q 140 90, 280 120 T 640 110" fill="none" stroke="#D4C4A0" stroke-width="1.5"/>
+    <path d="M0 190 Q 160 160, 320 185 T 640 165" fill="none" stroke="#D4C4A0" stroke-width="1.5"/>
+    <path d="M0 250 Q 180 225, 360 245 T 640 230" fill="none" stroke="#D4C4A0" stroke-width="1.5"/>
+    <g fill="#6B8E4E">
+      <path d="M95 235 L103 218 L111 235 Z"/><path d="M115 242 L124 222 L133 242 Z"/><path d="M78 248 L86 230 L94 248 Z"/>
+      <path d="M480 250 L489 230 L498 250 Z"/><path d="M505 244 L513 227 L521 244 Z"/>
+      <path d="M170 90 L178 73 L186 90 Z"/><path d="M192 84 L200 68 L208 84 Z"/>
+    </g>
+    <g fill="#55703D">
+      <path d="M540 100 L550 78 L560 100 Z"/><path d="M565 94 L574 75 L583 94 Z"/><path d="M520 112 L528 95 L536 112 Z"/>
+    </g>
+    <path d="M300 155 Q 320 130 345 150 Q 360 162 350 175 Q 330 190 310 175 Q 295 165 300 155" fill="#A9C4D6" stroke="#7FA3BC" stroke-width="1.5"/>
+    <path d="M575 55 L600 20 L625 55 Z" fill="#8B7355"/>
+    <path d="M593 30 L600 20 L607 30 Z" fill="#F5EFE0"/>
+    <path d="M60 255 C 140 240, 150 190, 210 185 C 270 180, 280 220, 340 205 C 395 191, 390 140, 450 125 C 505 111, 540 90, 590 55"
+          fill="none" stroke="#8B5E34" stroke-width="3.5" stroke-dasharray="2 9" stroke-linecap="round"/>
+    <g class="waypoint" role="button" tabindex="0" aria-label="Trailhead, completed. Open to revisit.">
+      <circle cx="60" cy="255" r="12" fill="#639922"/>
+      <path d="M56 255 l3 3 l6 -6" stroke="#EAF3DE" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <text x="60" y="282" text-anchor="middle" font-size="11" fill="#5F5E5A">Trailhead</text>
+    </g>
+    <g class="waypoint" role="button" tabindex="0" aria-label="Creek crossing, completed. Open to revisit.">
+      <circle cx="210" cy="185" r="12" fill="#639922"/>
+      <path d="M206 185 l3 3 l6 -6" stroke="#EAF3DE" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+      <text x="210" y="212" text-anchor="middle" font-size="11" fill="#5F5E5A">Creek crossing</text>
+    </g>
+    <g class="waypoint campfire-node" role="button" tabindex="0" aria-current="step" aria-label="The ridge, current stage. You are here.">
+      <circle cx="340" cy="205" r="17" fill="#EF9F27" stroke="#FAC775" stroke-width="3"/>
+      <path d="M340 197 c -4 5 -5 8 -2 11 c -3 0 -5 3 -2 5 c 2 2 7 2 9 0 c 3 -2 1 -5 -2 -5 c 3 -3 1 -7 -3 -11" fill="#412402"/>
+      <text x="340" y="240" text-anchor="middle" font-size="11" font-weight="600" fill="#633806">The ridge — you are here</text>
+    </g>
+    <g class="waypoint locked" opacity="0.55" aria-label="Lookout, locked. Complete the ridge to unlock.">
+      <circle cx="450" cy="125" r="12" fill="#B4A78C" stroke="#8B7355" stroke-width="1.5"/>
+      <path d="M446 121 v8 M446 121 h7 l-2.5 2.5 l2.5 2.5 h-7" stroke="#4A3A28" stroke-width="1.5" fill="none"/>
+      <text x="450" y="152" text-anchor="middle" font-size="11" fill="#8B8069">Lookout</text>
+    </g>
+    <g class="waypoint locked" opacity="0.55" aria-label="Summit, locked.">
+      <circle cx="590" cy="55" r="12" fill="#B4A78C" stroke="#8B7355" stroke-width="1.5"/>
+      <path d="M586 51 v8 M586 51 h7 l-2.5 2.5 l2.5 2.5 h-7" stroke="#4A3A28" stroke-width="1.5" fill="none"/>
+      <text x="590" y="82" text-anchor="middle" font-size="11" fill="#8B8069">Summit</text>
+    </g>
+  </svg>
+
+  <div class="panels">
+    <div class="guide">
+      <div class="guide-icon">🔭</div>
+      <div>
+        <h3>Guide's note</h3>
+        <p>The ridge is the steepest stretch — you'll set 3 routing rules here. Your imported records are in your pack and ready. Most travelers cross in about 10 minutes.</p>
+        <button class="cta">Continue up the ridge →</button>
+      </div>
+    </div>
+    <div class="log">
+      <h3>📖 Journey log</h3>
+      <div class="entry"><span class="day">Day 1</span><span>Basecamp set. Project named, team invited.</span></div>
+      <div class="entry"><span class="day">Day 2</span><span>Creek crossed. 240 records packed.</span></div>
+      <div class="entry now"><span class="day">Now</span><span>Made camp at the ridge.</span></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
