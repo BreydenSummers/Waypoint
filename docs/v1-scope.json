@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "requiredAdrs": [
+    "docs/adr/0001-system-shape.md",
+    "docs/adr/0002-append-only-audit.md",
+    "docs/adr/0003-content-addressed-evidence.md",
+    "docs/adr/0004-parser-isolation.md",
+    "docs/adr/0005-export-semantics.md",
+    "docs/adr/0006-v1-vocabulary-and-deferrals.md"
+  ],
+  "textExtensions": [
+    ".go",
+    ".html",
+    ".js",
+    ".json",
+    ".jsx",
+    ".md",
+    ".sql",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".yaml",
+    ".yml"
+  ],
+  "excludedPaths": [
+    ".git/**",
+    ".pi/**",
+    "AGENTS.md",
+    "PRD.md",
+    "docs/design-spec.md",
+    "docs/v1-execution-plan.md",
+    "docs/v1-scope.json",
+    "docs/v1-traceability.md",
+    "docs/waypoint-mockup.html",
+    "scripts/lint-architecture.py"
+  ],
+  "allowedContextPattern": "\\b(?:deferred|excluded|out[- ]of[- ]scope|not in v1|v2\\+?|future|fast[- ]follow|extension point|reserved|unavailable)\\b|\\b(?:does not|do not|is not|isn't|not|never|without|no)\\b",
+  "rules": [
+    {
+      "id": "deferred-analytical-graph",
+      "pattern": "\\b(?:analytical|node|attack[- ]path)\\s+graph\\b|\\b(?:apache age|neo4j)\\b"
+    },
+    {
+      "id": "deferred-network-zone-map",
+      "pattern": "\\b(?:network[- ]zone|firewall|reachability)\\s+map\\b"
+    },
+    {
+      "id": "deferred-scan-library",
+      "pattern": "\\b(?:guided\\s+)?scan[- ]library\\b|\\bguided scan(?:ning)?\\b"
+    },
+    {
+      "id": "deferred-offensive-llm",
+      "pattern": "\\boffensive[- ](?:llm|model)\\b|\\blive ai insights?\\b|\\bai[- ](?:powered )?(?:next[- ]step )?recommendations?\\b"
+    },
+    {
+      "id": "deferred-ai-finding-prefill",
+      "pattern": "\\bai[- ](?:generated|prefilled?) findings?\\b|\\bai finding prefill\\b|\\bauto(?:matically)?[- ]publish(?:ed|es|ing)? findings?\\b"
+    },
+    {
+      "id": "deferred-ai-plugin-generation",
+      "pattern": "\\bai[- ](?:(?:generated|assisted) )?(?:parser|plugin) generation\\b|\\bai[- ](?:generated|assisted) (?:parser|plugin)\\b|\\b(?:generate|upload)(?:s|ed|ing)? (?:a )?(?:parser|plugin) at (?:engagement|run)[- ]time\\b"
+    },
+    {
+      "id": "deferred-windows-offline-agent",
+      "pattern": "\\bwindows\\b.{0,40}\\b(?:offline(?:-buffering)?|buffering|remote) agent\\b|\\b(?:offline(?:-buffering)?|buffering|remote) agent\\b.{0,40}\\bwindows\\b"
+    },
+    {
+      "id": "deferred-cryptographic-signing",
+      "pattern": "\\bcryptographic signing\\b|\\b(?:cryptographically|digitally)[- ]signed\\b|\\bdigital signature\\b|\\b(?:bundle|export|manifest|report) (?:is )?signed\\b"
+    },
+    {
+      "id": "nonlinear-phase-gating",
+      "pattern": "\\b(?:locked|disabled) (?:phase|waypoint)s?\\b|\\b(?:phase|waypoint)s?\\b.{0,40}\\b(?:locked|disabled|unlock(?:ed|s|ing)?)\\b|\\bunlock (?:recon|attacks|findings)\\b"
+    }
+  ]
+}

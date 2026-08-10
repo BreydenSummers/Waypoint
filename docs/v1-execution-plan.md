@@ -3,7 +3,8 @@
 Status: proposed execution baseline  
 Source of truth: [`../PRD.md`](../PRD.md)  
 Visual references: [`design-spec.md`](design-spec.md), [`waypoint-mockup.html`](waypoint-mockup.html)  
-Traceability: [`v1-traceability.md`](v1-traceability.md)
+Traceability: [`v1-traceability.md`](v1-traceability.md)  
+Architecture records: [`adr/README.md`](adr/README.md)
 
 ## 1. Outcome and release boundary
 
@@ -177,7 +178,7 @@ Priorities: P0 blocks the release spine; P1 is required v1 capability; P2 is rel
 
 | ID | Title | Description and independent verification | Role | Repo | Priority | Depends on |
 |---|---|---|---|---|---|---|
-| V1-001 | Architecture and vocabulary records | Add ADRs for system shape, audit immutability, evidence storage, parser boundary, and export semantics; add a v1/deferred vocabulary check. Verify ADR/link lint. | architecture | Waypoint | P0 | — |
+| V1-001 | [Architecture and vocabulary records](adr/README.md) | Add ADRs for system shape, audit immutability, evidence storage, parser isolation, export semantics, and v1/deferred vocabulary; enforce ADR links and product scope with architecture lint. | architecture | Waypoint | P0 | — |
 | V1-002 | Versioned API and event contracts | Define OpenAPI, capture/event schemas, error model, cursor/idempotency rules, and valid/invalid fixtures. Verify generated schema and compatibility tests. | API | Waypoint | P0 | V1-001 |
 | V1-003 | Plugin interoperability contract | Consume core fixtures; define match/parse/schema/version behavior and known/unknown plugin fixture tests. | collection | Waypoint-Plugins | P0 | V1-002 |
 | V1-004 | Core and web skeleton | Scaffold Go service, React/TS client, lint/test/build commands, embedded assets, health/readiness, and CI. Verify production build boots. | platform | Waypoint | P0 | V1-001 |
