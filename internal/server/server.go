@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/fs"
 	"net/http"
 	"path"
 	"strings"
+	"time"
 
 	"waypoint/internal/webassets"
 )
@@ -65,7 +67,7 @@ func spa(assets fs.FS) http.Handler {
 		}
 
 		if relative == "index.html" {
-			fileServer.ServeHTTP(w, r)
+			serveIndex(w, r, assets)
 			return
 		}
 
@@ -78,10 +80,18 @@ func spa(assets fs.FS) http.Handler {
 			return
 		}
 
-		routed := r.Clone(r.Context())
-		routed.URL.Path = "/index.html"
-		fileServer.ServeHTTP(w, routed)
+		serveIndex(w, r, assets)
 	})
+}
+
+func serveIndex(w http.ResponseWriter, r *http.Request, assets fs.FS) {
+	data, err := fs.ReadFile(assets, "index.html")
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+
+	http.ServeContent(w, r, "index.html", time.Unix(0, 0), bytes.NewReader(data))
 }
 
 func exists(assets fs.FS, name string) bool {
