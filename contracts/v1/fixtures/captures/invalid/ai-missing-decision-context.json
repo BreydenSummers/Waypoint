@@ -1,0 +1,14 @@
+{
+  "name": "ai-missing-decision-context",
+  "description": "AI capture must retain an auditable rationale or prompt reference.",
+  "base": "../valid/ai-known-tool.json",
+  "mutations": [
+    { "op": "remove", "path": "/request/decisionContext" }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 400,
+    "errorCode": "invalid_request",
+    "pointer": "/decisionContext"
+  }
+}

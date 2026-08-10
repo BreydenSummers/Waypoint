@@ -1,0 +1,107 @@
+{
+  "name": "ai-unknown-tool",
+  "description": "An AI actor's unrecognized command remains attributable and raw with a needs-plugin state.",
+  "actor": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "kind": "ai_agent",
+    "handle": "field-agent-7",
+    "role": "operator",
+    "agentName": "Synthetic Field Agent",
+    "model": "synthetic-offline-model",
+    "version": "2025.01",
+    "authorizedBy": "22222222-2222-4222-8222-222222222222"
+  },
+  "toolClass": "unknown",
+  "requestHeaders": {
+    "Waypoint-Contract-Version": "1.0.0",
+    "Idempotency-Key": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4"
+  },
+  "rawParts": { "stdoutBase64": "YWJj", "stderrBase64": "" },
+  "request": {
+    "contractVersion": "1.0.0",
+    "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4",
+    "sourceAgent": {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "kind": "mcp_client",
+      "name": "waypoint-mcp-client",
+      "version": "1.0.0",
+      "platform": { "os": "linux", "arch": "arm64" }
+    },
+    "phase": "attacks",
+    "initiatedBy": "ai",
+    "decisionContext": {
+      "rationale": "Collect the output of the approved synthetic assessment utility for operator review.",
+      "promptReference": "audit-prompt:decision-0008"
+    },
+    "command": "/usr/local/bin/mystery-scan",
+    "argv": ["mystery-scan", "--target", "192.0.2.40"],
+    "cwd": "/var/lib/waypoint-agent/work",
+    "target": { "kind": "ip", "value": "192.0.2.40" },
+    "timing": {
+      "startedAt": "2025-01-15T10:15:00.000Z",
+      "endedAt": "2025-01-15T10:15:00.750Z",
+      "durationMs": 750
+    },
+    "execution": { "status": "exited", "exitCode": 2 },
+    "network": {
+      "execHost": {
+        "address": "10.10.0.15",
+        "method": "operator_declared",
+        "confidence": "inferred"
+      },
+      "egress": { "mode": "auto", "status": "resolution_failed" },
+      "pivotChain": [
+        { "type": "ssh_jump", "host": "pivot.assessment.invalid", "port": 22 }
+      ]
+    },
+    "evidence": {
+      "stdout": {
+        "mediaType": "application/octet-stream",
+        "byteLength": 3,
+        "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+      },
+      "stderr": {
+        "mediaType": "application/octet-stream",
+        "byteLength": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "parsing": { "status": "needs-plugin" }
+  },
+  "expected": { "valid": true, "httpStatus": 201, "idempotency": "created" },
+  "expectedEvent": {
+    "contractVersion": "1.0.0",
+    "id": "104",
+    "type": "capture.accepted",
+    "engagementId": "11111111-1111-4111-8111-111111111111",
+    "actor": {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "kind": "ai_agent",
+      "handle": "field-agent-7",
+      "role": "operator",
+      "agentName": "Synthetic Field Agent",
+      "model": "synthetic-offline-model",
+      "version": "2025.01",
+      "authorizedBy": "22222222-2222-4222-8222-222222222222"
+    },
+    "occurredAt": "2025-01-15T10:15:02.000Z",
+    "origin": { "kind": "mcp" },
+    "subject": { "type": "action", "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4" },
+    "requestId": "req-ai-unknown-004",
+    "correlationId": "capture-ai-unknown-004",
+    "data": {
+      "actionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4",
+      "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4",
+      "sourceAgentId": "55555555-5555-4555-8555-555555555555",
+      "phase": "attacks",
+      "initiatedBy": "ai",
+      "command": "/usr/local/bin/mystery-scan",
+      "target": { "kind": "ip", "value": "192.0.2.40" },
+      "execution": { "status": "exited", "exitCode": 2 },
+      "parseStatus": "needs-plugin",
+      "egressStatus": "resolution_failed",
+      "receivedAt": "2025-01-15T10:15:02.000Z",
+      "clockSkewStatus": "within_tolerance"
+    }
+  }
+}

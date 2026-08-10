@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/audit-page.schema.json",
+  "title": "Keyset-paginated audit event page",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "items", "page"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "items": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "audit-event.schema.json" }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hasMore", "highWaterCursor"],
+      "properties": {
+        "nextCursor": { "$ref": "common.schema.json#/$defs/Cursor" },
+        "highWaterCursor": {
+          "oneOf": [
+            { "$ref": "common.schema.json#/$defs/Cursor" },
+            { "type": "null" }
+          ]
+        },
+        "hasMore": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "hasMore": { "const": true } }, "required": ["hasMore"] },
+          "then": { "required": ["nextCursor"] }
+        }
+      ]
+    }
+  }
+}

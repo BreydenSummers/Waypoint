@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "field-validation",
+      "valid": true,
+      "problem": {
+        "type": "https://docs.waypoint.security/problems/invalid-request",
+        "title": "Capture needs a little more detail",
+        "status": 400,
+        "detail": "One or more capture fields did not pass validation.",
+        "code": "invalid_request",
+        "requestId": "req-validation-001",
+        "retryable": false,
+        "fieldErrors": [
+          { "pointer": "/timing/durationMs", "code": "duration_mismatch", "message": "Measured duration does not agree with the supplied timestamps." }
+        ]
+      }
+    },
+    {
+      "name": "idempotency-conflict",
+      "valid": true,
+      "problem": {
+        "type": "https://docs.waypoint.security/problems/idempotency-conflict",
+        "title": "This capture ID already describes another result",
+        "status": 409,
+        "detail": "Keep the original capture ID for an exact retry or assign a new ID to a distinct capture.",
+        "code": "idempotency_conflict",
+        "requestId": "req-conflict-001",
+        "retryable": false,
+        "existingActionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"
+      }
+    },
+    {
+      "name": "cursor-expired",
+      "valid": true,
+      "problem": {
+        "type": "https://docs.waypoint.security/problems/cursor-expired",
+        "title": "The live trail has moved beyond this cursor",
+        "status": 410,
+        "detail": "Resync from persisted audit history, then reconnect to the live feed.",
+        "code": "cursor_expired",
+        "requestId": "req-cursor-001",
+        "retryable": false,
+        "minimumAvailableCursor": "41",
+        "resync": "/api/v1/audit-events?after=40"
+      }
+    },
+    {
+      "name": "wrong-code-status-pair",
+      "valid": false,
+      "problem": {
+        "type": "https://docs.waypoint.security/problems/invalid-request",
+        "title": "Invalid",
+        "status": 500,
+        "code": "invalid_request",
+        "requestId": "req-wrong-status",
+        "retryable": false
+      }
+    },
+    {
+      "name": "secret-leaking-extension",
+      "valid": false,
+      "problem": {
+        "type": "https://docs.waypoint.security/problems/invalid-request",
+        "title": "Invalid",
+        "status": 400,
+        "code": "invalid_request",
+        "requestId": "req-invalid-extension",
+        "retryable": false,
+        "token": "must-never-be-accepted"
+      }
+    }
+  ]
+}

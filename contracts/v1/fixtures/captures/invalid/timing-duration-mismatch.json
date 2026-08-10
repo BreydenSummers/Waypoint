@@ -1,0 +1,14 @@
+{
+  "name": "timing-negative-duration",
+  "description": "Collector monotonic duration cannot be negative; wall-clock disagreement is accepted and surfaced as skew rather than rejected.",
+  "base": "../valid/ai-unknown-tool.json",
+  "mutations": [
+    { "op": "replace", "path": "/request/timing/durationMs", "value": -1 }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 400,
+    "errorCode": "invalid_request",
+    "pointer": "/timing/durationMs"
+  }
+}

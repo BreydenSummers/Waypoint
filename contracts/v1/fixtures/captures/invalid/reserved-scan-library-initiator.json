@@ -1,0 +1,15 @@
+{
+  "name": "reserved-scan-library-initiator",
+  "description": "The compatibility enum is retained, but this initiator is unavailable to v1 callers.",
+  "base": "../valid/human-known-tool.json",
+  "mutations": [
+    { "op": "replace", "path": "/request/initiatedBy", "value": "scan-library", "status": "reserved" }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 400,
+    "errorCode": "invalid_request",
+    "fieldCode": "reserved_value",
+    "pointer": "/initiatedBy"
+  }
+}

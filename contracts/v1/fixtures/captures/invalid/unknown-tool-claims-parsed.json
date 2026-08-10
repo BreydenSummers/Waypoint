@@ -1,0 +1,15 @@
+{
+  "name": "unknown-tool-claims-parsed",
+  "description": "Fixture classification and parser state cannot claim an unknown tool was parsed by a known plugin.",
+  "base": "../valid/human-known-tool.json",
+  "mutations": [
+    { "op": "replace", "path": "/toolClass", "value": "unknown" }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 400,
+    "errorCode": "invalid_request",
+    "fieldCode": "tool_class_parse_mismatch",
+    "pointer": "/parsing/status"
+  }
+}

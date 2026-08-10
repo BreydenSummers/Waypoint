@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/capture-ack.schema.json",
+  "title": "Durable capture acknowledgement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "actionId", "captureId", "auditEventCursor", "receivedAt", "idempotency"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "actionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "auditEventCursor": { "$ref": "common.schema.json#/$defs/Cursor" },
+    "receivedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "idempotency": { "enum": ["created", "replayed"] },
+    "clockSkew": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "offsetMs"],
+      "properties": {
+        "status": { "enum": ["within_tolerance", "outside_tolerance"] },
+        "offsetMs": { "type": "integer", "minimum": -31536000000, "maximum": 31536000000 }
+      }
+    }
+  }
+}

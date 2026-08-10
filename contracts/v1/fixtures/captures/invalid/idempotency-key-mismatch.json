@@ -1,0 +1,19 @@
+{
+  "name": "idempotency-key-mismatch",
+  "description": "The transport idempotency key must equal the collector's persisted capture ID.",
+  "base": "../valid/human-unknown-tool.json",
+  "mutations": [
+    {
+      "op": "replace",
+      "path": "/requestHeaders/Idempotency-Key",
+      "value": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa99"
+    }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 400,
+    "errorCode": "invalid_request",
+    "fieldCode": "idempotency_key_mismatch",
+    "pointer": "/captureId"
+  }
+}

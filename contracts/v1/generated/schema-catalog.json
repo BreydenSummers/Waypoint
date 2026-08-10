@@ -1,0 +1,47 @@
+{
+  "contractVersion": "1.0.0",
+  "draft": "https://json-schema.org/draft/2020-12/schema",
+  "generated": true,
+  "schemas": [
+    {
+      "component": "Common",
+      "id": "https://schemas.waypoint.security/contracts/v1/common.schema.json",
+      "source": "../schemas/common.schema.json"
+    },
+    {
+      "component": "Actor",
+      "id": "https://schemas.waypoint.security/contracts/v1/actor.schema.json",
+      "source": "../schemas/actor.schema.json"
+    },
+    {
+      "component": "StructuredResult",
+      "id": "https://schemas.waypoint.security/contracts/v1/structured-result.schema.json",
+      "source": "../schemas/structured-result.schema.json"
+    },
+    {
+      "component": "CaptureEnvelope",
+      "id": "https://schemas.waypoint.security/contracts/v1/capture-envelope.schema.json",
+      "source": "../schemas/capture-envelope.schema.json"
+    },
+    {
+      "component": "CaptureAck",
+      "id": "https://schemas.waypoint.security/contracts/v1/capture-ack.schema.json",
+      "source": "../schemas/capture-ack.schema.json"
+    },
+    {
+      "component": "AuditEvent",
+      "id": "https://schemas.waypoint.security/contracts/v1/audit-event.schema.json",
+      "source": "../schemas/audit-event.schema.json"
+    },
+    {
+      "component": "AuditPage",
+      "id": "https://schemas.waypoint.security/contracts/v1/audit-page.schema.json",
+      "source": "../schemas/audit-page.schema.json"
+    },
+    {
+      "component": "Problem",
+      "id": "https://schemas.waypoint.security/contracts/v1/problem.schema.json",
+      "source": "../schemas/problem.schema.json"
+    }
+  ]
+}

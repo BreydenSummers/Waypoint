@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/audit-event.schema.json",
+  "title": "Append-only audit event envelope",
+  "description": "Persisted event used by the Journey log, REST history, and SSE. Unknown event types must be ignored by consumers after advancing the cursor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "id",
+    "type",
+    "engagementId",
+    "actor",
+    "occurredAt",
+    "origin",
+    "subject",
+    "requestId",
+    "correlationId",
+    "data"
+  ],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/Cursor" },
+    "type": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 128,
+      "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+$"
+    },
+    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "actor": { "$ref": "actor.schema.json" },
+    "occurredAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["rest", "mcp", "service", "bootstrap"] },
+        "service": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "service" } }, "required": ["kind"] },
+          "then": { "required": ["service"] },
+          "else": { "not": { "required": ["service"] } }
+        }
+      ]
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["engagement", "actor", "action", "structured_result", "entity", "finding", "export", "teardown", "out_of_band_claim"] },
+        "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "revision": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "requestId": { "$ref": "common.schema.json#/$defs/RequestId" },
+    "correlationId": { "$ref": "common.schema.json#/$defs/RequestId" },
+    "causation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "actionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "eventId": { "$ref": "common.schema.json#/$defs/Cursor" }
+      },
+      "minProperties": 1
+    },
+    "data": {
+      "type": "object",
+      "description": "Event-specific, redacted metadata. It must never contain credentials, bearer tokens, or raw evidence bytes."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "type": { "const": "capture.accepted" } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": { "data": { "$ref": "#/$defs/CaptureAcceptedData" } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "capture.conflict" } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": { "data": { "$ref": "#/$defs/CaptureConflictData" } }
+      }
+    }
+  ],
+  "$defs": {
+    "CaptureAcceptedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actionId",
+        "captureId",
+        "sourceAgentId",
+        "phase",
+        "initiatedBy",
+        "command",
+        "target",
+        "execution",
+        "parseStatus",
+        "egressStatus",
+        "receivedAt",
+        "clockSkewStatus"
+      ],
+      "properties": {
+        "actionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "sourceAgentId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "phase": { "enum": ["recon", "attacks"] },
+        "initiatedBy": { "enum": ["manual", "ai"] },
+        "command": { "type": "string", "minLength": 1, "maxLength": 32768 },
+        "target": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "enum": ["ip", "host", "network", "url", "service", "other"] },
+            "value": { "type": "string", "minLength": 1, "maxLength": 4096 }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": { "enum": ["exited", "signaled", "failed_to_start"] },
+            "exitCode": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+          }
+        },
+        "parseStatus": { "enum": ["parsed", "needs-plugin", "raw", "parse-failed"] },
+        "egressStatus": { "enum": ["observed", "declared", "disabled", "resolution_failed"] },
+        "receivedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+        "clockSkewStatus": { "enum": ["within_tolerance", "outside_tolerance"] }
+      }
+    },
+    "CaptureConflictData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["captureId", "sourceAgentId", "existingActionId", "reason"],
+      "properties": {
+        "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "sourceAgentId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "existingActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "reason": { "const": "payload_mismatch" }
+      }
+    }
+  }
+}

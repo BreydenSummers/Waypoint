@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "description": "Synthetic cross-repository compatibility matrix. Every listed case is mandatory and unlisted JSON files fail verification.",
+  "cases": [
+    { "path": "valid/human-known-tool.json", "actorKind": "human", "toolClass": "known", "valid": true },
+    { "path": "valid/human-known-parser-failed.json", "actorKind": "human", "toolClass": "known", "valid": true },
+    { "path": "valid/human-unknown-tool.json", "actorKind": "human", "toolClass": "unknown", "valid": true },
+    { "path": "valid/ai-known-tool.json", "actorKind": "ai_agent", "toolClass": "known", "valid": true },
+    { "path": "valid/ai-unknown-tool.json", "actorKind": "ai_agent", "toolClass": "unknown", "valid": true },
+    { "path": "invalid/ai-missing-decision-context.json", "actorKind": "ai_agent", "toolClass": "known", "valid": false },
+    { "path": "invalid/ai-manual-initiation.json", "actorKind": "ai_agent", "toolClass": "known", "valid": false },
+    { "path": "invalid/ai-missing-human-authorizer.json", "actorKind": "ai_agent", "toolClass": "unknown", "valid": false },
+    { "path": "invalid/human-claims-ai-initiation.json", "actorKind": "human", "toolClass": "known", "valid": false },
+    { "path": "invalid/known-tool-missing-result.json", "actorKind": "human", "toolClass": "known", "valid": false },
+    { "path": "invalid/unknown-tool-claims-parsed.json", "actorKind": "human", "toolClass": "unknown", "valid": false },
+    { "path": "invalid/idempotency-key-mismatch.json", "actorKind": "human", "toolClass": "unknown", "valid": false },
+    { "path": "invalid/evidence-digest-mismatch.json", "actorKind": "human", "toolClass": "unknown", "valid": false },
+    { "path": "invalid/timing-duration-mismatch.json", "actorKind": "ai_agent", "toolClass": "unknown", "valid": false },
+    { "path": "invalid/reserved-scan-library-initiator.json", "actorKind": "human", "toolClass": "known", "valid": false }
+  ]
+}

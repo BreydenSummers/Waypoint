@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/generated/contract.schema.json",
+  "title": "Generated Waypoint v1 wire object union",
+  "description": "Generated aggregate for compatibility tooling; canonical schemas remain in ../schemas.",
+  "oneOf": [
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/capture-envelope.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/capture-ack.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/audit-event.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/audit-page.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/problem.schema.json"
+    }
+  ]
+}

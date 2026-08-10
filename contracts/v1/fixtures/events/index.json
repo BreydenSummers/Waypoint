@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "description": "Event-specific negative compatibility cases; positive human and AI events are embedded in every valid capture case.",
+  "cases": [
+    { "path": "valid/capture-conflict.json", "valid": true },
+    { "path": "invalid/numeric-cursor.json", "valid": false },
+    { "path": "invalid/ai-event-missing-authorizer.json", "valid": false },
+    { "path": "invalid/capture-event-data-mismatch.json", "valid": false }
+  ]
+}

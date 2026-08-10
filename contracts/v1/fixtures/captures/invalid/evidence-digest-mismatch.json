@@ -1,0 +1,18 @@
+{
+  "name": "evidence-digest-mismatch",
+  "description": "Declared evidence integrity must match the streamed raw bytes before any durable acknowledgement.",
+  "base": "../valid/human-unknown-tool.json",
+  "mutations": [
+    {
+      "op": "replace",
+      "path": "/request/evidence/stdout/sha256",
+      "value": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 422,
+    "errorCode": "evidence_integrity_mismatch",
+    "pointer": "/evidence/stdout/sha256"
+  }
+}
