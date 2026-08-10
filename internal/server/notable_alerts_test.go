@@ -1,0 +1,230 @@
+package server
+
+import (
+	"context"
+	"database/sql"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	dbm "waypoint/internal/db"
+)
+
+func TestNotableAlertRuleFixtures(t *testing.T) {
+	fixtures := []struct {
+		name       string
+		result     captureParseResult
+		wantRules  []string
+		wantDedupe []string
+	}{
+		{
+			name: "successful authentication",
+			result: captureParseResult{
+				SchemaID:      "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+				SchemaVersion: "1.0.0",
+				Extracted: map[string]any{
+					"authentication": map[string]any{
+						"success":  true,
+						"username": "alice",
+						"target":   "10.0.0.5",
+						"method":   "ssh",
+					},
+				},
+				Entities: []captureParsedEntity{{
+					Kind:        "host",
+					Identifiers: []captureEntityIdentifier{{Type: "ip", Value: "10.0.0.5"}},
+					Attributes:  map[string]any{"state": "up"},
+				}},
+			},
+			wantRules:  []string{"successful-authentication"},
+			wantDedupe: []string{"successful-authentication|alice|10.0.0.5|ssh"},
+		},
+		{
+			name: "first newly reachable segment",
+			result: captureParseResult{
+				SchemaID:      "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+				SchemaVersion: "1.0.0",
+				Extracted: map[string]any{
+					"segment": map[string]any{"cidr": "10.0.0.0/24", "reachable": true},
+				},
+				Entities: []captureParsedEntity{{
+					Kind:        "segment",
+					Identifiers: []captureEntityIdentifier{{Type: "cidr", Value: "10.0.0.0/24"}},
+					Attributes:  map[string]any{"reachable": true},
+				}},
+			},
+			wantRules:  []string{"first-newly-reachable-segment"},
+			wantDedupe: []string{"first-newly-reachable-segment|10.0.0.0/24"},
+		},
+	}
+
+	for _, tc := range fixtures {
+		t.Run(tc.name, func(t *testing.T) {
+			got := notableAlertsForResult(&tc.result, "action-1", "result-1", nil)
+			if len(got) != len(tc.wantRules) {
+				t.Fatalf("alerts = %d, want %d", len(got), len(tc.wantRules))
+			}
+			for i, candidate := range got {
+				if candidate.RuleID != tc.wantRules[i] {
+					t.Fatalf("rule %d = %q, want %q", i, candidate.RuleID, tc.wantRules[i])
+				}
+				if candidate.DedupeKey != tc.wantDedupe[i] {
+					t.Fatalf("dedupe %d = %q, want %q", i, candidate.DedupeKey, tc.wantDedupe[i])
+				}
+				if candidate.Data["sourceActionId"] != "action-1" || candidate.Data["sourceResultId"] != "result-1" {
+					t.Fatalf("candidate data missing source linkage: %#v", candidate.Data)
+				}
+			}
+		})
+	}
+}
+
+func TestNotableAlertsAreDeduplicatedAndStreamed(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	humanID := "22222222-2222-4222-8222-222222222222"
+	token := "alert-rule-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, humanID, engagementID, hashHex(token))
+
+	ts := httptest.NewServer(HandlerWithDB(db))
+	defer ts.Close()
+
+	base := notableAlertEnvelope("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1", "10.0.0.0/24")
+	resp := doCaptureRequest(t, ts.Config.Handler, token, "alert-req-1", base, []byte("stdout"), []byte("stderr"))
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("capture status = %d, want %d", resp.Code, http.StatusCreated)
+	}
+	var ack captureAckResponse
+	decodeResponse(t, resp, &ack)
+
+	assertAlertCounts(t, db, engagementID, 1, 1)
+
+	sseResp := doAuditRequest(t, ts.Client(), ts.URL+"/events?after="+ack.AuditEventCursor, token, "alert-sse", "", ack.AuditEventCursor)
+	frame := readSSEFrame(t, sseResp.Body)
+	_ = sseResp.Body.Close()
+	if frame["event"] != "alert.notable" {
+		t.Fatalf("sse event = %q, want alert.notable", frame["event"])
+	}
+	if frame["id"] == "" {
+		t.Fatal("sse frame missing id")
+	}
+
+	repeat := notableAlertEnvelope("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", "10.0.0.0/24")
+	resp = doCaptureRequest(t, ts.Config.Handler, token, "alert-req-2", repeat, []byte("stdout"), []byte("stderr"))
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("repeat capture status = %d, want %d", resp.Code, http.StatusCreated)
+	}
+	assertAlertCounts(t, db, engagementID, 1, 1)
+
+	fresh := notableAlertEnvelope("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3", "10.0.1.0/24")
+	resp = doCaptureRequest(t, ts.Config.Handler, token, "alert-req-3", fresh, []byte("stdout"), []byte("stderr"))
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("fresh capture status = %d, want %d", resp.Code, http.StatusCreated)
+	}
+	assertAlertCounts(t, db, engagementID, 1, 2)
+}
+
+func notableAlertEnvelope(captureID, segment string) map[string]any {
+	return map[string]any{
+		"contractVersion": "1.0.0",
+		"captureId":       captureID,
+		"sourceAgent": map[string]any{
+			"id":       "44444444-4444-4444-8444-444444444444",
+			"kind":     "operator_wrapper",
+			"name":     "waypoint-wrapper",
+			"version":  "1.0.0",
+			"platform": map[string]any{"os": "linux", "arch": "amd64"},
+		},
+		"phase":       "recon",
+		"initiatedBy": "manual",
+		"command":     "/usr/bin/nmap",
+		"argv":        []any{"nmap", "-sV", "demo.local"},
+		"cwd":         "/home/operator/engagement",
+		"target":      map[string]any{"kind": "hostname", "value": "demo.local"},
+		"timing": map[string]any{
+			"startedAt":  "2025-01-15T10:00:00.000Z",
+			"endedAt":    "2025-01-15T10:00:01.000Z",
+			"durationMs": 1000,
+		},
+		"execution": map[string]any{"status": "exited", "exitCode": 0},
+		"network": map[string]any{
+			"execHost":   map[string]any{"address": "10.10.0.12", "method": "route_selection", "confidence": "confirmed"},
+			"egress":     map[string]any{"mode": "off", "status": "disabled"},
+			"pivotChain": []any{},
+		},
+		"evidence": map[string]any{
+			"stdout": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": 6, "sha256": strings.Repeat("a", 64)},
+			"stderr": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": 6, "sha256": strings.Repeat("b", 64)},
+		},
+		"parsing": map[string]any{
+			"status": "parsed",
+			"plugin": map[string]any{
+				"id":              "waypoint.nmap",
+				"version":         "1.0.0",
+				"artifactSha256":  strings.Repeat("a", 64),
+				"contractVersion": "1.0.0",
+				"match": map[string]any{
+					"binary":      "nmap",
+					"reason":      "binary name and service-version arguments matched",
+					"specificity": 20,
+				},
+			},
+			"result": map[string]any{
+				"schemaId":      "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+				"schemaVersion": "1.0.0",
+				"extracted": map[string]any{
+					"authentication": map[string]any{
+						"success":  true,
+						"username": "alice",
+						"target":   "10.0.0.5",
+						"method":   "ssh",
+					},
+					"segment": map[string]any{"cidr": segment, "reachable": true},
+				},
+				"entities": []any{
+					map[string]any{
+						"kind": "host",
+						"identifiers": []any{
+							map[string]any{"type": "ip", "value": "10.0.0.5"},
+						},
+						"attributes": map[string]any{"state": "up"},
+					},
+					map[string]any{
+						"kind": "segment",
+						"identifiers": []any{
+							map[string]any{"type": "cidr", "value": segment},
+						},
+						"attributes": map[string]any{"reachable": true},
+					},
+				},
+			},
+		},
+	}
+}
+
+func assertAlertCounts(t *testing.T, db *sql.DB, engagementID string, wantAuth, wantSegment int) {
+	t.Helper()
+	var authCount, segmentCount int
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM audit_event WHERE engagement_id = $1 AND type = 'alert.notable' AND data->>'ruleId' = 'successful-authentication'`, engagementID).Scan(&authCount); err != nil {
+		t.Fatalf("count auth alerts: %v", err)
+	}
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM audit_event WHERE engagement_id = $1 AND type = 'alert.notable' AND data->>'ruleId' = 'first-newly-reachable-segment'`, engagementID).Scan(&segmentCount); err != nil {
+		t.Fatalf("count segment alerts: %v", err)
+	}
+	if authCount != wantAuth || segmentCount != wantSegment {
+		t.Fatalf("alert counts = auth:%d segment:%d, want auth:%d segment:%d", authCount, segmentCount, wantAuth, wantSegment)
+	}
+}

@@ -415,8 +415,11 @@ func captureHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		var notableAlerts []notableAlertCandidate
 		if req.Envelope.Parsing.Status == "parsed" {
-			if err := ingestStructuredResult(r.Context(), tx, actor.EngagementID, actionID, req.Envelope.Parsing.Plugin.ID, req.Envelope.Parsing.Result); err != nil {
+			var err error
+			_, notableAlerts, err = ingestStructuredResult(r.Context(), tx, actor.EngagementID, actionID, req.Envelope.Parsing.Plugin.ID, req.Envelope.Parsing.Result)
+			if err != nil {
 				if errors.Is(err, errEntityKindConflict) {
 					writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "entity_conflict", RequestID: reqID, Retryable: false, Detail: "conflicting entity identifiers cannot be auto-merged."})
 					return
@@ -439,6 +442,11 @@ func captureHandler(db *sql.DB) http.HandlerFunc {
 		})
 		if err != nil {
 			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: fmt.Sprintf("append accepted audit event failed: %v", err)})
+			return
+		}
+
+		if err := appendNotableAlerts(r.Context(), tx, actor.EngagementID, reqID, req.Envelope.CaptureID, actionID, acceptedID, actor, notableAlerts); err != nil {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: fmt.Sprintf("append notable alerts failed: %v", err)})
 			return
 		}
 
@@ -832,23 +840,31 @@ func decisionContextMap(ctx *captureDecisionContext) map[string]any {
 	return m
 }
 
-func ingestStructuredResult(ctx context.Context, tx *sql.Tx, engagementID, actionID, pluginID string, result *captureParseResult) error {
+type notableAlertCandidate struct {
+	RuleID    string
+	Title     string
+	DedupeKey string
+	Data      map[string]any
+}
+
+func ingestStructuredResult(ctx context.Context, tx *sql.Tx, engagementID, actionID, pluginID string, result *captureParseResult) (string, []notableAlertCandidate, error) {
 	if result == nil {
-		return fmt.Errorf("missing structured result")
+		return "", nil, fmt.Errorf("missing structured result")
 	}
 	resultID := newUUID()
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO result (id, engagement_id, action_id, plugin_id, schema_id, schema_version, extracted)
 		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
 	`, resultID, engagementID, actionID, pluginID, result.SchemaID, result.SchemaVersion, jsonArg(result.Extracted)); err != nil {
-		return err
+		return "", nil, err
 	}
 
 	seen := map[string]bool{}
+	entityRefs := make([]map[string]any, 0, len(result.Entities))
 	for _, entity := range result.Entities {
 		keyType, keyValue, ok := entityIdentity(entity.Identifiers)
 		if !ok {
-			return fmt.Errorf("entity identity could not be derived")
+			return "", nil, fmt.Errorf("entity identity could not be derived")
 		}
 		identityKey := keyType + "\x00" + keyValue
 		if seen[identityKey] {
@@ -858,16 +874,207 @@ func ingestStructuredResult(ctx context.Context, tx *sql.Tx, engagementID, actio
 
 		entityID, err := upsertEntity(ctx, tx, engagementID, entity.Kind, keyType, keyValue, entity.Attributes)
 		if err != nil {
-			return err
+			return "", nil, err
 		}
+		entityRefs = append(entityRefs, map[string]any{"id": entityID, "kind": entity.Kind, "keyType": keyType, "keyValue": keyValue, "attributes": entity.Attributes})
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO observation (engagement_id, action_id, result_id, entity_id, kind, identifiers, attributes)
 			VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
 		`, engagementID, actionID, resultID, entityID, entity.Kind, jsonArg(entity.Identifiers), jsonArg(entity.Attributes)); err != nil {
+			return "", nil, err
+		}
+	}
+
+	return resultID, notableAlertsForResult(result, actionID, resultID, entityRefs), nil
+}
+
+func notableAlertsForResult(result *captureParseResult, actionID, resultID string, entities []map[string]any) []notableAlertCandidate {
+	if result == nil {
+		return nil
+	}
+	candidates := make([]notableAlertCandidate, 0, 2)
+	if candidate, ok := successfulAuthAlert(result.Extracted); ok {
+		candidate.Data["sourceActionId"] = actionID
+		candidate.Data["sourceResultId"] = resultID
+		candidates = append(candidates, candidate)
+	}
+	if candidate, ok := reachableSegmentAlert(result.Extracted, result.Entities, entities); ok {
+		candidate.Data["sourceActionId"] = actionID
+		candidate.Data["sourceResultId"] = resultID
+		candidates = append(candidates, candidate)
+	}
+	return candidates
+}
+
+func successfulAuthAlert(extracted map[string]any) (notableAlertCandidate, bool) {
+	match, ok := findNotableMap(extracted, func(m map[string]any) bool {
+		return notableBool(m, "success", "authenticated") && (notableString(m, "user", "username", "principal", "account") != "" || notableString(m, "target", "host", "service", "endpoint") != "")
+	})
+	if !ok {
+		return notableAlertCandidate{}, false
+	}
+	user := notableString(match, "user", "username", "principal", "account")
+	target := notableString(match, "target", "host", "service", "endpoint")
+	method := notableString(match, "method", "protocol", "mechanism")
+	dedupeKey := strings.ToLower(strings.TrimSpace(strings.Join([]string{"successful-authentication", user, target, method}, "|")))
+	data := map[string]any{
+		"ruleId":    "successful-authentication",
+		"ruleTitle": "Successful authentication",
+		"dedupeKey": dedupeKey,
+		"match":     match,
+	}
+	return notableAlertCandidate{RuleID: "successful-authentication", Title: "Successful authentication", DedupeKey: dedupeKey, Data: data}, true
+}
+
+func reachableSegmentAlert(extracted map[string]any, parsedEntities []captureParsedEntity, entities []map[string]any) (notableAlertCandidate, bool) {
+	match, ok := findNotableMap(extracted, func(m map[string]any) bool {
+		segment := notableString(m, "segment", "cidr", "subnet", "network")
+		if segment == "" {
+			return false
+		}
+		return notableBool(m, "reachable", "newlyReachable", "firstSeen") || strings.EqualFold(notableString(m, "status", "state"), "reachable")
+	})
+	if !ok {
+		for i := range parsedEntities {
+			entity := parsedEntities[i]
+			if entity.Kind != "segment" && entity.Kind != "subnet" && entity.Kind != "network" {
+				continue
+			}
+			if !(notableBool(entity.Attributes, "reachable", "newlyReachable", "firstSeen") || strings.EqualFold(notableString(entity.Attributes, "status", "state"), "reachable")) {
+				continue
+			}
+			segment := notableEntitySegment(entity)
+			if segment == "" {
+				continue
+			}
+			match = map[string]any{"segment": segment, "reachable": true, "entityKind": entity.Kind}
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		return notableAlertCandidate{}, false
+	}
+	segment := notableString(match, "segment", "cidr", "subnet", "network")
+	dedupeKey := strings.ToLower(strings.TrimSpace(strings.Join([]string{"first-newly-reachable-segment", segment}, "|")))
+	data := map[string]any{
+		"ruleId":    "first-newly-reachable-segment",
+		"ruleTitle": "First newly reachable segment",
+		"dedupeKey": dedupeKey,
+		"match":     match,
+	}
+	return notableAlertCandidate{RuleID: "first-newly-reachable-segment", Title: "First newly reachable segment", DedupeKey: dedupeKey, Data: data}, true
+}
+
+func appendNotableAlerts(ctx context.Context, tx *sql.Tx, engagementID, requestID, correlationID, actionID string, acceptedEventID int64, actor actorRecord, candidates []notableAlertCandidate) error {
+	for _, candidate := range candidates {
+		if candidate.DedupeKey == "" {
+			continue
+		}
+		var existing int64
+		err := tx.QueryRowContext(ctx, `
+			SELECT id
+			FROM audit_event
+			WHERE engagement_id = $1 AND type = 'alert.notable' AND data->>'ruleId' = $2 AND data->>'dedupeKey' = $3
+			LIMIT 1
+		`, engagementID, candidate.RuleID, candidate.DedupeKey).Scan(&existing)
+		if err == nil {
+			continue
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		data := make(map[string]any, len(candidate.Data)+2)
+		for k, v := range candidate.Data {
+			data[k] = v
+		}
+		data["sourceCaptureId"] = correlationID
+		data["sourceActionId"] = actionID
+		if _, err := dbutil.AppendAuditEvent(ctx, tx, dbutil.AuditEventInput{
+			EngagementID:    engagementID,
+			Type:            "alert.notable",
+			Actor:           auditActorSnapshot(actor),
+			Origin:          dbutil.AuditOrigin{Kind: "service", Service: "notable-alerts"},
+			Subject:         dbutil.AuditSubject{Type: "action", ID: actionID, Revision: 1},
+			RequestID:       requestID,
+			CorrelationID:   correlationID,
+			CausationAction: actionID,
+			CausationEvent:  sql.NullInt64{Int64: acceptedEventID, Valid: true},
+			Data:            data,
+		}); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func findNotableMap(v any, match func(map[string]any) bool) (map[string]any, bool) {
+	switch x := v.(type) {
+	case map[string]any:
+		if match(x) {
+			return x, true
+		}
+		for _, child := range x {
+			if found, ok := findNotableMap(child, match); ok {
+				return found, true
+			}
+		}
+	case []any:
+		for _, child := range x {
+			if found, ok := findNotableMap(child, match); ok {
+				return found, true
+			}
+		}
+	}
+	return nil, false
+}
+
+func notableBool(m map[string]any, keys ...string) bool {
+	for _, key := range keys {
+		if v, ok := m[key]; ok {
+			switch x := v.(type) {
+			case bool:
+				if x {
+					return true
+				}
+			case string:
+				if strings.EqualFold(strings.TrimSpace(x), "true") || strings.EqualFold(strings.TrimSpace(x), "success") || strings.EqualFold(strings.TrimSpace(x), "authenticated") {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func notableString(m map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if v, ok := m[key]; ok {
+			switch x := v.(type) {
+			case string:
+				if s := strings.TrimSpace(x); s != "" {
+					return s
+				}
+			case fmt.Stringer:
+				if s := strings.TrimSpace(x.String()); s != "" {
+					return s
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func notableEntitySegment(entity captureParsedEntity) string {
+	for _, id := range entity.Identifiers {
+		switch id.Type {
+		case "cidr", "ip", "fqdn", "hostname", "other":
+			if s := strings.TrimSpace(id.Value); s != "" {
+				return s
+			}
+		}
+	}
+	return notableString(entity.Attributes, "segment", "cidr", "subnet", "network")
 }
 
 func upsertEntity(ctx context.Context, tx *sql.Tx, engagementID, kind, keyType, keyValue string, attrs map[string]any) (string, error) {
