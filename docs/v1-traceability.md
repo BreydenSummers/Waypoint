@@ -3,7 +3,8 @@
 Status: planning baseline; no product implementation is claimed  
 Canonical requirements: [`../PRD.md`](../PRD.md)  
 Execution and task definitions: [`v1-execution-plan.md`](v1-execution-plan.md)  
-Design references: [`design-spec.md`](design-spec.md), [`waypoint-mockup.html`](waypoint-mockup.html)
+Design references: [`design-spec.md`](design-spec.md), [`waypoint-mockup.html`](waypoint-mockup.html)  
+Architecture records: [`adr/README.md`](adr/README.md)
 
 ## How to use this matrix
 
@@ -112,7 +113,11 @@ Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundatio
 
 ## 7. Resolved gaps and edge-case decisions
 
-These are the implementation interpretations used by the matrix. They should become ADRs in V1-001.
+These are the implementation interpretations used by the matrix. V1-001 records its architecture
+scope in the [ADR index](adr/README.md): system shape in ADR-0001, audit breadth/corrections in
+ADR-0002, evidence isolation in ADR-0003, parser trust in ADR-0004, manifest/reconstruction semantics
+in ADR-0005, and phase/scope vocabulary in ADR-0006. Remaining rows stay executable planning
+decisions until their owning task requires a dedicated ADR.
 
 | Decision | Gap or tension in source text | Resolution / observable rule |
 |---|---|---|
