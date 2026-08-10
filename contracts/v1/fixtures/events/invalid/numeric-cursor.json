@@ -1,0 +1,9 @@
+{
+  "name": "numeric-event-cursor",
+  "description": "Event IDs remain decimal strings so JavaScript clients cannot lose bigint precision.",
+  "base": "../../captures/valid/human-known-tool.json",
+  "mutations": [
+    { "op": "replace", "path": "/expectedEvent/id", "value": 101 }
+  ],
+  "expected": { "valid": false, "errorCode": "invalid_event", "pointer": "/id" }
+}

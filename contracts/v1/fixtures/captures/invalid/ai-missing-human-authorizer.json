@@ -1,0 +1,14 @@
+{
+  "name": "ai-missing-human-authorizer",
+  "description": "AI actor snapshots are invalid without the human actor who authorized them.",
+  "base": "../valid/ai-unknown-tool.json",
+  "mutations": [
+    { "op": "remove", "path": "/actor/authorizedBy" }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 400,
+    "errorCode": "invalid_request",
+    "pointer": "/actor/authorizedBy"
+  }
+}

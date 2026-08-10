@@ -1,0 +1,31 @@
+{
+  "name": "human-known-parser-failed",
+  "description": "A known parser crash remains a valid raw-first capture with an explicit parse-failed state.",
+  "base": "human-known-tool.json",
+  "mutations": [
+    {
+      "op": "replace",
+      "path": "/request/parsing",
+      "value": {
+        "status": "parse-failed",
+        "plugin": {
+          "id": "waypoint.nmap",
+          "version": "1.0.0",
+          "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "contractVersion": "1.0.0",
+          "match": {
+            "binary": "nmap",
+            "reason": "binary name and service-version arguments matched",
+            "specificity": 20
+          }
+        },
+        "failure": {
+          "code": "crash",
+          "message": "Pinned parser process exited before returning a result."
+        }
+      }
+    },
+    { "op": "replace", "path": "/expectedEvent/data/parseStatus", "value": "parse-failed" }
+  ],
+  "expected": { "valid": true, "httpStatus": 201, "idempotency": "created" }
+}

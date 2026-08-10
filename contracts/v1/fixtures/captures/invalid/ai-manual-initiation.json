@@ -1,0 +1,16 @@
+{
+  "name": "ai-manual-initiation",
+  "description": "An AI credential cannot disguise an AI action as manual.",
+  "base": "../valid/ai-known-tool.json",
+  "mutations": [
+    { "op": "replace", "path": "/request/initiatedBy", "value": "manual" },
+    { "op": "remove", "path": "/request/decisionContext" }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 400,
+    "errorCode": "invalid_request",
+    "fieldCode": "actor_initiator_mismatch",
+    "pointer": "/initiatedBy"
+  }
+}

@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/capture-envelope.schema.json",
+  "title": "Waypoint capture envelope v1",
+  "description": "Collector-created immutable command metadata. Engagement and actor scope are derived exclusively from the bearer credential.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contractVersion",
+    "captureId",
+    "sourceAgent",
+    "phase",
+    "initiatedBy",
+    "command",
+    "argv",
+    "cwd",
+    "target",
+    "timing",
+    "execution",
+    "network",
+    "evidence",
+    "parsing"
+  ],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "sourceAgent": { "$ref": "#/$defs/SourceAgent" },
+    "phase": { "enum": ["recon", "attacks"] },
+    "initiatedBy": {
+      "enum": ["manual", "ai", "scan-library"], "x-waypoint-status": "reserved",
+      "description": "scan-library is a reserved compatibility value and is rejected by v1 ingestion."
+    },
+    "decisionContext": { "$ref": "#/$defs/DecisionContext" },
+    "command": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32768
+    },
+    "argv": {
+      "type": "array",
+      "maxItems": 4096,
+      "items": { "type": "string", "maxLength": 32768 }
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32768
+    },
+    "target": { "$ref": "#/$defs/Target" },
+    "timing": { "$ref": "#/$defs/Timing" },
+    "execution": { "$ref": "#/$defs/Execution" },
+    "network": { "$ref": "#/$defs/NetworkAttribution" },
+    "evidence": { "$ref": "#/$defs/EvidenceSet" },
+    "parsing": { "$ref": "#/$defs/Parsing" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "initiatedBy": { "const": "ai" } },
+        "required": ["initiatedBy"]
+      },
+      "then": { "required": ["decisionContext"] },
+      "else": { "not": { "required": ["decisionContext"] } }
+    }
+  ],
+  "$defs": {
+    "SourceAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name", "version", "platform"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "kind": { "enum": ["operator_wrapper", "remote_agent", "mcp_client"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "platform": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["os", "arch"],
+          "properties": {
+            "os": { "enum": ["linux", "macos", "windows", "other"] },
+            "arch": { "enum": ["amd64", "arm64", "other"] }
+          }
+        }
+      }
+    },
+    "DecisionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 16384 },
+        "promptReference": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "authorizationReference": { "type": "string", "minLength": 1, "maxLength": 512 }
+      },
+      "anyOf": [
+        { "required": ["rationale"] },
+        { "required": ["promptReference"] }
+      ]
+    },
+    "Target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": { "enum": ["ip", "host", "network", "url", "service", "other"] },
+        "value": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "transport": { "enum": ["tcp", "udp", "sctp", "other"] }
+      }
+    },
+    "Timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["startedAt", "endedAt", "durationMs"],
+      "properties": {
+        "startedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+        "endedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+        "durationMs": { "type": "integer", "minimum": 0, "maximum": 604800000 }
+      }
+    },
+    "Execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["exited", "signaled", "failed_to_start"] },
+        "exitCode": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 },
+        "signal": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "failureCode": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z][a-z0-9_]*$" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "exited" } }, "required": ["status"] },
+          "then": { "required": ["exitCode"], "not": { "anyOf": [{ "required": ["signal"] }, { "required": ["failureCode"] }] } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "signaled" } }, "required": ["status"] },
+          "then": { "required": ["signal"], "not": { "anyOf": [{ "required": ["exitCode"] }, { "required": ["failureCode"] }] } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "failed_to_start" } }, "required": ["status"] },
+          "then": { "required": ["failureCode"], "not": { "anyOf": [{ "required": ["exitCode"] }, { "required": ["signal"] }] } }
+        }
+      ]
+    },
+    "NetworkAttribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["execHost", "egress", "pivotChain"],
+      "properties": {
+        "execHost": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["address", "method", "confidence"],
+          "properties": {
+            "address": { "$ref": "common.schema.json#/$defs/IpAddress" },
+            "method": { "enum": ["route_selection", "interface_selection", "operator_declared"] },
+            "confidence": { "enum": ["confirmed", "inferred"] },
+            "interface": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        },
+        "egress": { "$ref": "#/$defs/Egress" },
+        "pivotChain": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/PivotHop" }
+        }
+      }
+    },
+    "Egress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "status"],
+      "properties": {
+        "mode": { "enum": ["auto", "manual", "off"] },
+        "status": { "enum": ["observed", "declared", "disabled", "resolution_failed"] },
+        "address": { "$ref": "common.schema.json#/$defs/IpAddress" },
+        "observedAt": { "$ref": "common.schema.json#/$defs/Timestamp" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "enum": ["observed", "declared"] } }, "required": ["status"] },
+          "then": { "required": ["address", "observedAt"] },
+          "else": { "not": { "anyOf": [{ "required": ["address"] }, { "required": ["observedAt"] }] } }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "off" } }, "required": ["mode"] },
+          "then": { "properties": { "status": { "const": "disabled" } } }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "manual" } }, "required": ["mode"] },
+          "then": { "properties": { "status": { "const": "declared" } } }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "auto" } }, "required": ["mode"] },
+          "then": { "properties": { "status": { "enum": ["observed", "resolution_failed"] } } }
+        }
+      ]
+    },
+    "PivotHop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "host"],
+      "properties": {
+        "type": { "enum": ["socks_proxy", "http_proxy", "ssh_jump", "vpn", "port_forward", "other"] },
+        "host": { "type": "string", "minLength": 1, "maxLength": 253 },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "label": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "EvidenceSet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stdout", "stderr"],
+      "properties": {
+        "stdout": { "$ref": "#/$defs/EvidenceDescriptor" },
+        "stderr": { "$ref": "#/$defs/EvidenceDescriptor" }
+      }
+    },
+    "EvidenceDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mediaType", "byteLength", "sha256"],
+      "properties": {
+        "mediaType": { "type": "string", "minLength": 1, "maxLength": 255, "pattern": "^[^\\s/]+/[^\\s/]+(?:;.*)?$" },
+        "byteLength": { "type": "integer", "minimum": 0, "maximum": 10737418240 },
+        "sha256": { "$ref": "common.schema.json#/$defs/Sha256" }
+      }
+    },
+    "Parsing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status"],
+      "properties": {
+        "status": { "enum": ["parsed", "needs-plugin", "raw", "parse-failed"] },
+        "plugin": { "$ref": "#/$defs/PluginSelection" },
+        "result": { "$ref": "structured-result.schema.json" },
+        "failure": { "$ref": "#/$defs/ParseFailure" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "parsed" } }, "required": ["status"] },
+          "then": { "required": ["plugin", "result"], "not": { "required": ["failure"] } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "parse-failed" } }, "required": ["status"] },
+          "then": { "required": ["plugin", "failure"], "not": { "required": ["result"] } }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["needs-plugin", "raw"] } }, "required": ["status"] },
+          "then": { "not": { "anyOf": [{ "required": ["plugin"] }, { "required": ["result"] }, { "required": ["failure"] }] } }
+        }
+      ]
+    },
+    "PluginSelection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "artifactSha256", "contractVersion", "match"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*$" },
+        "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$" },
+        "artifactSha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+        "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+        "match": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["binary", "reason", "specificity"],
+          "properties": {
+            "binary": { "type": "string", "minLength": 1, "maxLength": 255 },
+            "reason": { "type": "string", "minLength": 1, "maxLength": 1024 },
+            "specificity": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+          }
+        }
+      }
+    },
+    "ParseFailure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "enum": ["timeout", "resource_limit", "crash", "ambiguous_match", "invalid_output", "sandbox_unavailable"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      }
+    }
+  }
+}

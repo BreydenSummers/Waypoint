@@ -1,0 +1,20 @@
+{
+  "name": "human-claims-ai-initiation",
+  "description": "AI-initiated work must use the AI actor's own credential, not a human credential.",
+  "base": "../valid/human-known-tool.json",
+  "mutations": [
+    { "op": "replace", "path": "/request/initiatedBy", "value": "ai" },
+    {
+      "op": "add",
+      "path": "/request/decisionContext",
+      "value": { "rationale": "This context does not make a human token an AI actor token." }
+    }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 400,
+    "errorCode": "invalid_request",
+    "fieldCode": "actor_initiator_mismatch",
+    "pointer": "/initiatedBy"
+  }
+}

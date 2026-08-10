@@ -1,0 +1,9 @@
+{
+  "name": "capture-event-data-mismatch",
+  "description": "A capture.accepted event must agree with the immutable capture and subject action.",
+  "base": "../../captures/valid/human-unknown-tool.json",
+  "mutations": [
+    { "op": "replace", "path": "/expectedEvent/data/captureId", "value": "99999999-9999-4999-8999-999999999999" }
+  ],
+  "expected": { "valid": false, "errorCode": "invalid_event", "fieldCode": "event_capture_mismatch", "pointer": "/data/captureId" }
+}

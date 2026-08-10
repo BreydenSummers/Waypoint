@@ -1,0 +1,14 @@
+{
+  "name": "known-tool-missing-result",
+  "description": "A parsed state cannot omit its schema-validated structured result.",
+  "base": "../valid/human-known-tool.json",
+  "mutations": [
+    { "op": "remove", "path": "/request/parsing/result" }
+  ],
+  "expected": {
+    "valid": false,
+    "httpStatus": 400,
+    "errorCode": "invalid_request",
+    "pointer": "/parsing/result"
+  }
+}

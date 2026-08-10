@@ -1,0 +1,137 @@
+{
+  "name": "ai-known-tool",
+  "description": "A human-authorized AI actor uses its own credential and records why it selected a known tool.",
+  "actor": {
+    "id": "33333333-3333-4333-8333-333333333333",
+    "kind": "ai_agent",
+    "handle": "field-agent-7",
+    "role": "operator",
+    "agentName": "Synthetic Field Agent",
+    "model": "synthetic-offline-model",
+    "version": "2025.01",
+    "authorizedBy": "22222222-2222-4222-8222-222222222222"
+  },
+  "toolClass": "known",
+  "requestHeaders": {
+    "Waypoint-Contract-Version": "1.0.0",
+    "Idempotency-Key": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3"
+  },
+  "rawParts": { "stdoutBase64": "YWJj", "stderrBase64": "" },
+  "request": {
+    "contractVersion": "1.0.0",
+    "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
+    "sourceAgent": {
+      "id": "55555555-5555-4555-8555-555555555555",
+      "kind": "remote_agent",
+      "name": "waypoint-agent",
+      "version": "1.0.0",
+      "platform": { "os": "macos", "arch": "arm64" }
+    },
+    "phase": "recon",
+    "initiatedBy": "ai",
+    "decisionContext": {
+      "rationale": "Confirm the explicitly scoped host's exposed services before selecting a manual follow-up.",
+      "promptReference": "audit-prompt:decision-0007",
+      "authorizationReference": "engagement-rule:recon-only"
+    },
+    "command": "/opt/homebrew/bin/nmap",
+    "argv": ["nmap", "-sV", "192.0.2.30"],
+    "cwd": "/Users/agent/engagement",
+    "target": { "kind": "ip", "value": "192.0.2.30" },
+    "timing": {
+      "startedAt": "2025-01-15T10:10:00.000Z",
+      "endedAt": "2025-01-15T10:10:01.000Z",
+      "durationMs": 1000
+    },
+    "execution": { "status": "exited", "exitCode": 0 },
+    "network": {
+      "execHost": {
+        "address": "10.10.0.14",
+        "method": "route_selection",
+        "confidence": "confirmed",
+        "interface": "en0"
+      },
+      "egress": {
+        "mode": "auto",
+        "status": "observed",
+        "address": "198.51.100.25",
+        "observedAt": "2025-01-15T10:09:55.000Z"
+      },
+      "pivotChain": []
+    },
+    "evidence": {
+      "stdout": {
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 3,
+        "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+      },
+      "stderr": {
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "parsing": {
+      "status": "parsed",
+      "plugin": {
+        "id": "waypoint.nmap",
+        "version": "1.0.0",
+        "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "contractVersion": "1.0.0",
+        "match": {
+          "binary": "nmap",
+          "reason": "binary name and service-version arguments matched",
+          "specificity": 20
+        }
+      },
+      "result": {
+        "schemaId": "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+        "schemaVersion": "1.0.0",
+        "extracted": { "hostsUp": 1, "services": [] },
+        "entities": [
+          {
+            "kind": "host",
+            "identifiers": [{ "type": "ip", "value": "192.0.2.30" }],
+            "attributes": { "state": "up" }
+          }
+        ]
+      }
+    }
+  },
+  "expected": { "valid": true, "httpStatus": 201, "idempotency": "created" },
+  "expectedEvent": {
+    "contractVersion": "1.0.0",
+    "id": "103",
+    "type": "capture.accepted",
+    "engagementId": "11111111-1111-4111-8111-111111111111",
+    "actor": {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "kind": "ai_agent",
+      "handle": "field-agent-7",
+      "role": "operator",
+      "agentName": "Synthetic Field Agent",
+      "model": "synthetic-offline-model",
+      "version": "2025.01",
+      "authorizedBy": "22222222-2222-4222-8222-222222222222"
+    },
+    "occurredAt": "2025-01-15T10:10:02.000Z",
+    "origin": { "kind": "rest" },
+    "subject": { "type": "action", "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3" },
+    "requestId": "req-ai-known-003",
+    "correlationId": "capture-ai-known-003",
+    "data": {
+      "actionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb3",
+      "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3",
+      "sourceAgentId": "55555555-5555-4555-8555-555555555555",
+      "phase": "recon",
+      "initiatedBy": "ai",
+      "command": "/opt/homebrew/bin/nmap",
+      "target": { "kind": "ip", "value": "192.0.2.30" },
+      "execution": { "status": "exited", "exitCode": 0 },
+      "parseStatus": "parsed",
+      "egressStatus": "observed",
+      "receivedAt": "2025-01-15T10:10:02.000Z",
+      "clockSkewStatus": "within_tolerance"
+    }
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "rest-initial-page",
+      "endpoint": "audit-events",
+      "after": null,
+      "lastEventId": null,
+      "minimumAvailable": "41",
+      "connectionHighWater": "105",
+      "expected": { "valid": true, "mode": "oldest-available", "effectiveCursor": null }
+    },
+    {
+      "name": "sse-live-only-without-cursor",
+      "endpoint": "events",
+      "after": null,
+      "lastEventId": null,
+      "minimumAvailable": "41",
+      "connectionHighWater": "105",
+      "expected": { "valid": true, "mode": "live-only", "effectiveCursor": "105" }
+    },
+    {
+      "name": "sse-query-resume",
+      "endpoint": "events",
+      "after": "100",
+      "lastEventId": null,
+      "minimumAvailable": "41",
+      "connectionHighWater": "105",
+      "expected": { "valid": true, "mode": "resume", "effectiveCursor": "100" }
+    },
+    {
+      "name": "sse-header-resume",
+      "endpoint": "events",
+      "after": null,
+      "lastEventId": "100",
+      "minimumAvailable": "41",
+      "connectionHighWater": "105",
+      "expected": { "valid": true, "mode": "resume", "effectiveCursor": "100" }
+    },
+    {
+      "name": "matching-query-and-header",
+      "endpoint": "events",
+      "after": "100",
+      "lastEventId": "100",
+      "minimumAvailable": "41",
+      "connectionHighWater": "105",
+      "expected": { "valid": true, "mode": "resume", "effectiveCursor": "100" }
+    },
+    {
+      "name": "mismatched-query-and-header",
+      "endpoint": "events",
+      "after": "99",
+      "lastEventId": "100",
+      "minimumAvailable": "41",
+      "connectionHighWater": "105",
+      "expected": { "valid": false, "httpStatus": 400, "errorCode": "cursor_mismatch" }
+    },
+    {
+      "name": "non-canonical-leading-zero",
+      "endpoint": "events",
+      "after": "0100",
+      "lastEventId": null,
+      "minimumAvailable": "41",
+      "connectionHighWater": "105",
+      "expected": { "valid": false, "httpStatus": 400, "errorCode": "cursor_invalid" }
+    },
+    {
+      "name": "signed-bigint-overflow",
+      "endpoint": "events",
+      "after": "9223372036854775808",
+      "lastEventId": null,
+      "minimumAvailable": "41",
+      "connectionHighWater": "105",
+      "expected": { "valid": false, "httpStatus": 400, "errorCode": "cursor_invalid" }
+    },
+    {
+      "name": "cursor-before-delivery-window",
+      "endpoint": "events",
+      "after": "40",
+      "lastEventId": null,
+      "minimumAvailable": "41",
+      "connectionHighWater": "105",
+      "expected": { "valid": false, "httpStatus": 410, "errorCode": "cursor_expired", "resync": "/api/v1/audit-events?after=40" }
+    }
+  ]
+}

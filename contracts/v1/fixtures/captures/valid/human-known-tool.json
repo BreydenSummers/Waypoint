@@ -1,0 +1,131 @@
+{
+  "name": "human-known-tool",
+  "description": "A human operator runs a release-pinned nmap parser and retains both raw streams.",
+  "actor": {
+    "id": "22222222-2222-4222-8222-222222222222",
+    "kind": "human",
+    "handle": "alex.operator",
+    "role": "operator"
+  },
+  "toolClass": "known",
+  "requestHeaders": {
+    "Waypoint-Contract-Version": "1.0.0",
+    "Idempotency-Key": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"
+  },
+  "rawParts": { "stdoutBase64": "YWJj", "stderrBase64": "" },
+  "request": {
+    "contractVersion": "1.0.0",
+    "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+    "sourceAgent": {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "kind": "operator_wrapper",
+      "name": "waypoint-wrapper",
+      "version": "1.0.0",
+      "platform": { "os": "linux", "arch": "amd64" }
+    },
+    "phase": "recon",
+    "initiatedBy": "manual",
+    "command": "/usr/bin/nmap",
+    "argv": ["nmap", "-sV", "192.0.2.10"],
+    "cwd": "/home/operator/engagement",
+    "target": { "kind": "ip", "value": "192.0.2.10" },
+    "timing": {
+      "startedAt": "2025-01-15T10:00:00.000Z",
+      "endedAt": "2025-01-15T10:00:01.250Z",
+      "durationMs": 1250
+    },
+    "execution": { "status": "exited", "exitCode": 0 },
+    "network": {
+      "execHost": {
+        "address": "10.10.0.12",
+        "method": "route_selection",
+        "confidence": "confirmed",
+        "interface": "eth0"
+      },
+      "egress": {
+        "mode": "manual",
+        "status": "declared",
+        "address": "198.51.100.24",
+        "observedAt": "2025-01-15T09:59:55.000Z"
+      },
+      "pivotChain": []
+    },
+    "evidence": {
+      "stdout": {
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 3,
+        "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+      },
+      "stderr": {
+        "mediaType": "text/plain; charset=utf-8",
+        "byteLength": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "parsing": {
+      "status": "parsed",
+      "plugin": {
+        "id": "waypoint.nmap",
+        "version": "1.0.0",
+        "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "contractVersion": "1.0.0",
+        "match": {
+          "binary": "nmap",
+          "reason": "binary name and service-version arguments matched",
+          "specificity": 20
+        }
+      },
+      "result": {
+        "schemaId": "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+        "schemaVersion": "1.0.0",
+        "extracted": {
+          "hostsUp": 1,
+          "services": [{ "port": 443, "transport": "tcp", "name": "https" }]
+        },
+        "entities": [
+          {
+            "kind": "host",
+            "identifiers": [{ "type": "ip", "value": "192.0.2.10" }],
+            "attributes": { "state": "up" }
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "valid": true,
+    "httpStatus": 201,
+    "idempotency": "created"
+  },
+  "expectedEvent": {
+    "contractVersion": "1.0.0",
+    "id": "101",
+    "type": "capture.accepted",
+    "engagementId": "11111111-1111-4111-8111-111111111111",
+    "actor": {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "kind": "human",
+      "handle": "alex.operator",
+      "role": "operator"
+    },
+    "occurredAt": "2025-01-15T10:00:02.000Z",
+    "origin": { "kind": "rest" },
+    "subject": { "type": "action", "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1" },
+    "requestId": "req-human-known-001",
+    "correlationId": "capture-human-known-001",
+    "data": {
+      "actionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+      "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "sourceAgentId": "44444444-4444-4444-8444-444444444444",
+      "phase": "recon",
+      "initiatedBy": "manual",
+      "command": "/usr/bin/nmap",
+      "target": { "kind": "ip", "value": "192.0.2.10" },
+      "execution": { "status": "exited", "exitCode": 0 },
+      "parseStatus": "parsed",
+      "egressStatus": "declared",
+      "receivedAt": "2025-01-15T10:00:02.000Z",
+      "clockSkewStatus": "within_tolerance"
+    }
+  }
+}

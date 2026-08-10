@@ -1,0 +1,9 @@
+{
+  "name": "ai-event-missing-authorizer",
+  "description": "The persisted AI event actor snapshot retains its human authorizer.",
+  "base": "../../captures/valid/ai-known-tool.json",
+  "mutations": [
+    { "op": "remove", "path": "/expectedEvent/actor/authorizedBy" }
+  ],
+  "expected": { "valid": false, "errorCode": "invalid_event", "pointer": "/actor/authorizedBy" }
+}
