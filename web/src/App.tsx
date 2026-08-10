@@ -191,12 +191,6 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const route = pathForPhase(activeId);
-
-    if (window.location.pathname !== route) {
-      window.history.replaceState({}, '', route);
-    }
-
     document.title = `Waypoint — ${waypointDetails[activeId].name}`;
   }, [activeId]);
 

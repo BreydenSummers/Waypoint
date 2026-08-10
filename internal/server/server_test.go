@@ -53,13 +53,20 @@ func TestHandlerServesHealthReadyAndSPA(t *testing.T) {
 		t.Fatalf("index body missing app title: %q", body)
 	}
 
-	resp, err = http.Get(ts.URL + "/engagements/demo")
+	noRedirectClient := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+
+	resp, err = noRedirectClient.Get(ts.URL + "/engagements/demo")
 	if err != nil {
 		t.Fatalf("SPA fallback request failed: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("SPA fallback status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if loc := resp.Header.Get("Location"); loc != "" {
+		t.Fatalf("SPA fallback unexpectedly redirected to %q", loc)
 	}
 	body, _ = io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), `id="root"`) || !strings.Contains(string(body), "/assets/waypoint.js") {
