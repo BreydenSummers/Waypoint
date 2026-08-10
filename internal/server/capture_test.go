@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -216,6 +217,163 @@ func TestCaptureAcceptsAIInitiationWithDecisionContext(t *testing.T) {
 	decodeResponse(t, resp, &ack)
 	if ack.Idempotency != "created" {
 		t.Fatalf("ai ack = %#v", ack)
+	}
+}
+
+func TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	humanID := "22222222-2222-4222-8222-222222222222"
+	humanToken := "human-test-token"
+	stdout := []byte("abc")
+	stderr := []byte{}
+	stdoutSum := sha256.Sum256(stdout)
+	stderrSum := sha256.Sum256(stderr)
+	stdoutHash := hex.EncodeToString(stdoutSum[:])
+	stderrHash := hex.EncodeToString(stderrSum[:])
+
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, humanID, engagementID, hashHex(humanToken))
+
+	valid := map[string]any{
+		"contractVersion": "1.0.0",
+		"captureId":       "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+		"sourceAgent": map[string]any{
+			"id":       "44444444-4444-4444-8444-444444444444",
+			"kind":     "operator_wrapper",
+			"name":     "waypoint-wrapper",
+			"version":  "1.0.0",
+			"platform": map[string]any{"os": "linux", "arch": "amd64"},
+		},
+		"phase":       "recon",
+		"initiatedBy": "manual",
+		"command":     "/usr/bin/nmap",
+		"argv":        []string{"nmap", "-sV", "192.0.2.10"},
+		"cwd":         "/home/operator/engagement",
+		"target":      map[string]any{"kind": "ip", "value": "192.0.2.10"},
+		"timing": map[string]any{
+			"startedAt":  "2025-01-15T10:00:00.000Z",
+			"endedAt":    "2025-01-15T10:00:01.000Z",
+			"durationMs": 1000,
+		},
+		"execution": map[string]any{"status": "exited", "exitCode": 0},
+		"network": map[string]any{
+			"execHost":   map[string]any{"address": "10.10.0.12", "method": "route_selection", "confidence": "confirmed"},
+			"egress":     map[string]any{"mode": "off", "status": "disabled"},
+			"pivotChain": []any{},
+		},
+		"evidence": map[string]any{
+			"stdout": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stdout), "sha256": stdoutHash},
+			"stderr": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stderr), "sha256": stderrHash},
+		},
+		"parsing": map[string]any{
+			"status": "parsed",
+			"plugin": map[string]any{
+				"id":              "waypoint.nmap",
+				"version":         "1.0.0",
+				"artifactSha256":  strings.Repeat("a", 64),
+				"contractVersion": "1.0.0",
+				"match": map[string]any{
+					"binary":      "nmap",
+					"reason":      "binary name and service-version arguments matched",
+					"specificity": 20,
+				},
+			},
+			"result": map[string]any{
+				"schemaId":      "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+				"schemaVersion": "1.0.0",
+				"extracted":     map[string]any{"hostsUp": 1, "services": []any{}},
+				"entities": []any{
+					map[string]any{
+						"kind": "host",
+						"identifiers": []any{
+							map[string]any{"type": "fqdn", "value": "demo.local"},
+							map[string]any{"type": "ip", "value": "192.0.2.10"},
+						},
+						"attributes": map[string]any{"state": "up"},
+					},
+				},
+			},
+		},
+	}
+
+	resp := doCaptureRequest(t, HandlerWithDB(db), humanToken, "aaaa1111", valid, stdout, stderr)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d", resp.Code, http.StatusCreated)
+	}
+	var ack captureAckResponse
+	decodeResponse(t, resp, &ack)
+
+	var resultID, pluginID, schemaID, schemaVersion string
+	if err := db.QueryRowContext(ctx, `SELECT id, plugin_id, schema_id, schema_version FROM result WHERE action_id = $1`, ack.ActionID).Scan(&resultID, &pluginID, &schemaID, &schemaVersion); err != nil {
+		t.Fatalf("load result: %v", err)
+	}
+	if pluginID != "waypoint.nmap" || schemaID != "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json" || schemaVersion != "1.0.0" {
+		t.Fatalf("result row = %s %s %s", pluginID, schemaID, schemaVersion)
+	}
+
+	var obsCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM observation WHERE result_id = $1`, resultID).Scan(&obsCount); err != nil {
+		t.Fatalf("count observations: %v", err)
+	}
+	if obsCount != 1 {
+		t.Fatalf("observation count = %d, want 1", obsCount)
+	}
+
+	var keyType, keyValue, kind string
+	if err := db.QueryRowContext(ctx, `SELECT e.key_type, e.key_value, e.kind FROM observation o JOIN entity e ON e.id = o.entity_id WHERE o.result_id = $1`, resultID).Scan(&keyType, &keyValue, &kind); err != nil {
+		t.Fatalf("load entity link: %v", err)
+	}
+	if keyType != "fqdn" || keyValue != "demo.local" || kind != "host" {
+		t.Fatalf("entity link = %s %s %s", keyType, keyValue, kind)
+	}
+
+	invalid := cloneMap(valid)
+	invalid["captureId"] = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2"
+	parsing := cloneMap(valid["parsing"].(map[string]any))
+	result := cloneMap(parsing["result"].(map[string]any))
+	result["schemaId"] = "https://schemas.waypoint.security/plugins/nmap/1.0.0/other.schema.json"
+	parsing["result"] = result
+	invalid["parsing"] = parsing
+
+	resp = doCaptureRequest(t, HandlerWithDB(db), humanToken, "aaaa2222", invalid, stdout, stderr)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("invalid parse status = %d, want %d", resp.Code, http.StatusBadRequest)
+	}
+
+	for _, query := range []struct {
+		name string
+		sql  string
+	}{
+		{name: "action", sql: `SELECT COUNT(*) FROM action WHERE engagement_id = $1`},
+		{name: "result", sql: `SELECT COUNT(*) FROM result WHERE engagement_id = $1`},
+		{name: "observation", sql: `SELECT COUNT(*) FROM observation WHERE engagement_id = $1`},
+		{name: "entity", sql: `SELECT COUNT(*) FROM entity WHERE engagement_id = $1`},
+	} {
+		var count int
+		if err := db.QueryRowContext(ctx, query.sql, engagementID).Scan(&count); err != nil {
+			t.Fatalf("count %s: %v", query.name, err)
+		}
+		if count != 1 {
+			t.Fatalf("count %s = %d, want 1", query.name, count)
+		}
+	}
+
+	rollbackEnvelope := cloneMap(valid)
+	rollbackEnvelope["captureId"] = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3"
+	rollbackEnvelope["parsing"] = map[string]any{"status": "raw"}
+	resp = doCaptureRequest(t, HandlerWithDB(db), humanToken, "aaaa3333", rollbackEnvelope, stdout, stderr)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("raw fallback status = %d, want %d", resp.Code, http.StatusCreated)
 	}
 }
 

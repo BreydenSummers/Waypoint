@@ -20,7 +20,11 @@ import (
 	dbutil "waypoint/internal/db"
 )
 
-var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+var (
+	uuidPattern       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	entityKindPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
+	hexSHA256Pattern  = regexp.MustCompile(`^[0-9a-f]{64}$`)
+)
 
 type captureEnvelope struct {
 	ContractVersion string                  `json:"contractVersion"`
@@ -139,10 +143,21 @@ type capturePluginMatch struct {
 }
 
 type captureParseResult struct {
-	SchemaID      string           `json:"schemaId"`
-	SchemaVersion string           `json:"schemaVersion"`
-	Extracted     map[string]any   `json:"extracted"`
-	Entities      []map[string]any `json:"entities,omitempty"`
+	SchemaID      string                `json:"schemaId"`
+	SchemaVersion string                `json:"schemaVersion"`
+	Extracted     map[string]any        `json:"extracted"`
+	Entities      []captureParsedEntity `json:"entities"`
+}
+
+type captureParsedEntity struct {
+	Kind        string                    `json:"kind"`
+	Identifiers []captureEntityIdentifier `json:"identifiers"`
+	Attributes  map[string]any            `json:"attributes"`
+}
+
+type captureEntityIdentifier struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
 }
 
 type captureParseFailure struct {
@@ -396,6 +411,13 @@ func captureHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		if req.Envelope.Parsing.Status == "parsed" {
+			if err := ingestStructuredResult(r.Context(), tx, actor.EngagementID, actionID, req.Envelope.Parsing.Plugin.ID, req.Envelope.Parsing.Result); err != nil {
+				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: fmt.Sprintf("persist structured result failed: %v", err)})
+				return
+			}
+		}
+
 		receivedAt := time.Now().UTC()
 		acceptedID, err := dbutil.AppendAuditEvent(r.Context(), tx, dbutil.AuditEventInput{
 			EngagementID:  actor.EngagementID,
@@ -539,6 +561,20 @@ func validateCaptureEnvelope(env captureEnvelope, actor actorRecord) *capturePro
 	return nil
 }
 
+var compatiblePluginSchemas = map[string]compatiblePluginSchema{
+	"waypoint.nmap": {
+		schemaID:        "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+		schemaVersion:   "1.0.0",
+		contractVersion: "1.0.0",
+	},
+}
+
+type compatiblePluginSchema struct {
+	schemaID        string
+	schemaVersion   string
+	contractVersion string
+}
+
 func validateParsing(p captureParsing) *captureProblem {
 	switch p.Status {
 	case "parsed":
@@ -548,6 +584,12 @@ func validateParsing(p captureParsing) *captureProblem {
 		if p.Result == nil {
 			return badField("/parsing/result", "missing_field", "parsed captures require a structured result.")
 		}
+		if err := validatePluginSelection(*p.Plugin); err != nil {
+			return err
+		}
+		if err := validateStructuredResult(*p.Plugin, *p.Result); err != nil {
+			return err
+		}
 	case "parse-failed":
 		if p.Plugin == nil {
 			return badField("/parsing/plugin", "missing_field", "parse-failed captures require plugin metadata.")
@@ -555,12 +597,89 @@ func validateParsing(p captureParsing) *captureProblem {
 		if p.Failure == nil {
 			return badField("/parsing/failure", "missing_field", "parse-failed captures require failure details.")
 		}
+		if err := validatePluginSelection(*p.Plugin); err != nil {
+			return err
+		}
 	case "needs-plugin", "raw":
 		if p.Plugin != nil || p.Result != nil || p.Failure != nil {
 			return badField("/parsing/status", "unexpected_field", "raw or needs-plugin captures must not include parser artifacts.")
 		}
 	default:
 		return badField("/parsing/status", "invalid_enum", "unsupported parse status.")
+	}
+	return nil
+}
+
+func validatePluginSelection(p capturePluginSelection) *captureProblem {
+	spec, ok := compatiblePluginSchemas[p.ID]
+	if !ok {
+		return badField("/parsing/plugin/id", "unsupported_plugin_schema", "plugin schema is not registered.")
+	}
+	if p.Version != spec.schemaVersion {
+		return badField("/parsing/plugin/version", "unsupported_plugin_version", "plugin version is not compatible.")
+	}
+	if p.ContractVersion != spec.contractVersion {
+		return badField("/parsing/plugin/contractVersion", "unsupported_contract_version", "plugin contract version is not compatible.")
+	}
+	if p.ArtifactSHA256 == "" || !isHexSHA256(p.ArtifactSHA256) {
+		return badField("/parsing/plugin/artifactSha256", "invalid_format", "artifactSha256 must be lowercase hex.")
+	}
+	if p.Match.Binary == "" || p.Match.Reason == "" || p.Match.Specificity < 0 || p.Match.Specificity > 1000000 {
+		return badField("/parsing/plugin/match", "invalid_object", "plugin match metadata is incomplete.")
+	}
+	return nil
+}
+
+func validateStructuredResult(plugin capturePluginSelection, result captureParseResult) *captureProblem {
+	spec := compatiblePluginSchemas[plugin.ID]
+	if result.SchemaID != spec.schemaID {
+		return badField("/parsing/result/schemaId", "unsupported_schema", "structured result schema is not compatible.")
+	}
+	if result.SchemaVersion != spec.schemaVersion {
+		return badField("/parsing/result/schemaVersion", "unsupported_schema_version", "structured result schema version is not compatible.")
+	}
+	if result.Extracted == nil {
+		return badField("/parsing/result/extracted", "missing_field", "structured result requires extracted data.")
+	}
+	if len(result.Extracted) > 1024 {
+		return badField("/parsing/result/extracted", "invalid_range", "structured result is too large.")
+	}
+	if result.Entities == nil {
+		return badField("/parsing/result/entities", "missing_field", "structured result requires entity links.")
+	}
+	if len(result.Entities) > 10000 {
+		return badField("/parsing/result/entities", "invalid_range", "structured result has too many entities.")
+	}
+	for i, entity := range result.Entities {
+		if err := validateParsedEntity(entity, i); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateParsedEntity(entity captureParsedEntity, idx int) *captureProblem {
+	if entity.Kind == "" || len(entity.Kind) > 64 || !entityKindPattern.MatchString(entity.Kind) {
+		return badField(fmt.Sprintf("/parsing/result/entities/%d/kind", idx), "invalid_format", "entity kind is invalid.")
+	}
+	if entity.Attributes == nil {
+		return badField(fmt.Sprintf("/parsing/result/entities/%d/attributes", idx), "missing_field", "entity attributes are required.")
+	}
+	if len(entity.Attributes) > 256 {
+		return badField(fmt.Sprintf("/parsing/result/entities/%d/attributes", idx), "invalid_range", "entity attributes are too large.")
+	}
+	if len(entity.Identifiers) == 0 || len(entity.Identifiers) > 64 {
+		return badField(fmt.Sprintf("/parsing/result/entities/%d/identifiers", idx), "invalid_range", "entity identifiers are required.")
+	}
+	for j, identifier := range entity.Identifiers {
+		if identifier.Value == "" || len(identifier.Value) > 2048 {
+			return badField(fmt.Sprintf("/parsing/result/entities/%d/identifiers/%d/value", idx, j), "invalid_format", "entity identifier value is invalid.")
+		}
+		switch identifier.Type {
+		case "ad_sid", "mac", "fqdn", "hostname", "ip", "other":
+		default:
+			return badField(fmt.Sprintf("/parsing/result/entities/%d/identifiers/%d/type", idx, j), "invalid_enum", "entity identifier type is invalid.")
+		}
 	}
 	return nil
 }
@@ -705,6 +824,103 @@ func decisionContextMap(ctx *captureDecisionContext) map[string]any {
 	return m
 }
 
+func ingestStructuredResult(ctx context.Context, tx *sql.Tx, engagementID, actionID, pluginID string, result *captureParseResult) error {
+	if result == nil {
+		return fmt.Errorf("missing structured result")
+	}
+	resultID := newUUID()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO result (id, engagement_id, action_id, plugin_id, schema_id, schema_version, extracted)
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+	`, resultID, engagementID, actionID, pluginID, result.SchemaID, result.SchemaVersion, jsonArg(result.Extracted)); err != nil {
+		return err
+	}
+
+	seen := map[string]bool{}
+	for _, entity := range result.Entities {
+		keyType, keyValue, ok := entityIdentity(entity.Identifiers)
+		if !ok {
+			return fmt.Errorf("entity identity could not be derived")
+		}
+		identityKey := keyType + "\x00" + keyValue
+		if seen[identityKey] {
+			continue
+		}
+		seen[identityKey] = true
+
+		entityID, err := upsertEntity(ctx, tx, engagementID, entity.Kind, keyType, keyValue, entity.Attributes)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO observation (engagement_id, action_id, result_id, entity_id, kind, identifiers, attributes)
+			VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+		`, engagementID, actionID, resultID, entityID, entity.Kind, jsonArg(entity.Identifiers), jsonArg(entity.Attributes)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func upsertEntity(ctx context.Context, tx *sql.Tx, engagementID, kind, keyType, keyValue string, attrs map[string]any) (string, error) {
+	var id string
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO entity (engagement_id, kind, key_type, key_value, attributes)
+		VALUES ($1, $2, $3, $4, $5::jsonb)
+		ON CONFLICT (engagement_id, key_type, key_value)
+		DO UPDATE SET last_seen = now(), updated_at = now(), attributes = entity.attributes || EXCLUDED.attributes
+		RETURNING id
+	`, engagementID, kind, keyType, keyValue, jsonArg(attrs)).Scan(&id); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+func entityIdentity(ids []captureEntityIdentifier) (string, string, bool) {
+	var adSID, mac, fqdn, hostname, ip string
+	for _, id := range ids {
+		switch id.Type {
+		case "ad_sid":
+			if adSID == "" {
+				adSID = strings.TrimSpace(id.Value)
+			}
+		case "mac":
+			if mac == "" {
+				mac = strings.ToLower(strings.TrimSpace(id.Value))
+			}
+		case "fqdn":
+			if fqdn == "" {
+				fqdn = strings.ToLower(strings.TrimSpace(id.Value))
+			}
+		case "hostname":
+			if hostname == "" {
+				hostname = strings.ToLower(strings.TrimSpace(id.Value))
+			}
+		case "ip":
+			if ip == "" {
+				ip = strings.TrimSpace(id.Value)
+			}
+		case "other":
+		}
+	}
+	switch {
+	case adSID != "":
+		return "ad_sid", adSID, true
+	case mac != "":
+		return "mac", mac, true
+	case fqdn != "":
+		return "fqdn", fqdn, true
+	case hostname != "" && ip != "":
+		return "hostname_ip", "hostname=" + hostname + "|ip=" + ip, true
+	case ip != "":
+		return "other", "ip=" + ip, true
+	case hostname != "":
+		return "other", "hostname=" + hostname, true
+	default:
+		return "other", "identifier=" + strings.TrimSpace(ids[0].Value), true
+	}
+}
+
 func pluginID(p captureParsing) string {
 	if p.Plugin == nil {
 		return ""
@@ -816,7 +1032,7 @@ func writeJSONWithHeaders(w http.ResponseWriter, status int, v any, reqID string
 }
 
 func isUUID(v string) bool        { return uuidPattern.MatchString(v) }
-func isHexSHA256(v string) bool   { return len(v) == 64 }
+func isHexSHA256(v string) bool   { return hexSHA256Pattern.MatchString(v) }
 func sha256Hex(v string) string   { sum := sha256.Sum256([]byte(v)); return hex.EncodeToString(sum[:]) }
 func digestBytes(b []byte) string { sum := sha256.Sum256(b); return hex.EncodeToString(sum[:]) }
 func eventCursor(id int64) string { return fmt.Sprint(id) }
