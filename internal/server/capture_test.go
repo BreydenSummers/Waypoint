@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -374,6 +375,187 @@ func TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput(t *testing.T)
 	resp = doCaptureRequest(t, HandlerWithDB(db), humanToken, "aaaa3333", rollbackEnvelope, stdout, stderr)
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("raw fallback status = %d, want %d", resp.Code, http.StatusCreated)
+	}
+}
+
+func TestCaptureRejectsConflictingStableEntityKinds(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	humanID := "22222222-2222-4222-8222-222222222222"
+	humanToken := "human-test-token"
+	stdout := []byte("abc")
+	stderr := []byte{}
+	stdoutSum := sha256.Sum256(stdout)
+	stderrSum := sha256.Sum256(stderr)
+	stdoutHash := hex.EncodeToString(stdoutSum[:])
+	stderrHash := hex.EncodeToString(stderrSum[:])
+
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, humanID, engagementID, hashHex(humanToken))
+
+	makeEnvelope := func(captureID, kind string) map[string]any {
+		return map[string]any{
+			"contractVersion": "1.0.0",
+			"captureId":       captureID,
+			"sourceAgent": map[string]any{
+				"id":       "44444444-4444-4444-8444-444444444444",
+				"kind":     "operator_wrapper",
+				"name":     "waypoint-wrapper",
+				"version":  "1.0.0",
+				"platform": map[string]any{"os": "linux", "arch": "amd64"},
+			},
+			"phase":       "recon",
+			"initiatedBy": "manual",
+			"command":     "/usr/bin/nmap",
+			"argv":        []string{"nmap", "-sV", "demo.local"},
+			"cwd":         "/home/operator/engagement",
+			"target":      map[string]any{"kind": "hostname", "value": "demo.local"},
+			"timing": map[string]any{
+				"startedAt":  "2025-01-15T10:00:00.000Z",
+				"endedAt":    "2025-01-15T10:00:01.000Z",
+				"durationMs": 1000,
+			},
+			"execution": map[string]any{"status": "exited", "exitCode": 0},
+			"network": map[string]any{
+				"execHost":   map[string]any{"address": "10.10.0.12", "method": "route_selection", "confidence": "confirmed"},
+				"egress":     map[string]any{"mode": "off", "status": "disabled"},
+				"pivotChain": []any{},
+			},
+			"evidence": map[string]any{
+				"stdout": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stdout), "sha256": stdoutHash},
+				"stderr": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stderr), "sha256": stderrHash},
+			},
+			"parsing": map[string]any{
+				"status": "parsed",
+				"plugin": map[string]any{
+					"id":              "waypoint.nmap",
+					"version":         "1.0.0",
+					"artifactSha256":  strings.Repeat("a", 64),
+					"contractVersion": "1.0.0",
+					"match": map[string]any{
+						"binary":      "nmap",
+						"reason":      "binary name and service-version arguments matched",
+						"specificity": 20,
+					},
+				},
+				"result": map[string]any{
+					"schemaId":      "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+					"schemaVersion": "1.0.0",
+					"extracted":     map[string]any{"hostsUp": 1, "services": []any{}},
+					"entities": []any{
+						map[string]any{
+							"kind": kind,
+							"identifiers": []any{
+								map[string]any{"type": "fqdn", "value": "demo.local."},
+							},
+							"attributes": map[string]any{"state": "up"},
+						},
+					},
+				},
+			},
+		}
+	}
+
+	resp := doCaptureRequest(t, HandlerWithDB(db), humanToken, "aaaa4444", makeEnvelope("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb4", "host"), stdout, stderr)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("seed status = %d, want %d", resp.Code, http.StatusCreated)
+	}
+
+	resp = doCaptureRequest(t, HandlerWithDB(db), humanToken, "aaaa5555", makeEnvelope("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb5", "service"), stdout, stderr)
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("conflict status = %d, want %d", resp.Code, http.StatusConflict)
+	}
+	var prob problemResponse
+	decodeResponse(t, resp, &prob)
+	if prob.Code != "entity_conflict" {
+		t.Fatalf("conflict problem = %#v", prob)
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entity WHERE engagement_id = $1`, engagementID).Scan(&count); err != nil {
+		t.Fatalf("count entities: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("entity count = %d, want 1", count)
+	}
+}
+
+func TestEntityIdentityNormalizationPrecedenceAndConcurrency(t *testing.T) {
+	cases := []struct {
+		name     string
+		ids      []captureEntityIdentifier
+		wantType string
+		wantVal  string
+	}{
+		{
+			name: "sid wins and trims",
+			ids: []captureEntityIdentifier{
+				{Type: "mac", Value: "aa-bb-cc-dd-ee-ff"},
+				{Type: "ad_sid", Value: " S-1-5-21-42 "},
+				{Type: "fqdn", Value: "demo.local."},
+			},
+			wantType: "ad_sid",
+			wantVal:  "S-1-5-21-42",
+		},
+		{
+			name:     "mac normalizes",
+			ids:      []captureEntityIdentifier{{Type: "mac", Value: "AA-BB-CC-DD-EE-FF"}},
+			wantType: "mac",
+			wantVal:  "aa:bb:cc:dd:ee:ff",
+		},
+		{
+			name:     "fqdn trims dot",
+			ids:      []captureEntityIdentifier{{Type: "fqdn", Value: " Demo.Local. "}},
+			wantType: "fqdn",
+			wantVal:  "demo.local",
+		},
+		{
+			name:     "hostname ip pair normalizes",
+			ids:      []captureEntityIdentifier{{Type: "hostname", Value: " HostOne. "}, {Type: "ip", Value: " 2001:0db8:0:0:0:0:0:1 "}},
+			wantType: "hostname_ip",
+			wantVal:  "hostname=hostone|ip=2001:db8::1",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			gotType, gotVal, gotOK := entityIdentity(tc.ids)
+			if !gotOK || gotType != tc.wantType || gotVal != tc.wantVal {
+				t.Fatalf("entityIdentity() = %q %q %v, want %q %q true", gotType, gotVal, gotOK, tc.wantType, tc.wantVal)
+			}
+
+			const workers = 32
+			var wg sync.WaitGroup
+			errCh := make(chan string, workers)
+			for i := 0; i < workers; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					concurrentType, concurrentVal, concurrentOK := entityIdentity(tc.ids)
+					if concurrentType != tc.wantType || concurrentVal != tc.wantVal || !concurrentOK {
+						errCh <- "concurrent normalization drifted"
+					}
+				}()
+			}
+			wg.Wait()
+			close(errCh)
+			for err := range errCh {
+				if err != "" {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }
 

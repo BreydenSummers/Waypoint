@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"net"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strings"
 	"time"
@@ -21,10 +23,12 @@ import (
 )
 
 var (
-	uuidPattern       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	uuidPattern       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 	entityKindPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 	hexSHA256Pattern  = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
+
+var errEntityKindConflict = errors.New("entity identity already exists with a different kind")
 
 type captureEnvelope struct {
 	ContractVersion string                  `json:"contractVersion"`
@@ -413,6 +417,10 @@ func captureHandler(db *sql.DB) http.HandlerFunc {
 
 		if req.Envelope.Parsing.Status == "parsed" {
 			if err := ingestStructuredResult(r.Context(), tx, actor.EngagementID, actionID, req.Envelope.Parsing.Plugin.ID, req.Envelope.Parsing.Result); err != nil {
+				if errors.Is(err, errEntityKindConflict) {
+					writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "entity_conflict", RequestID: reqID, Retryable: false, Detail: "conflicting entity identifiers cannot be auto-merged."})
+					return
+				}
 				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: fmt.Sprintf("persist structured result failed: %v", err)})
 				return
 			}
@@ -869,11 +877,22 @@ func upsertEntity(ctx context.Context, tx *sql.Tx, engagementID, kind, keyType, 
 		VALUES ($1, $2, $3, $4, $5::jsonb)
 		ON CONFLICT (engagement_id, key_type, key_value)
 		DO UPDATE SET last_seen = now(), updated_at = now(), attributes = entity.attributes || EXCLUDED.attributes
+		WHERE entity.kind = EXCLUDED.kind
 		RETURNING id
-	`, engagementID, kind, keyType, keyValue, jsonArg(attrs)).Scan(&id); err != nil {
+	`, engagementID, kind, keyType, keyValue, jsonArg(attrs)).Scan(&id); err == nil {
+		return id, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return "", err
 	}
-	return id, nil
+
+	var existingID, existingKind string
+	if err := tx.QueryRowContext(ctx, `SELECT id, kind FROM entity WHERE engagement_id = $1 AND key_type = $2 AND key_value = $3`, engagementID, keyType, keyValue).Scan(&existingID, &existingKind); err != nil {
+		return "", err
+	}
+	if existingKind != kind {
+		return "", errEntityKindConflict
+	}
+	return existingID, nil
 }
 
 func entityIdentity(ids []captureEntityIdentifier) (string, string, bool) {
@@ -881,24 +900,24 @@ func entityIdentity(ids []captureEntityIdentifier) (string, string, bool) {
 	for _, id := range ids {
 		switch id.Type {
 		case "ad_sid":
-			if adSID == "" {
-				adSID = strings.TrimSpace(id.Value)
+			if normalized := normalizeStableIdentifier(id.Value); normalized != "" && adSID == "" {
+				adSID = normalized
 			}
 		case "mac":
-			if mac == "" {
-				mac = strings.ToLower(strings.TrimSpace(id.Value))
+			if normalized := normalizeMACIdentifier(id.Value); normalized != "" && mac == "" {
+				mac = normalized
 			}
 		case "fqdn":
-			if fqdn == "" {
-				fqdn = strings.ToLower(strings.TrimSpace(id.Value))
+			if normalized := normalizeDNSIdentifier(id.Value); normalized != "" && fqdn == "" {
+				fqdn = normalized
 			}
 		case "hostname":
-			if hostname == "" {
-				hostname = strings.ToLower(strings.TrimSpace(id.Value))
+			if normalized := normalizeDNSIdentifier(id.Value); normalized != "" && hostname == "" {
+				hostname = normalized
 			}
 		case "ip":
-			if ip == "" {
-				ip = strings.TrimSpace(id.Value)
+			if normalized := normalizeIPIdentifier(id.Value); normalized != "" && ip == "" {
+				ip = normalized
 			}
 		case "other":
 		}
@@ -919,6 +938,32 @@ func entityIdentity(ids []captureEntityIdentifier) (string, string, bool) {
 	default:
 		return "other", "identifier=" + strings.TrimSpace(ids[0].Value), true
 	}
+}
+
+func normalizeStableIdentifier(v string) string {
+	return strings.TrimSpace(v)
+}
+
+func normalizeMACIdentifier(v string) string {
+	addr, err := net.ParseMAC(strings.TrimSpace(v))
+	if err != nil {
+		return ""
+	}
+	return addr.String()
+}
+
+func normalizeDNSIdentifier(v string) string {
+	v = strings.TrimSpace(v)
+	v = strings.TrimSuffix(v, ".")
+	return strings.ToLower(v)
+}
+
+func normalizeIPIdentifier(v string) string {
+	addr, err := netip.ParseAddr(strings.TrimSpace(v))
+	if err != nil {
+		return ""
+	}
+	return addr.String()
 }
 
 func pluginID(p captureParsing) string {
