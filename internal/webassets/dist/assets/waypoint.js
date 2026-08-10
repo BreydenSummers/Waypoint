@@ -22,12 +22,12 @@ const phaseData = {
     path: '/engagements/demo/attacks',
     x: 228,
     y: 182,
-    note: 'Captured actions land here with source, host, egress IP, and outcome.',
+    note: 'Grouped attempts stay searchable by technique, target, and host. Raw output is always rendered safely.',
     workspaceTitle: 'Attacks workspace',
-    workspaceLede: 'Run commands through the wrapper, keep the path to each attempt obvious, and preserve evidence.',
+    workspaceLede: 'Group attempts by technique, target, and host; inspect status, raw output, and structured evidence without ever rendering tool HTML.',
     cards: [
-      { title: 'Capture lane', items: ['Command + argv', 'stdout / stderr refs', 'Exit status and timing'] },
-      { title: 'Attribution', items: ['Operator identity', 'Exec host IP', 'Public egress IP + pivot chain'] },
+      { title: 'Capture lane', items: ['Technique, target, host, and status', 'Raw stdout / stderr refs', 'Parse state and timing'] },
+      { title: 'Attribution', items: ['Actor identity', 'Exec host + pivot chain', 'Public egress IP when known'] },
     ],
   },
   findings: {
@@ -60,211 +60,225 @@ const phaseData = {
   },
 };
 
-const demoRows = [
-  {
-    id: '101',
+function makeAttack(id, occurredAt, payload) {
+  const actor = payload.actor || { id: 'actor-default', kind: 'human', handle: 'alex.operator', role: 'operator' };
+  const origin = payload.origin || { kind: 'collector', service: 'wrapper' };
+  const target = payload.target || 'unknown target';
+  const host = payload.host || origin.service || actor.handle;
+  const technique = payload.technique || 'Unspecified technique';
+  const status = payload.status || 'success';
+  const rawOutput = payload.rawOutput || payload.summary || `${technique} against ${target}`;
+  const structured = payload.structured || {};
+  const parseStatus = payload.parseStatus || (Object.keys(structured).length ? 'parsed' : 'raw');
+  const command = payload.command || '';
+  const evidence = payload.evidence || {};
+  const resultLabel = payload.resultLabel || statusToLabel(status);
+  const resultDetail = payload.resultDetail || payload.summary || resultLabel;
+  const byteLength = payload.byteLength || Math.max(64, rawOutput.length + 120);
+  const subjectType = payload.subjectType || 'action';
+  const subjectId = payload.subjectId || `attack-${id}`;
+
+  return {
+    id,
     contractVersion: '1.0.0',
-    type: 'capture.received',
-    occurredAt: '2025-01-10T08:12:00Z',
+    type: payload.type || `attack.${technique.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+    occurredAt,
     engagementId: 'demo',
-    actor: { id: 'a1', kind: 'human', handle: 'alex.operator', role: 'operator' },
-    origin: { kind: 'rest', service: 'collector' },
-    subject: { type: 'action', id: 'capture-101', revision: 1 },
-    requestId: 'req-101',
-    correlationId: 'corr-101',
-    data: {
-      phase: 'recon',
-      source: 'collector',
-      target: '10.10.12.0/24',
-      result: { kind: 'success', label: 'Success', detail: '240 hosts discovered' },
-      summary: 'Network sweep captured without parser help.',
-      evidence: {
-        kind: 'stdout',
-        sha256: 'b6f7a6caa28f7a6e9d9f3e1f0d56f0b1f5bd9f9b4b44b7f2ef2f6dbf5a0a9c01',
-        byteLength: 1843,
-        mediaType: 'text/plain',
-        safePreview: 'nmap -sn 10.10.12.0/24\nHost is up (0.045s latency)\n240 hosts are up',
-      },
-    },
-  },
-  {
-    id: '102',
-    contractVersion: '1.0.0',
-    type: 'audit.note.added',
-    occurredAt: '2025-01-10T08:16:00Z',
-    engagementId: 'demo',
-    actor: { id: 'a2', kind: 'human', handle: 'mira.ops', role: 'analyst' },
-    origin: { kind: 'rest', service: 'waypoint-core' },
-    subject: { type: 'action', id: 'note-102', revision: 1 },
-    requestId: 'req-102',
-    correlationId: 'corr-102',
-    data: {
-      phase: 'recon',
-      source: 'waypoint-core',
-      target: 'scope note',
-      result: { kind: 'success', label: 'Noted', detail: 'Operator note attached' },
-      summary: 'Scope note captured as trail metadata.',
-      evidence: { kind: 'attachment', sha256: '45d5bb7451a1dc43d3f8e0e77f2f22d1b6e39f86d01a5c9e3d35b06d2ff7d010', byteLength: 512, mediaType: 'application/json', safePreview: '{\n  "scope": "students network",\n  "note": "stay inside approved range"\n}' },
-    },
-  },
-  {
-    id: '103',
-    contractVersion: '1.0.0',
-    type: 'capture.received',
-    occurredAt: '2025-01-10T08:22:00Z',
-    engagementId: 'demo',
-    actor: { id: 'a1', kind: 'human', handle: 'alex.operator', role: 'operator' },
-    origin: { kind: 'rest', service: 'collector' },
-    subject: { type: 'action', id: 'capture-103', revision: 1 },
-    requestId: 'req-103',
-    correlationId: 'corr-103',
+    actor,
+    origin,
+    subject: { type: subjectType, id: subjectId, revision: payload.revision || 1 },
+    requestId: payload.requestId || `req-${id}`,
+    correlationId: payload.correlationId || `corr-${id}`,
     data: {
       phase: 'attacks',
-      source: 'collector',
-      target: 'mail01.internal',
-      result: { kind: 'blocked', label: 'Blocked', detail: 'SMB signing prevented relay' },
-      summary: 'Attempt logged with clear failure state.',
+      source: payload.source || origin.service || origin.kind,
+      technique,
+      target,
+      host,
+      status,
+      summary: payload.summary || resultDetail,
+      command,
+      rawOutput,
+      structured,
+      result: { kind: status, label: resultLabel, detail: resultDetail },
       evidence: {
-        kind: 'stderr',
-        sha256: 'b32e6f9f5d9b1f8c735f0d3c56a5c1b5c6f25f0aa27d8c0c43d1e8b4c26a4ab5',
-        byteLength: 211,
-        mediaType: 'text/plain',
-        safePreview: 'Relay refused: SMB signing required\nNo credentials were replayed.',
+        kind: evidence.kind || payload.evidenceKind || 'stdout',
+        sha256: evidence.sha256 || hashFor(id),
+        byteLength: evidence.byteLength || byteLength,
+        mediaType: evidence.mediaType || payload.mediaType || 'text/plain',
+        safePreview: evidence.safePreview || rawOutput,
       },
+      parseStatus,
+      pluginId: payload.pluginId || structured.pluginId || '',
+      argv: payload.argv || [],
+      cwd: payload.cwd || '/home/operator/engagement',
+      execHostIp: payload.execHostIp || '10.0.0.12',
+      egressPublicIp: payload.egressPublicIp || '198.51.100.14',
+      pivotChain: payload.pivotChain || [],
     },
-  },
-  {
-    id: '104',
-    contractVersion: '1.0.0',
-    type: 'audit.alert.raised',
-    occurredAt: '2025-01-10T08:28:00Z',
-    engagementId: 'demo',
+  };
+}
+
+function hashFor(id) {
+  return String(id).padStart(64, '0').slice(0, 64);
+}
+
+const demoRows = [
+  makeAttack('101', '2025-01-10T08:12:00Z', {
+    actor: { id: 'a1', kind: 'human', handle: 'alex.operator', role: 'operator' },
+    origin: { kind: 'collector', service: 'wrapper' },
+    technique: 'Discovery sweep',
+    target: '10.10.12.0/24',
+    host: 'jumpbox-01',
+    status: 'success',
+    resultDetail: '240 hosts discovered',
+    summary: 'Network sweep captured without a parser.',
+    command: 'nmap -sn 10.10.12.0/24',
+    rawOutput: 'nmap -sn 10.10.12.0/24\nHost is up (0.045s latency)\n240 hosts are up',
+    structured: { pluginId: 'plugin.nmap', range: '10.10.12.0/24', hostsUp: 240 },
+    argv: ['nmap', '-sn', '10.10.12.0/24'],
+    execHostIp: '10.0.0.12',
+    egressPublicIp: '203.0.113.26',
+    parseStatus: 'parsed',
+  }),
+  makeAttack('102', '2025-01-10T08:18:00Z', {
+    actor: { id: 'a1', kind: 'human', handle: 'alex.operator', role: 'operator' },
+    origin: { kind: 'collector', service: 'wrapper' },
+    technique: 'DNS enumeration',
+    target: 'corp.local',
+    host: 'jumpbox-01',
+    status: 'success',
+    resultDetail: 'Zone records surfaced',
+    summary: 'DNS answers stayed text-only and easy to review.',
+    command: 'dig axfr corp.local @10.10.12.53',
+    rawOutput: 'SOA ns1.corp.local.\nA fileserver02.corp.local 10.10.12.40\nTXT "lab only"',
+    structured: { pluginId: 'plugin.dns', records: 3, zoneTransfer: false },
+    argv: ['dig', 'axfr', 'corp.local', '@10.10.12.53'],
+    execHostIp: '10.0.0.12',
+    egressPublicIp: '203.0.113.26',
+    parseStatus: 'parsed',
+  }),
+  makeAttack('103', '2025-01-10T08:24:00Z', {
+    actor: { id: 'a1', kind: 'human', handle: 'alex.operator', role: 'operator' },
+    origin: { kind: 'collector', service: 'wrapper' },
+    technique: 'NTLM relay',
+    target: 'mail01.internal',
+    host: 'jumpbox-01',
+    status: 'blocked',
+    resultLabel: 'Blocked',
+    resultDetail: 'SMB signing prevented relay',
+    summary: 'Attempt logged with a clear failure state.',
+    command: 'ntlmrelayx --target mail01.internal',
+    rawOutput: 'Relay refused: SMB signing required\nNo credentials were replayed.',
+    structured: { pluginId: 'plugin.impacket', policy: 'smb-signing-required', relayPossible: false },
+    argv: ['ntlmrelayx', '--target', 'mail01.internal'],
+    execHostIp: '10.0.0.12',
+    egressPublicIp: '203.0.113.26',
+    parseStatus: 'parsed',
+  }),
+  makeAttack('104', '2025-01-10T08:31:00Z', {
     actor: { id: 'a3', kind: 'ai_agent', handle: 'field-agent-7', role: 'operator', agentName: 'Waypoint', model: 'gpt-4.1', version: '1.0', authorizedBy: 'alex.operator' },
     origin: { kind: 'mcp', service: 'waypoint-core' },
-    subject: { type: 'action', id: 'ai-104', revision: 1 },
-    requestId: 'req-104',
-    correlationId: 'corr-104',
-    data: {
-      phase: 'attacks',
-      source: 'mcp',
-      target: 'svc/rdp-3389',
-      result: { kind: 'success', label: 'Success', detail: 'New reachable segment confirmed' },
-      summary: 'AI-authored action preserved with human authorization metadata.',
-      evidence: {
-        kind: 'screenshot',
-        sha256: 'f5f0f24f6b3c1d2e1a44f71bb2f7dd3d5bcf3b58d079d7adf7a2cc0a6b4d6a2f',
-        byteLength: 15524,
-        mediaType: 'image/png',
-        safePreview: '[screenshot omitted]\nRDP banner confirmed, credentials not shown.',
-      },
-    },
-  },
-  {
-    id: '105',
-    contractVersion: '1.0.0',
-    type: 'capture.received',
-    occurredAt: '2025-01-10T08:37:00Z',
-    engagementId: 'demo',
+    technique: 'Kerberoast probe',
+    target: 'svc/sql-01',
+    host: 'field-agent-7',
+    status: 'needs-review',
+    resultLabel: 'Needs review',
+    resultDetail: 'Ticket material needs human confirmation',
+    summary: 'AI-authored action kept the human authorizer visible.',
+    command: 'GetUserSPNs.py corp.local',
+    rawOutput: 'Found 2 service principals\nOne candidate ticket may be roastable',
+    structured: { pluginId: 'plugin.impacket', spns: 2, candidate: 'svc/sql-01' },
+    argv: ['GetUserSPNs.py', 'corp.local'],
+    execHostIp: '10.0.0.37',
+    egressPublicIp: '198.51.100.14',
+    parseStatus: 'parsed',
+  }),
+  makeAttack('105', '2025-01-10T08:37:00Z', {
     actor: { id: 'a1', kind: 'human', handle: 'alex.operator', role: 'operator' },
     origin: { kind: 'collector', service: 'remote-agent' },
-    subject: { type: 'action', id: 'capture-105', revision: 1 },
-    requestId: 'req-105',
-    correlationId: 'corr-105',
-    data: {
-      phase: 'attacks',
-      source: 'remote-agent',
-      target: 'fileserver02',
-      result: { kind: 'success', label: 'Parsed', detail: 'plugin matched smb enumeration' },
-      summary: 'Remote agent synced an outbound capture after reconnect.',
-      evidence: {
-        kind: 'stdout',
-        sha256: 'aa9d8ad4f99f1df28cbcb2abf16b617ce5bcbd2dfe1cc9fe0a0fa10c9e5f7ae7',
-        byteLength: 3094,
-        mediaType: 'text/plain',
-        safePreview: 'smbclient -L //fileserver02 -U student\\alex\nDomain=[LAB] OS=[Windows Server] ...',
-      },
-    },
-  },
-  {
-    id: '106',
-    contractVersion: '1.0.0',
-    type: 'audit.review.flagged',
-    occurredAt: '2025-01-10T08:44:00Z',
-    engagementId: 'demo',
+    technique: 'RDP probe',
+    target: 'svc/rdp-3389',
+    host: 'remote-agent',
+    status: 'success',
+    resultDetail: 'New reachable segment confirmed',
+    summary: 'Remote agent synced a capture after reconnect.',
+    command: 'rdp-check svc/rdp-3389',
+    rawOutput: 'RDP banner confirmed\nTLS handshake completed\nNLA accepted',
+    structured: { pluginId: 'plugin.rdp', banner: true, nla: true },
+    argv: ['rdp-check', 'svc/rdp-3389'],
+    execHostIp: '10.10.14.33',
+    egressPublicIp: '198.51.100.18',
+    parseStatus: 'parsed',
+  }),
+  makeAttack('106', '2025-01-10T08:43:00Z', {
     actor: { id: 'a2', kind: 'human', handle: 'mira.ops', role: 'analyst' },
     origin: { kind: 'rest', service: 'waypoint-core' },
-    subject: { type: 'finding', id: 'find-106', revision: 1 },
-    requestId: 'req-106',
-    correlationId: 'corr-106',
-    data: {
-      phase: 'findings',
-      source: 'waypoint-core',
-      target: 'finding draft',
-      result: { kind: 'needs-review', label: 'Needs review', detail: 'Evidence is linked but severity is missing' },
-      summary: 'A draft is ready, but still fogged until severity is filled in.',
-      evidence: { kind: 'attachment', sha256: '49de56e18f4e5f7fd5d1b92a5f9d2e9c7f5f2a8f15cd4d8a1d6b4a7c1b9b7a4f', byteLength: 788, mediaType: 'application/json', safePreview: '{\n  "finding": "draft",\n  "severity": null\n}' },
-    },
-  },
-  {
-    id: '107',
-    contractVersion: '1.0.0',
-    type: 'audit.export.requested',
-    occurredAt: '2025-01-10T08:51:00Z',
-    engagementId: 'demo',
+    technique: 'SMB enumeration',
+    target: 'fileserver02',
+    host: 'jumpbox-02',
+    status: 'success',
+    resultDetail: 'Shares and signing policy captured',
+    summary: 'Enumeration stayed safely text-only.',
+    command: 'smbclient -L //fileserver02 -U student\\alex',
+    rawOutput: 'Domain=[LAB] OS=[Windows Server]\nSharename       Type      Comment\nadmin$          Disk      Remote Admin',
+    structured: { pluginId: 'plugin.smb', shares: 6, signing: 'required' },
+    argv: ['smbclient', '-L', '//fileserver02', '-U', 'student\\alex'],
+    execHostIp: '10.0.0.21',
+    egressPublicIp: '203.0.113.26',
+    parseStatus: 'parsed',
+  }),
+  makeAttack('107', '2025-01-10T08:48:00Z', {
     actor: { id: 'a1', kind: 'human', handle: 'alex.operator', role: 'operator' },
-    origin: { kind: 'rest', service: 'waypoint-core' },
-    subject: { type: 'export', id: 'bundle-107', revision: 1 },
-    requestId: 'req-107',
-    correlationId: 'corr-107',
-    data: {
-      phase: 'summit',
-      source: 'waypoint-core',
-      target: 'engagement bundle',
-      result: { kind: 'queued', label: 'Queued', detail: 'Manifest and report snapshot are being assembled' },
-      summary: 'Safe export is staged without exposing raw bytes in the row.',
-      evidence: { kind: 'bundle', sha256: '8bc432f5c27f8f4b2f13a1ff3cb36d27f0a8f23dca9d469b1edb7c3f49db0c11', byteLength: 24612, mediaType: 'application/zip', safePreview: 'bundle manifest pending\npaths and hashes verified separately' },
-    },
-  },
-  {
-    id: '108',
-    contractVersion: '1.0.0',
-    type: 'audit.teardown.blocked',
-    occurredAt: '2025-01-10T08:55:00Z',
-    engagementId: 'demo',
+    origin: { kind: 'collector', service: 'wrapper' },
+    technique: 'HTTP auth spray',
+    target: 'portal.corp.local',
+    host: 'jumpbox-01',
+    status: 'blocked',
+    resultDetail: 'Rate limit tripped',
+    summary: 'Spray attempt blocked and recorded for review.',
+    command: 'http-spray portal.corp.local',
+    rawOutput: '429 too many requests\nBackoff enforced by target',
+    structured: { pluginId: 'plugin.http', rateLimited: true, attempts: 5 },
+    argv: ['http-spray', 'portal.corp.local'],
+    execHostIp: '10.0.0.12',
+    egressPublicIp: '203.0.113.26',
+    parseStatus: 'parsed',
+  }),
+  makeAttack('108', '2025-01-10T08:54:00Z', {
     actor: { id: 'a2', kind: 'human', handle: 'mira.ops', role: 'analyst' },
-    origin: { kind: 'rest', service: 'waypoint-core' },
-    subject: { type: 'destroy', id: 'destroy-108', revision: 1 },
-    requestId: 'req-108',
-    correlationId: 'corr-108',
-    data: {
-      phase: 'summit',
-      source: 'waypoint-core',
-      target: 'destroy guard',
-      result: { kind: 'blocked', label: 'Blocked', detail: 'Export receipt required before teardown' },
-      summary: 'Guarded teardown kept the instance disposable but not destructible yet.',
-      evidence: { kind: 'attachment', sha256: '3c7f8e9d9c44a6f2b8e13d9b1d9f0cf26b0e55c9d5ad0ebf5a2bc77c4a7c61bb', byteLength: 394, mediaType: 'application/json', safePreview: '{\n  "receipt": false,\n  "action": "destroy"\n}' },
-    },
-  },
-  {
-    id: '109',
-    contractVersion: '1.0.0',
-    type: 'audit.note.added',
-    occurredAt: '2025-01-10T09:02:00Z',
-    engagementId: 'demo',
+    origin: { kind: 'collector', service: 'wrapper' },
+    technique: 'Privilege check',
+    target: 'jumpbox-02',
+    host: 'jumpbox-02',
+    status: 'queued',
+    resultDetail: 'Follow-up command queued',
+    summary: 'A follow-up action is waiting on operator confirmation.',
+    command: 'whoami /all',
+    rawOutput: 'Integrity level: Medium\nLocal groups: Remote Desktop Users',
+    structured: { pluginId: 'plugin.windows', elevation: false, groups: 2 },
+    argv: ['whoami', '/all'],
+    execHostIp: '10.0.0.21',
+    egressPublicIp: '198.51.100.18',
+    parseStatus: 'parsed',
+  }),
+  makeAttack('109', '2025-01-10T09:02:00Z', {
     actor: { id: 'a3', kind: 'ai_agent', handle: 'field-agent-7', role: 'operator', agentName: 'Waypoint', model: 'gpt-4.1', version: '1.0', authorizedBy: 'alex.operator' },
     origin: { kind: 'mcp', service: 'waypoint-core' },
-    subject: { type: 'finding', id: 'find-109', revision: 2 },
-    requestId: 'req-109',
-    correlationId: 'corr-109',
-    data: {
-      phase: 'findings',
-      source: 'mcp',
-      target: 'remediation note',
-      result: { kind: 'success', label: 'Saved', detail: 'Operator-approved wording added' },
-      summary: 'AI actor note kept the human authorizer visible.',
-      evidence: { kind: 'attachment', sha256: '0dfc9a4e7f3d1c5b99f2a7f6e1e4f1ef2e08d7c1c3db7d4b9f21c9a4c6d2e3f1', byteLength: 602, mediaType: 'application/json', safePreview: '{\n  "remediation": "Review segmentation and SMB exposure"\n}' },
-    },
-  },
+    technique: 'Lateral hop check',
+    target: '10.10.15.0/24',
+    host: 'field-agent-7',
+    status: 'success',
+    resultDetail: 'Pivot chain confirmed',
+    summary: 'Pivot awareness stayed attached to the attempt.',
+    command: 'traceroute 10.10.15.20',
+    rawOutput: '1 10.0.0.1\n2 10.10.15.1\n3 10.10.15.20',
+    structured: { pluginId: 'plugin.trace', hops: 3, pivotChain: ['10.0.0.1', '10.10.15.1'] },
+    argv: ['traceroute', '10.10.15.20'],
+    execHostIp: '10.0.0.37',
+    egressPublicIp: '198.51.100.14',
+    parseStatus: 'parsed',
+  }),
 ];
 
 const demoPageSize = 4;
@@ -277,7 +291,7 @@ const state = {
   pageCursor: null,
   highWaterCursor: null,
   hasMore: false,
-  filters: { actor: 'all', source: 'all', target: 'all', result: 'all', q: '' },
+  filters: { technique: 'all', target: 'all', host: 'all', status: 'all', q: '' },
   mode: 'demo',
   liveToken: safeStorageGet('waypoint-audit-token') || '',
   resyncLink: '',
@@ -285,8 +299,30 @@ const state = {
   streamAbort: null,
   reconnectTimer: null,
   demoCursor: 0,
+  demoPulseTimer: null,
   renderScheduled: false,
+  banner: '',
 };
+
+function safeStorageGet(key) {
+  try {
+    return window.localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+}
+
+function safeStorageSet(key, value) {
+  try {
+    if (value === '' || value == null) {
+      window.localStorage.removeItem(key);
+      return;
+    }
+    window.localStorage.setItem(key, value);
+  } catch {
+    // ignore
+  }
+}
 
 function getInitialTheme() {
   if (typeof window === 'undefined') return 'light';
@@ -301,20 +337,21 @@ function getInitialPhase() {
   return match ? match[1] : 'attacks';
 }
 
-function safeStorageGet(key) {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return '';
-  }
+function phasePath(phase) {
+  return phaseData[phase].path;
 }
 
-function safeStorageSet(key, value) {
-  try {
-    window.localStorage.setItem(key, value);
-  } catch {
-    /* noop */
+function navigateToPhase(phase, replace = false) {
+  const path = phasePath(phase);
+  if (replace) {
+    window.history.replaceState({}, '', path);
+    return;
   }
+  window.history.pushState({}, '', path);
+}
+
+function formatTime(iso) {
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
 }
 
 function escapeHtml(value) {
@@ -326,60 +363,39 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function phasePath(phase) {
-  return phaseData[phase].path;
-}
-
-function navigateToPhase(phase, replace = false) {
-  const path = phasePath(phase);
-  if (replace) {
-    window.history.replaceState({}, '', path);
-  } else {
-    window.history.pushState({}, '', path);
-  }
-}
-
-function formatTime(iso) {
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
-}
-
-function parseData(data) {
-  if (typeof data === 'string') {
+function parseData(value) {
+  if (typeof value === 'string') {
     try {
-      return JSON.parse(data);
+      return JSON.parse(value);
     } catch {
-      return { raw: data };
+      return { raw: value };
     }
   }
-  return data && typeof data === 'object' ? data : {};
+  return value && typeof value === 'object' ? value : {};
 }
 
-function normalizeRow(row) {
-  const data = parseData(row.data);
-  const result = data.result && typeof data.result === 'object' ? data.result : { kind: data.result || row.type, label: String(data.result || row.type), detail: '' };
-  const evidence = data.evidence && typeof data.evidence === 'object' ? data.evidence : {};
-  const source = data.source || row.origin.service || row.origin.kind;
-  const target = data.target || row.subject.id;
-  const summary = data.summary || `${row.actor.handle} · ${source} · ${target}`;
-  return {
-    ...row,
-    data,
-    source,
-    target,
-    summary,
-    result,
-    evidence: {
-      kind: evidence.kind || 'attachment',
-      sha256: evidence.sha256 || '',
-      byteLength: Number(evidence.byteLength || 0),
-      mediaType: evidence.mediaType || 'text/plain',
-      safePreview: String(evidence.safePreview || data.safePreview || 'No safe preview captured.'),
-    },
-  };
+function statusToLabel(status) {
+  switch (String(status || '').toLowerCase()) {
+    case 'success':
+      return 'Success';
+    case 'blocked':
+      return 'Blocked';
+    case 'needs-review':
+    case 'review':
+      return 'Needs review';
+    case 'queued':
+      return 'Queued';
+    case 'raw':
+      return 'Raw';
+    default:
+      return String(status || 'Unknown')
+        .replace(/[-_]+/g, ' ')
+        .replace(/\b\w/g, (match) => match.toUpperCase());
+  }
 }
 
-function resultClass(kind) {
-  switch (String(kind || '').toLowerCase()) {
+function statusClass(status) {
+  switch (String(status || '').toLowerCase()) {
     case 'success':
       return 'success';
     case 'blocked':
@@ -389,55 +405,54 @@ function resultClass(kind) {
       return 'review';
     case 'queued':
       return 'queued';
-    case 'redacted':
-      return 'redacted';
+    case 'raw':
+      return 'raw';
     default:
       return 'neutral';
   }
 }
 
-function actorFilterValue(row) {
-  return `${row.actor.kind}::${row.actor.handle}`;
+function normalizeAttempt(row) {
+  const data = parseData(row.data);
+  const evidence = parseData(data.evidence);
+  const structured = parseData(data.structured);
+  const target = String(data.target || row.subject?.id || 'unknown target');
+  const host = String(data.host || data.execHost || row.origin?.service || row.actor?.handle || 'unknown host');
+  const technique = String(data.technique || data.tactic || data.command || row.type || 'Unspecified technique');
+  const status = String(data.status || data.result?.kind || 'success').toLowerCase();
+  const rawOutput = String(data.rawOutput || evidence.safePreview || data.summary || 'No raw output captured.');
+  const summary = String(data.summary || data.result?.detail || `${technique} against ${target}`);
+  const result = data.result && typeof data.result === 'object'
+    ? data.result
+    : { kind: status, label: statusToLabel(status), detail: summary };
+
+  return {
+    ...row,
+    data,
+    evidence: {
+      kind: String(evidence.kind || 'stdout'),
+      sha256: String(evidence.sha256 || hashFor(row.id)),
+      byteLength: Number(evidence.byteLength || Math.max(64, rawOutput.length + 120)),
+      mediaType: String(evidence.mediaType || 'text/plain'),
+      safePreview: String(evidence.safePreview || rawOutput),
+    },
+    structured,
+    technique,
+    target,
+    host,
+    status,
+    statusLabel: statusToLabel(status),
+    summary,
+    rawOutput,
+    result,
+    command: String(data.command || ''),
+    parseStatus: String(data.parseStatus || (Object.keys(structured).length ? 'parsed' : 'raw')),
+    pluginId: String(data.pluginId || structured.pluginId || ''),
+  };
 }
 
-function sourceFilterValue(row) {
-  return String(row.source || '').toLowerCase();
-}
-
-function targetFilterValue(row) {
-  return String(row.target || '').toLowerCase();
-}
-
-function resultFilterValue(row) {
-  return String(row.result?.kind || row.result?.label || '').toLowerCase();
-}
-
-function currentRouteLabel() {
-  return phaseData[state.activePhase].name;
-}
-
-function setTheme(theme) {
-  state.theme = theme;
-  document.documentElement.dataset.theme = theme;
-  safeStorageSet('waypoint-theme', theme);
-  scheduleRender();
-}
-
-function setPhase(phase) {
-  state.activePhase = phase;
-  navigateToPhase(phase);
-  document.title = `Waypoint — ${phaseData[phase].name}`;
-  scheduleRender();
-}
-
-function setRows(rows, meta = {}) {
-  const normalized = rows.map(normalizeRow);
-  state.rows = meta.append ? dedupeRows([...state.rows, ...normalized]) : normalized;
-  state.pageCursor = meta.pageCursor ?? state.pageCursor;
-  state.highWaterCursor = meta.highWaterCursor ?? state.highWaterCursor;
-  state.hasMore = Boolean(meta.hasMore);
-  state.selectedId = state.selectedId || state.rows[0]?.id || null;
-  refreshVisibleRows();
+function hashFor(id) {
+  return String(id).padStart(64, '0').slice(0, 64);
 }
 
 function dedupeRows(rows) {
@@ -451,26 +466,101 @@ function dedupeRows(rows) {
   return out.sort((a, b) => Number(a.id) - Number(b.id));
 }
 
+function setRows(rows, meta = {}) {
+  const normalized = rows.map(normalizeAttempt);
+  state.rows = meta.append ? dedupeRows([...state.rows, ...normalized]) : normalized;
+  state.pageCursor = meta.pageCursor ?? state.pageCursor;
+  state.highWaterCursor = meta.highWaterCursor ?? state.highWaterCursor;
+  state.hasMore = Boolean(meta.hasMore);
+  state.selectedId = state.selectedId || state.rows[0]?.id || null;
+  refreshVisibleRows();
+}
+
+function uniqueValues(selector) {
+  return [...new Set(state.rows.map(selector).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b)));
+}
+
 function refreshVisibleRows() {
   const q = state.filters.q.trim().toLowerCase();
   state.visibleRows = state.rows.filter((row) => {
-    if (state.filters.actor !== 'all' && actorFilterValue(row) !== state.filters.actor) return false;
-    if (state.filters.source !== 'all' && sourceFilterValue(row) !== state.filters.source) return false;
-    if (state.filters.target !== 'all' && targetFilterValue(row) !== state.filters.target) return false;
-    if (state.filters.result !== 'all' && resultFilterValue(row) !== state.filters.result) return false;
+    if (state.filters.technique !== 'all' && row.technique.toLowerCase() !== state.filters.technique) return false;
+    if (state.filters.target !== 'all' && row.target.toLowerCase() !== state.filters.target) return false;
+    if (state.filters.host !== 'all' && row.host.toLowerCase() !== state.filters.host) return false;
+    if (state.filters.status !== 'all' && row.status.toLowerCase() !== state.filters.status) return false;
     if (q) {
-      const haystack = [row.actor.handle, row.actor.kind, row.source, row.target, row.summary, row.result?.label, row.result?.detail, row.evidence.safePreview].join(' ').toLowerCase();
+      const structured = JSON.stringify(row.structured || {}).toLowerCase();
+      const haystack = [
+        row.actor.handle,
+        row.actor.kind,
+        row.actor.agentName,
+        row.technique,
+        row.target,
+        row.host,
+        row.statusLabel,
+        row.summary,
+        row.result?.detail,
+        row.command,
+        row.rawOutput,
+        structured,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
       if (!haystack.includes(q)) return false;
     }
     return true;
   });
+
   if (!state.visibleRows.some((row) => row.id === state.selectedId)) {
     state.selectedId = state.visibleRows[0]?.id || state.rows[0]?.id || null;
   }
 }
 
-function selectedRow() {
-  return state.rows.find((row) => row.id === state.selectedId) || state.visibleRows[0] || state.rows[0] || null;
+function selectedAttempt() {
+  return state.visibleRows.find((row) => row.id === state.selectedId) || state.rows.find((row) => row.id === state.selectedId) || state.visibleRows[0] || state.rows[0] || null;
+}
+
+function groupAttempts(rows) {
+  const buckets = new Map();
+  for (const row of rows) {
+    const key = row.technique || 'Unspecified technique';
+    if (!buckets.has(key)) {
+      buckets.set(key, { key, rows: [], targets: new Set(), hosts: new Set(), counts: new Map(), latest: row });
+    }
+    const bucket = buckets.get(key);
+    bucket.rows.push(row);
+    bucket.targets.add(row.target);
+    bucket.hosts.add(row.host);
+    bucket.counts.set(row.status, (bucket.counts.get(row.status) || 0) + 1);
+    if (Number(row.id) > Number(bucket.latest.id)) bucket.latest = row;
+  }
+
+  return [...buckets.values()]
+    .map((bucket) => ({
+      ...bucket,
+      rows: bucket.rows.sort((a, b) => Number(b.id) - Number(a.id)),
+    }))
+    .sort((a, b) => Number(b.latest.id) - Number(a.latest.id));
+}
+
+function feedStatusLabel() {
+  if (state.loading) return 'Loading';
+  if (state.mode === 'connecting') return 'Connecting';
+  if (state.mode === 'live') return `Live SSE · ${state.highWaterCursor || 'cursor pending'}`;
+  if (state.mode === 'reconnecting') return `Reconnecting · cursor ${state.highWaterCursor || 'pending'}`;
+  if (state.mode === 'resync') return 'Resync required';
+  if (state.mode === 'error') return 'Live feed unavailable';
+  if (state.mode === 'demo-live') return `Demo feed · live updates`;
+  return `Demo feed · ${state.rows.length} attempts`;
+}
+
+function feedStatusTone() {
+  if (state.mode === 'live') return 'success';
+  if (state.mode === 'reconnecting') return 'queued';
+  if (state.mode === 'resync') return 'review';
+  if (state.mode === 'error') return 'blocked';
+  if (state.mode === 'demo-live') return 'success';
+  return 'neutral';
 }
 
 function scheduleRender() {
@@ -482,349 +572,36 @@ function scheduleRender() {
   });
 }
 
-function buildSelectOptions(current, values, labelBuilder = (v) => v) {
-  return [`<option value="all"${current === 'all' ? ' selected' : ''}>All</option>`].concat(
-    values.map((value) => `<option value="${escapeHtml(value)}"${current === value ? ' selected' : ''}>${escapeHtml(labelBuilder(value))}</option>`),
-  ).join('');
+function cleanupStream() {
+  if (state.streamAbort) {
+    state.streamAbort.abort();
+    state.streamAbort = null;
+  }
+  if (state.reconnectTimer) {
+    clearTimeout(state.reconnectTimer);
+    state.reconnectTimer = null;
+  }
+  if (state.demoPulseTimer) {
+    clearTimeout(state.demoPulseTimer);
+    state.demoPulseTimer = null;
+  }
 }
 
-function uniqueValues(selector) {
-  return [...new Set(state.rows.map(selector).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-}
-
-function feedStatusLabel() {
-  if (state.loading) return 'Loading';
-  if (state.mode === 'connecting') return 'Connecting';
-  if (state.mode === 'live') return `Live SSE · ${state.highWaterCursor || 'cursor pending'}`;
-  if (state.mode === 'reconnecting') return `Reconnecting · cursor ${state.highWaterCursor || 'pending'}`;
-  if (state.mode === 'resync') return 'Resync required';
-  if (state.mode === 'error') return 'Live feed unavailable';
-  return `Demo feed · ${state.rows.length} rows`;
-}
-
-function feedStatusTone() {
-  return state.mode === 'live' ? 'success' : state.mode === 'reconnecting' ? 'queued' : state.mode === 'resync' ? 'review' : state.mode === 'error' ? 'blocked' : 'neutral';
-}
-
-function render() {
-  const active = phaseData[state.activePhase];
-  const currentIndex = phaseOrder.indexOf(state.activePhase);
-  const waypoints = phaseOrder.map((phase, index) => {
-    const item = phaseData[phase];
-    const stateName = index < currentIndex ? 'completed' : index === currentIndex ? 'current' : 'fog';
-    return { ...item, id: phase, stateName };
-  });
-  const selected = selectedRow();
-  const actorValues = uniqueValues(actorFilterValue);
-  const sourceValues = uniqueValues(sourceFilterValue);
-  const targetValues = uniqueValues(targetFilterValue);
-  const resultValues = uniqueValues(resultFilterValue);
-
-  root.innerHTML = `
-    <main class="app-shell">
-      <header class="masthead">
-        <div class="masthead-copy">
-          <p class="eyebrow">Waypoint · expedition shell</p>
-          <h1>Recon / Attacks / Findings</h1>
-          <p class="subtitle">A calm trail map for the audit spine, with route skeletons beneath each waypoint.</p>
-        </div>
-        <div class="masthead-actions">
-          <div class="theme-switcher" role="group" aria-label="Theme selection">
-            <button type="button" data-action="theme" data-theme="light" aria-pressed="${state.theme === 'light'}" class="${state.theme === 'light' ? 'is-active' : ''}">Light</button>
-            <button type="button" data-action="theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}" class="${state.theme === 'dark' ? 'is-active' : ''}">Dark</button>
-          </div>
-          <div class="progress-pill" aria-label="Trail progress">Trail ${currentIndex + 1} / ${phaseOrder.length} · ${escapeHtml(active.name)}</div>
-          <div class="metrics" aria-label="Engagement progress">
-            <div class="metric"><span class="metric-label">Traveled</span><strong>${currentIndex + 1} waypoints</strong></div>
-            <div class="metric"><span class="metric-label">To summit</span><strong>${Math.max(0, phaseOrder.length - currentIndex - 1)} left</strong></div>
-          </div>
-        </div>
-      </header>
-
-      <div class="layout">
-        <section class="map-column">
-          <section class="map-card" aria-label="Engagement trail map">
-            <div class="map-stage">
-              <svg viewBox="0 0 640 300" role="img" aria-label="Trail map with waypoint buttons">
-                <rect width="640" height="300" class="map-terrain" />
-                <path d="M60 252 C 132 234, 148 194, 206 182 C 270 168, 286 220, 350 204 C 402 190, 420 148, 472 126 C 516 108, 548 84, 590 60" class="trail-path" />
-                <path d="M0 84 Q 138 44, 250 76 T 470 62 T 640 84" class="contours" />
-                <path d="M0 136 Q 160 94, 286 124 T 640 112" class="contours" />
-                <path d="M0 192 Q 170 160, 332 184 T 640 166" class="contours" />
-                <g class="trees" aria-hidden="true">
-                  <path d="M92 244 L100 224 L108 244 Z" />
-                  <path d="M118 250 L128 228 L138 250 Z" />
-                  <path d="M182 96 L190 76 L198 96 Z" />
-                  <path d="M510 248 L519 230 L528 248 Z" />
-                  <path d="M536 110 L546 88 L556 110 Z" />
-                </g>
-                ${waypointsMarkup(waypoints, state.activePhase)}
-              </svg>
-              <div class="waypoint-overlay" aria-label="Trail waypoint shortcuts">
-                ${waypoints.map((waypoint) => `<button type="button" class="waypoint-hitbox ${waypoint.id === state.activePhase ? 'is-active' : ''}" data-action="phase" data-phase="${waypoint.id}"${waypoint.id === state.activePhase ? ' aria-current="step"' : ''} aria-label="${escapeHtml(waypoint.name)}, ${waypoint.stateName}${waypoint.id === state.activePhase ? ', you are here' : ''}" style="left:${(waypoint.x / 640) * 100}%;top:${(waypoint.y / 300) * 100}%;"></button>`).join('')}
-              </div>
-            </div>
-          </section>
-
-          <section class="workspace-panel" aria-label="${escapeHtml(active.name)} route skeleton">
-            <div class="workspace-header">
-              <div>
-                <p class="workspace-kicker">Stage ${currentIndex + 1} of ${phaseOrder.length}</p>
-                <h2>${escapeHtml(active.workspaceTitle)}</h2>
-              </div>
-              <p class="workspace-status">Saved 2 min ago</p>
-            </div>
-            <p class="workspace-lede">${escapeHtml(active.workspaceLede)}</p>
-            <div class="workspace-grid">
-              ${active.cards.map((card) => `<section class="skeleton-card"><h3>${escapeHtml(card.title)}</h3><ul>${card.items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>`).join('')}
-            </div>
-            <div class="workspace-footer">
-              <button type="button" class="secondary-link" data-action="phase" data-phase="${phaseOrder[Math.max(0, currentIndex - 1)]}">Back to ${escapeHtml(phaseData[phaseOrder[Math.max(0, currentIndex - 1)]].name)}</button>
-              <button type="button" class="primary-button" data-action="phase" data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}">Continue to ${escapeHtml(phaseData[phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]].name)} →</button>
-            </div>
-          </section>
-        </section>
-
-        <aside class="sidebar" aria-label="Guide and trail details">
-          <nav class="route-nav" aria-label="Engagement waypoints">
-            <div class="panel-heading">
-              <h2>Waypoints</h2>
-              <p>All phases stay accessible; fog means no data discovered yet.</p>
-            </div>
-            <ol>
-              ${waypoints.map((waypoint, index) => `<li><button type="button" class="route-link ${waypoint.id === state.activePhase ? 'is-active' : ''}" data-action="phase" data-phase="${waypoint.id}"${waypoint.id === state.activePhase ? ' aria-current="step"' : ''}><span class="route-link-copy"><strong>${escapeHtml(waypoint.name)}</strong><span>Stage ${index + 1} of ${phaseOrder.length}</span></span><span class="route-status ${waypoint.stateName}">${waypoint.stateName === 'fog' ? 'Fog' : waypoint.stateName === 'current' ? 'Here' : 'Done'}</span></button></li>`).join('')}
-            </ol>
-          </nav>
-
-          <section class="guide-panel artifact" aria-label="Guide's note">
-            <div class="panel-icon" aria-hidden="true">🧭</div>
-            <div>
-              <h2>Guide's note</h2>
-              <p>${escapeHtml(active.note)}</p>
-              <button type="button" class="primary-button" data-action="phase" data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}">${currentIndex < phaseOrder.length - 1 ? `Continue into ${escapeHtml(phaseData[phaseOrder[currentIndex + 1]].name)} →` : `Return to ${escapeHtml(phaseData[phaseOrder[currentIndex - 1]].name)} →`}</button>
-            </div>
-          </section>
-
-          <section class="log-panel feed-panel" aria-label="Journey log">
-            <div class="panel-heading compact">
-              <div>
-                <h2>📖 Journey log</h2>
-                <p>The audit trail is the journey log — exact actor, source, target, and result stay in view.</p>
-              </div>
-              <div class="status-pill ${feedStatusTone()}">${escapeHtml(feedStatusLabel())}</div>
-            </div>
-
-            <div class="feed-toolbar">
-              <label class="field-group">
-                <span>Actor</span>
-                <select data-action="filter" data-filter="actor">${buildSelectOptions(state.filters.actor, actorValues, (v) => v.replace('::', ' · '))}</select>
-              </label>
-              <label class="field-group">
-                <span>Source</span>
-                <select data-action="filter" data-filter="source">${buildSelectOptions(state.filters.source, sourceValues)}</select>
-              </label>
-              <label class="field-group">
-                <span>Target</span>
-                <select data-action="filter" data-filter="target">${buildSelectOptions(state.filters.target, targetValues)}</select>
-              </label>
-              <label class="field-group">
-                <span>Result</span>
-                <select data-action="filter" data-filter="result">${buildSelectOptions(state.filters.result, resultValues, (v) => v)}</select>
-              </label>
-              <label class="field-group field-search">
-                <span>Search</span>
-                <input type="search" data-action="filter" data-filter="q" value="${escapeHtml(state.filters.q)}" placeholder="Search actor, target, result, or preview" />
-              </label>
-              <label class="field-group field-token">
-                <span>Live token</span>
-                <input type="password" data-action="token" value="${escapeHtml(state.liveToken)}" placeholder="Paste bearer token to connect live" autocomplete="off" />
-              </label>
-              <div class="feed-actions">
-                <button type="button" class="secondary-link" data-action="demo">Use demo</button>
-                <button type="button" class="primary-button" data-action="connect-live">Connect live</button>
-              </div>
-            </div>
-
-            ${state.resyncLink ? `<div class="feed-banner review">Cursor gap detected. Resync the trail from persisted history, then reconnect live.</div>` : ''}
-
-            <div class="feed-shell">
-              <ol class="audit-feed" aria-label="Audit rows" role="list">
-                ${state.visibleRows.map((row) => auditRowMarkup(row, row.id === state.selectedId)).join('')}
-              </ol>
-              <aside class="audit-detail" aria-live="polite">
-                ${selected ? auditDetailMarkup(selected) : '<p class="empty-state">No audit rows are visible yet. Relax a filter or connect the feed.</p>'}
-              </aside>
-            </div>
-
-            <div class="feed-footer">
-              <button type="button" class="secondary-link" data-action="load-more" ${state.loading || !state.hasMore ? 'disabled' : ''}>${state.loading ? 'Loading…' : state.hasMore ? 'Load next batch' : 'No more historical rows'}</button>
-              <button type="button" class="secondary-link" data-action="resync" ${state.resyncLink ? '' : 'disabled'}>Resync</button>
-              <span class="feed-note">${state.mode === 'live' ? 'Live rows stream in via SSE; reconnect keeps the latest cursor.' : 'Safe previews only — raw bytes stay out of the row and in the bundle.'}</span>
-            </div>
-          </section>
-
-          <section class="route-summary" aria-label="Route summary">
-            <div>
-              <p class="metric-label">Current waypoint</p>
-              <strong>${escapeHtml(active.name)}</strong>
-            </div>
-            <p>Audit rows stay attributable while the expedition shell keeps the woodland chrome in the margins.</p>
-          </section>
-        </aside>
-      </div>
-    </main>
-  `;
-
-  bindUI();
-}
-
-function waypointsMarkup(waypoints, activePhase) {
-  return waypoints.map((waypoint) => {
-    if (waypoint.stateName === 'current') {
-      return `
-        <g class="waypoint campfire-node is-current" role="button" tabindex="0" data-action="phase" data-phase="${waypoint.id}" aria-current="step" aria-label="${escapeHtml(waypoint.name)}, current stage. You are here.">
-          <circle cx="${waypoint.x}" cy="${waypoint.y}" r="17" fill="#EF9F27" stroke="#FAC775" stroke-width="3" />
-          <path d="M${waypoint.x} ${waypoint.y - 8} c -4 5 -5 8 -2 11 c -3 0 -5 3 -2 5 c 2 2 7 2 9 0 c 3 -2 1 -5 -2 -5 c 3 -3 1 -7 -3 -11" class="campfire" />
-          <text x="${waypoint.x}" y="${waypoint.y + 34}" text-anchor="middle" font-size="11" font-weight="600" fill="#633806">${escapeHtml(waypoint.name)} — you are here</text>
-        </g>`;
-    }
-    if (waypoint.stateName === 'completed') {
-      return `
-        <g class="waypoint" role="button" tabindex="0" data-action="phase" data-phase="${waypoint.id}" aria-label="${escapeHtml(waypoint.name)}, completed. Open to revisit.">
-          <circle cx="${waypoint.x}" cy="${waypoint.y}" r="12" fill="#639922" />
-          <path d="M${waypoint.x - 4} ${waypoint.y} l3 3 l6 -6" class="checkmark" />
-          <text x="${waypoint.x}" y="${waypoint.y + 28}" text-anchor="middle" font-size="11" fill="#5F5E5A">${escapeHtml(waypoint.name)}</text>
-        </g>`;
-    }
-    return `
-      <g class="waypoint locked" opacity="0.55" data-action="phase" data-phase="${waypoint.id}" aria-label="${escapeHtml(waypoint.name)}, fogged until data lands here.">
-        <circle cx="${waypoint.x}" cy="${waypoint.y}" r="12" fill="#B4A78C" stroke="#8B7355" stroke-width="1.5" />
-        <path d="M${waypoint.x - 4} ${waypoint.y - 4} v8 M${waypoint.x - 4} ${waypoint.y - 4} h7 l-2.5 2.5 l2.5 2.5 h-7" stroke="#4A3A28" stroke-width="1.5" fill="none" />
-        <text x="${waypoint.x}" y="${waypoint.y + 28}" text-anchor="middle" font-size="11" fill="#8B8069">${escapeHtml(waypoint.name)}</text>
-      </g>`;
-  }).join('');
-}
-
-function auditRowMarkup(row, selected) {
-  const evidence = row.evidence;
-  return `
-    <li class="audit-row ${selected ? 'is-selected' : ''}">
-      <button type="button" class="audit-row-button" data-action="select-row" data-row-id="${escapeHtml(row.id)}"${selected ? ' aria-current="true"' : ''}>
-        <div class="audit-row-top">
-          <span class="audit-row-time">${escapeHtml(formatTime(row.occurredAt))}</span>
-          <span class="audit-row-actor">${escapeHtml(row.actor.handle)}</span>
-          <span class="audit-chip ${escapeHtml(row.actor.kind)}">${escapeHtml(row.actor.kind)}</span>
-        </div>
-        <div class="audit-row-main">
-          <span class="audit-field"><strong>Source</strong><span>${escapeHtml(row.source)}</span></span>
-          <span class="audit-field"><strong>Target</strong><span>${escapeHtml(row.target)}</span></span>
-          <span class="audit-field"><strong>Result</strong><span class="result-pill ${resultClass(row.result.kind)}">${escapeHtml(row.result.label)}</span></span>
-        </div>
-        <div class="audit-row-note">${escapeHtml(row.summary)}</div>
-        <div class="audit-row-foot">
-          <span>Subject ${escapeHtml(row.subject.type)} · ${escapeHtml(row.subject.id)} · v${escapeHtml(row.subject.revision)}</span>
-          <span>Request ${escapeHtml(row.requestId)} · Cursor ${escapeHtml(row.id)}</span>
-        </div>
-      </button>
-    </li>
-  `;
-}
-
-function auditDetailMarkup(row) {
-  const evidence = row.evidence;
-  return `
-    <div class="detail-card">
-      <div class="detail-head">
-        <div>
-          <p class="workspace-kicker">Audit-row parity</p>
-          <h3>${escapeHtml(row.actor.handle)} · ${escapeHtml(row.result.label)}</h3>
-        </div>
-        <span class="result-pill ${resultClass(row.result.kind)}">${escapeHtml(row.result.label)}</span>
-      </div>
-      <dl class="detail-grid">
-        <div><dt>Actor</dt><dd>${escapeHtml(row.actor.kind)} · ${escapeHtml(row.actor.handle)}${row.actor.agentName ? ` · ${escapeHtml(row.actor.agentName)}` : ''}</dd></div>
-        <div><dt>Source</dt><dd>${escapeHtml(row.source)}</dd></div>
-        <div><dt>Target</dt><dd>${escapeHtml(row.target)}</dd></div>
-        <div><dt>Result</dt><dd>${escapeHtml(row.result.detail || row.result.label)}</dd></div>
-        <div><dt>Origin</dt><dd>${escapeHtml(row.origin.kind)}${row.origin.service ? ` · ${escapeHtml(row.origin.service)}` : ''}</dd></div>
-        <div><dt>Timing</dt><dd>${escapeHtml(formatTime(row.occurredAt))}</dd></div>
-        <div><dt>Request</dt><dd>${escapeHtml(row.requestId)}</dd></div>
-        <div><dt>Correlation</dt><dd>${escapeHtml(row.correlationId)}</dd></div>
-      </dl>
-      <div class="evidence-box">
-        <div class="evidence-head">
-          <h4>Safe evidence</h4>
-          <button type="button" class="secondary-link" data-action="copy-hash" data-hash="${escapeHtml(evidence.sha256)}" ${evidence.sha256 ? '' : 'disabled'}>Copy hash</button>
-        </div>
-        <p>Raw bytes never render here. The row shows a safe preview, hash, and size only.</p>
-        <pre>${escapeHtml(evidence.safePreview || 'No safe preview captured.')}</pre>
-        <div class="evidence-meta">
-          <span>${escapeHtml(evidence.kind)}</span>
-          <span>${evidence.byteLength ? `${evidence.byteLength} bytes` : 'Size unknown'}</span>
-          <span>${escapeHtml(evidence.mediaType)}</span>
-        </div>
-        <code>${escapeHtml(evidence.sha256 || 'No hash')}</code>
-      </div>
-      <div class="detail-foot">
-        <span>Contract ${escapeHtml(row.contractVersion)}</span>
-        <span>Subject revision ${escapeHtml(row.subject.revision)}</span>
-      </div>
-    </div>
-  `;
-}
-
-function bindUI() {
-  root.querySelectorAll('[data-action="theme"]').forEach((button) => {
-    button.addEventListener('click', () => setTheme(button.dataset.theme));
-  });
-  root.querySelectorAll('[data-action="phase"]').forEach((button) => {
-    button.addEventListener('click', () => setPhase(button.dataset.phase));
-    button.addEventListener('keydown', (event) => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        setPhase(button.dataset.phase);
-      }
-    });
-  });
-  root.querySelectorAll('[data-action="filter"]').forEach((control) => {
-    control.addEventListener('input', onFilterChange);
-    control.addEventListener('change', onFilterChange);
-  });
-  root.querySelector('[data-action="token"]')?.addEventListener('input', (event) => {
-    state.liveToken = event.target.value;
-  });
-  root.querySelector('[data-action="connect-live"]')?.addEventListener('click', () => connectLive());
-  root.querySelector('[data-action="demo"]')?.addEventListener('click', () => primeDemoFeed(true));
-  root.querySelector('[data-action="load-more"]')?.addEventListener('click', () => loadNextBatch());
-  root.querySelector('[data-action="resync"]')?.addEventListener('click', () => resyncFromGap());
-  root.querySelectorAll('[data-action="select-row"]').forEach((button) => {
-    button.addEventListener('click', () => {
-      state.selectedId = button.dataset.rowId;
-      scheduleRender();
-    });
-  });
-  root.querySelectorAll('[data-action="copy-hash"]').forEach((button) => {
-    button.addEventListener('click', async () => {
-      const hash = button.dataset.hash || '';
-      if (!hash) return;
-      try {
-        await navigator.clipboard.writeText(hash);
-        button.textContent = 'Copied';
-        setTimeout(() => scheduleRender(), 900);
-      } catch {
-        button.textContent = 'Copy failed';
-        setTimeout(() => scheduleRender(), 900);
-      }
-    });
-  });
-}
-
-function onFilterChange(event) {
-  const { filter } = event.target.dataset;
-  if (!filter) return;
-  state.filters[filter] = event.target.value;
-  refreshVisibleRows();
-  scheduleRender();
+function scheduleDemoPulse() {
+  if (state.mode !== 'demo' && state.mode !== 'demo-live') return;
+  if (state.demoPulseTimer) clearTimeout(state.demoPulseTimer);
+  state.demoPulseTimer = setTimeout(() => {
+    if (state.mode !== 'demo' && state.mode !== 'demo-live') return;
+    const next = demoRows[state.demoCursor];
+    if (!next) return;
+    state.demoCursor += 1;
+    setRows([next], { append: true, highWaterCursor: next.id, pageCursor: next.id, hasMore: state.demoCursor < demoRows.length });
+    state.mode = 'demo-live';
+    state.banner = `Live update: ${next.data?.technique || 'an attempt'} against ${next.data?.target || 'a target'}`;
+    state.selectedId = next.id;
+    scheduleRender();
+    scheduleDemoPulse();
+  }, 2800);
 }
 
 function primeDemoFeed(clearToken = false) {
@@ -837,16 +614,18 @@ function primeDemoFeed(clearToken = false) {
   setRows(demoRows.slice(0, demoPageSize), {
     append: false,
     pageCursor: demoRows[demoPageSize - 1]?.id || demoRows[0]?.id || null,
-    highWaterCursor: demoRows[demoRows.length - 1]?.id || null,
+    highWaterCursor: demoRows[demoPageSize - 1]?.id || demoRows[0]?.id || null,
     hasMore: demoRows.length > demoPageSize,
   });
   state.demoCursor = demoPageSize;
+  state.banner = 'Demo feed primed; live updates will trickle in.';
   scheduleRender();
+  scheduleDemoPulse();
 }
 
 function loadNextBatch() {
   if (state.loading) return;
-  if (state.mode === 'demo') {
+  if (state.mode === 'demo' || state.mode === 'demo-live') {
     const slice = demoRows.slice(state.demoCursor, state.demoCursor + demoPageSize);
     if (!slice.length) return;
     state.demoCursor += slice.length;
@@ -856,6 +635,7 @@ function loadNextBatch() {
       highWaterCursor: demoRows[demoRows.length - 1]?.id,
       hasMore: state.demoCursor < demoRows.length,
     });
+    state.banner = `Loaded ${slice.length} more attempts from the trail.`;
     scheduleRender();
     return;
   }
@@ -864,22 +644,12 @@ function loadNextBatch() {
   }
 }
 
-function cleanupStream() {
-  if (state.streamAbort) {
-    state.streamAbort.abort();
-    state.streamAbort = null;
-  }
-  if (state.reconnectTimer) {
-    clearTimeout(state.reconnectTimer);
-    state.reconnectTimer = null;
-  }
-}
-
 async function connectLive() {
   cleanupStream();
   if (!state.liveToken.trim()) {
     state.mode = 'error';
     state.resyncLink = '';
+    state.banner = 'Paste a bearer token to connect live, or stay in demo mode.';
     scheduleRender();
     return;
   }
@@ -900,46 +670,46 @@ async function loadAuditPage(after, append, liveMode = false) {
   if (after) url.searchParams.set('after', after);
 
   try {
-    const resp = token ? await fetch(url, { headers }) : null;
-    if (!token || !resp || !resp.ok) {
-      if (!token) {
-        state.loading = false;
-        primeDemoFeed(true);
-        return;
-      }
-      if (resp && resp.status === 410) {
+    if (!token) {
+      state.loading = false;
+      primeDemoFeed(true);
+      return;
+    }
+    const resp = await fetch(url, { headers });
+    if (!resp.ok) {
+      if (resp.status === 410) {
         const problem = await resp.json();
         state.mode = 'resync';
         state.resyncLink = problem.resync || '';
+        state.banner = 'Cursor gap detected; resync history before reconnecting.';
         state.loading = false;
         scheduleRender();
         return;
       }
-      throw new Error(resp ? `${resp.status}` : 'offline');
+      throw new Error(`${resp.status}`);
     }
     const page = await resp.json();
     const items = Array.isArray(page.items) ? page.items : [];
     setRows(items, {
       append,
-      pageCursor: page.page?.nextCursor || (items[items.length - 1] && items[items.length - 1].id) || after || null,
-      highWaterCursor: page.page?.highWaterCursor || (items[items.length - 1] && items[items.length - 1].id) || null,
+      pageCursor: page.page?.nextCursor || items[items.length - 1]?.id || after || null,
+      highWaterCursor: page.page?.highWaterCursor || items[items.length - 1]?.id || after || null,
       hasMore: Boolean(page.page?.hasMore),
     });
     state.mode = liveMode ? 'live' : 'demo';
+    state.banner = liveMode ? 'Live feed connected.' : 'Historical attempts loaded.';
     state.loading = false;
     scheduleRender();
     if (liveMode) {
       startSse(page.page?.highWaterCursor || page.page?.nextCursor || items[items.length - 1]?.id || after || null);
     }
-  } catch (error) {
-    if (!token) {
-      primeDemoFeed(true);
-      return;
-    }
+  } catch {
     state.loading = false;
     state.mode = 'error';
     state.resyncLink = '';
+    state.banner = 'Live feed unavailable; demo trail remains ready.';
     scheduleRender();
+    if (!token) primeDemoFeed(true);
   }
 }
 
@@ -951,46 +721,52 @@ function startSse(after) {
   const headers = new Headers({ 'Waypoint-Contract-Version': '1.0.0', 'X-Request-ID': `waypoint-stream-${Date.now()}`, Authorization: `Bearer ${state.liveToken.trim()}` });
   const url = new URL('/events', window.location.origin);
   if (after) url.searchParams.set('after', after);
-  fetch(url, { headers, signal: controller.signal }).then(async (resp) => {
-    if (resp.status === 410) {
-      const problem = await resp.json();
-      state.mode = 'resync';
-      state.resyncLink = problem.resync || '';
+
+  fetch(url, { headers, signal: controller.signal })
+    .then(async (resp) => {
+      if (resp.status === 410) {
+        const problem = await resp.json();
+        state.mode = 'resync';
+        state.resyncLink = problem.resync || '';
+        state.loading = false;
+        state.banner = 'Cursor gap detected; resync history before reconnecting.';
+        scheduleRender();
+        return;
+      }
+      if (!resp.ok || !resp.body) {
+        throw new Error(`stream ${resp.status}`);
+      }
+      state.mode = 'live';
       state.loading = false;
+      state.banner = 'Live SSE connected.';
       scheduleRender();
-      return;
-    }
-    if (!resp.ok || !resp.body) {
-      throw new Error(`stream ${resp.status}`);
-    }
-    state.mode = 'live';
-    state.loading = false;
-    scheduleRender();
-    await consumeSse(resp.body, (item) => {
-      const normalized = normalizeRow(item);
-      state.rows = dedupeRows([...state.rows, normalized]);
-      state.highWaterCursor = normalized.id;
-      state.selectedId = normalized.id;
-      refreshVisibleRows();
+      await consumeSse(resp.body, (item) => {
+        const normalized = normalizeAttempt(item);
+        state.rows = dedupeRows([...state.rows, normalized]);
+        state.highWaterCursor = normalized.id;
+        state.selectedId = normalized.id;
+        refreshVisibleRows();
+        state.banner = `Live update: ${normalized.technique} against ${normalized.target}`;
+        scheduleRender();
+      });
+      if (!controller.signal.aborted) {
+        scheduleReconnect(state.highWaterCursor);
+      }
+    })
+    .catch(() => {
+      if (controller.signal.aborted) return;
+      state.mode = 'reconnecting';
+      state.loading = false;
+      state.banner = 'Connection hiccup; retrying with the latest cursor.';
       scheduleRender();
-    });
-    if (!controller.signal.aborted) {
       scheduleReconnect(state.highWaterCursor);
-    }
-  }).catch(() => {
-    if (controller.signal.aborted) return;
-    state.mode = 'reconnecting';
-    state.loading = false;
-    scheduleRender();
-    scheduleReconnect(state.highWaterCursor);
-  });
+    });
 }
 
 async function consumeSse(stream, onItem) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
-  let current = { id: '', event: '', data: '' };
   while (true) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -999,12 +775,12 @@ async function consumeSse(stream, onItem) {
     while (boundary >= 0) {
       const frame = buffer.slice(0, boundary);
       buffer = buffer.slice(boundary + 2);
-      current = parseSseFrame(frame);
-      if (current.data) {
+      const parsed = parseSseFrame(frame);
+      if (parsed.data) {
         try {
-          onItem(JSON.parse(current.data));
+          onItem(JSON.parse(parsed.data));
         } catch {
-          /* ignore malformed payload */
+          // ignore malformed payloads
         }
       }
       boundary = buffer.indexOf('\n\n');
@@ -1050,13 +826,462 @@ async function resyncFromGap() {
     state.resyncLink = '';
     state.mode = 'live';
     state.loading = false;
+    state.banner = 'History refreshed; reconnecting live.';
     scheduleRender();
     startSse(page.page?.highWaterCursor || state.highWaterCursor || null);
   } catch {
     state.loading = false;
     state.mode = 'error';
+    state.banner = 'Resync failed; keep using demo mode or retry the token.';
     scheduleRender();
   }
+}
+
+function buildOptions(current, values, labelBuilder = (value) => value) {
+  return [`<option value="all"${current === 'all' ? ' selected' : ''}>All</option>`]
+    .concat(values.map((value) => `<option value="${escapeHtml(value)}"${current === value ? ' selected' : ''}>${escapeHtml(labelBuilder(value))}</option>`))
+    .join('');
+}
+
+function renderWaypoints(waypoints, activeId) {
+  return waypoints.map((waypoint) => {
+    if (waypoint.state === 'current') {
+      return `
+        <g class="waypoint campfire-node is-current" role="button" tabindex="0" data-action="phase" data-phase="${waypoint.id}" aria-current="step" aria-label="${escapeHtml(waypoint.name)}, current stage. You are here.">
+          <circle cx="${waypoint.x}" cy="${waypoint.y}" r="17" fill="#EF9F27" stroke="#FAC775" stroke-width="3" />
+          <path d="M${waypoint.x} ${waypoint.y - 8} c -4 5 -5 8 -2 11 c -3 0 -5 3 -2 5 c 2 2 7 2 9 0 c 3 -2 1 -5 -2 -5 c 3 -3 1 -7 -3 -11" class="campfire" />
+          <text x="${waypoint.x}" y="${waypoint.y + 34}" text-anchor="middle" font-size="11" font-weight="600" fill="#633806">${escapeHtml(waypoint.name)} — you are here</text>
+        </g>`;
+    }
+    if (waypoint.state === 'completed') {
+      return `
+        <g class="waypoint" role="button" tabindex="0" data-action="phase" data-phase="${waypoint.id}" aria-label="${escapeHtml(waypoint.name)}, completed. Open to revisit.">
+          <circle cx="${waypoint.x}" cy="${waypoint.y}" r="12" fill="#639922" />
+          <path d="M${waypoint.x - 4} ${waypoint.y} l3 3 l6 -6" class="checkmark" />
+          <text x="${waypoint.x}" y="${waypoint.y + 28}" text-anchor="middle" font-size="11" fill="#5F5E5A">${escapeHtml(waypoint.name)}</text>
+        </g>`;
+    }
+    return `
+      <g class="waypoint locked" opacity="0.55" data-action="phase" data-phase="${waypoint.id}" aria-label="${escapeHtml(waypoint.name)}, fogged until data lands here.">
+        <circle cx="${waypoint.x}" cy="${waypoint.y}" r="12" fill="#B4A78C" stroke="#8B7355" stroke-width="1.5" />
+        <path d="M${waypoint.x - 4} ${waypoint.y - 4} v8 M${waypoint.x - 4} ${waypoint.y - 4} h7 l-2.5 2.5 l2.5 2.5 h-7" stroke="#4A3A28" stroke-width="1.5" fill="none" />
+        <text x="${waypoint.x}" y="${waypoint.y + 28}" text-anchor="middle" font-size="11" fill="#8B8069">${escapeHtml(waypoint.name)}</text>
+      </g>`;
+  }).join('');
+}
+
+function attackSummaryCards(rows) {
+  const techniques = new Set(rows.map((row) => row.technique));
+  const targets = new Set(rows.map((row) => row.target));
+  const hosts = new Set(rows.map((row) => row.host));
+  const blocked = rows.filter((row) => row.status === 'blocked').length;
+  return `
+    <div class="attack-summary-grid" aria-label="Attack summary">
+      <div class="metric"><span class="metric-label">Attempts</span><strong>${rows.length}</strong></div>
+      <div class="metric"><span class="metric-label">Techniques</span><strong>${techniques.size}</strong></div>
+      <div class="metric"><span class="metric-label">Targets</span><strong>${targets.size}</strong></div>
+      <div class="metric"><span class="metric-label">Blocked</span><strong>${blocked}</strong></div>
+      <div class="metric"><span class="metric-label">Hosts</span><strong>${hosts.size}</strong></div>
+    </div>
+  `;
+}
+
+function attackRowMarkup(row, selected) {
+  return `
+    <li class="attack-row ${selected ? 'is-selected' : ''}">
+      <button type="button" class="attack-row-button" data-action="select-attempt" data-row-id="${escapeHtml(row.id)}"${selected ? ' aria-current="true"' : ''}>
+        <div class="attack-row-top">
+          <span class="attack-row-time">${escapeHtml(formatTime(row.occurredAt))}</span>
+          <span class="attack-row-actor">${escapeHtml(row.actor.handle)}</span>
+          <span class="actor-chip ${escapeHtml(row.actor.kind)}">${escapeHtml(row.actor.kind)}</span>
+        </div>
+        <div class="attack-row-main">
+          <span class="attack-field"><strong>Technique</strong><span>${escapeHtml(row.technique)}</span></span>
+          <span class="attack-field"><strong>Target</strong><span>${escapeHtml(row.target)}</span></span>
+          <span class="attack-field"><strong>Host</strong><span>${escapeHtml(row.host)}</span></span>
+          <span class="attack-field"><strong>Status</strong><span class="status-pill ${statusClass(row.status)}">${escapeHtml(row.statusLabel)}</span></span>
+        </div>
+        <div class="attack-row-note">${escapeHtml(row.summary)}</div>
+        <div class="attack-row-foot">
+          <span>${escapeHtml(row.command || row.origin.service || row.origin.kind)}</span>
+          <span>Cursor ${escapeHtml(row.id)} · ${escapeHtml(row.requestId)}</span>
+        </div>
+      </button>
+    </li>
+  `;
+}
+
+function attackGroupsMarkup(rows, selectedId) {
+  const groups = groupAttempts(rows);
+  if (!groups.length) {
+    return '<p class="empty-state">Fog on the trail — relax a filter or reconnect the feed to reveal attempts.</p>';
+  }
+  return groups.map((group) => {
+    const statusSummary = [...group.counts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([status, count]) => `<span class="status-pill ${statusClass(status)}">${escapeHtml(statusToLabel(status))} ${count}</span>`)
+      .join('');
+    return `
+      <section class="attack-group">
+        <header class="attack-group-header">
+          <div>
+            <p class="workspace-kicker">Technique</p>
+            <h3>${escapeHtml(group.key)}</h3>
+            <p>${group.rows.length} attempts · ${group.targets.size} targets · ${group.hosts.size} hosts</p>
+          </div>
+          <div class="attack-group-meta">${statusSummary}</div>
+        </header>
+        <ol class="attack-group-list">
+          ${group.rows.map((row) => attackRowMarkup(row, row.id === selectedId)).join('')}
+        </ol>
+      </section>
+    `;
+  }).join('');
+}
+
+function attemptDetailMarkup(row) {
+  if (!row) {
+    return '<p class="empty-state">No attempt selected yet. Pick a row to open its raw and structured evidence.</p>';
+  }
+  const structuredJson = JSON.stringify(row.structured || {}, null, 2);
+  return `
+    <div class="detail-card">
+      <div class="detail-head">
+        <div>
+          <p class="workspace-kicker">Attempt drill-in</p>
+          <h3>${escapeHtml(row.technique)}</h3>
+          <p>${escapeHtml(row.summary)}</p>
+        </div>
+        <span class="status-pill ${statusClass(row.status)}">${escapeHtml(row.statusLabel)}</span>
+      </div>
+      <dl class="detail-grid">
+        <div><dt>Actor</dt><dd>${escapeHtml(row.actor.kind)} · ${escapeHtml(row.actor.handle)}${row.actor.agentName ? ` · ${escapeHtml(row.actor.agentName)}` : ''}</dd></div>
+        <div><dt>Target</dt><dd>${escapeHtml(row.target)}</dd></div>
+        <div><dt>Host</dt><dd>${escapeHtml(row.host)}</dd></div>
+        <div><dt>Source</dt><dd>${escapeHtml(row.origin.kind)}${row.origin.service ? ` · ${escapeHtml(row.origin.service)}` : ''}</dd></div>
+        <div><dt>Command</dt><dd>${escapeHtml(row.command || 'Not captured')}</dd></div>
+        <div><dt>Parse</dt><dd>${escapeHtml(row.parseStatus)}${row.pluginId ? ` · ${escapeHtml(row.pluginId)}` : ''}</dd></div>
+        <div><dt>Timing</dt><dd>${escapeHtml(formatTime(row.occurredAt))}</dd></div>
+        <div><dt>Request</dt><dd>${escapeHtml(row.requestId)}</dd></div>
+      </dl>
+      <div class="evidence-split">
+        <section class="evidence-box">
+          <div class="evidence-head">
+            <h4>Raw output</h4>
+            <span class="evidence-kind">${escapeHtml(row.evidence.kind)}</span>
+          </div>
+          <p>Rendered as escaped text only. No raw HTML from the target can execute here.</p>
+          <pre>${escapeHtml(row.rawOutput || row.evidence.safePreview)}</pre>
+        </section>
+        <section class="evidence-box">
+          <div class="evidence-head">
+            <h4>Structured result</h4>
+            <button type="button" class="secondary-link" data-action="copy-hash" data-hash="${escapeHtml(row.evidence.sha256)}">Copy hash</button>
+          </div>
+          <pre>${escapeHtml(structuredJson || '{}')}</pre>
+          <div class="evidence-meta">
+            <span>${escapeHtml(row.evidence.byteLength)} bytes</span>
+            <span>${escapeHtml(row.evidence.mediaType)}</span>
+            <span>${escapeHtml(row.result.detail || row.result.label)}</span>
+          </div>
+          <code>${escapeHtml(row.evidence.sha256)}</code>
+        </section>
+      </div>
+      <div class="detail-foot">
+        <span>Subject ${escapeHtml(row.subject.type)} · ${escapeHtml(row.subject.id)} · v${escapeHtml(row.subject.revision)}</span>
+        <span>Cursor ${escapeHtml(row.id)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function attackWorkspaceMarkup(active, currentIndex, rows, selected) {
+  const filters = state.filters;
+  const techniqueValues = uniqueValues((row) => row.technique.toLowerCase());
+  const targetValues = uniqueValues((row) => row.target.toLowerCase());
+  const hostValues = uniqueValues((row) => row.host.toLowerCase());
+  const statusValues = uniqueValues((row) => row.status.toLowerCase());
+
+  return `
+    <section class="workspace-panel attacks-workspace" aria-label="Attacks workspace">
+      <div class="workspace-header">
+        <div>
+          <p class="workspace-kicker">Stage ${currentIndex + 1} of ${phaseOrder.length}</p>
+          <h2>${escapeHtml(active.workspaceTitle)}</h2>
+        </div>
+        <div class="workspace-status-stack">
+          <p class="workspace-status">${escapeHtml(feedStatusLabel())}</p>
+          <span class="status-pill ${feedStatusTone()}">${escapeHtml(feedStatusTone() === 'review' ? 'Needs review' : feedStatusTone() === 'blocked' ? 'Blocked' : feedStatusTone() === 'queued' ? 'Queued' : feedStatusTone() === 'success' ? 'Live' : 'Idle')}</span>
+        </div>
+      </div>
+
+      <p class="workspace-lede">${escapeHtml(active.workspaceLede)}</p>
+
+      ${state.banner ? `<div class="live-banner ${statusClass(state.mode === 'reconnecting' ? 'queued' : state.mode === 'error' ? 'blocked' : state.mode === 'resync' ? 'needs-review' : 'success')}" role="status">${escapeHtml(state.banner)}</div>` : ''}
+
+      <div class="attack-toolbar">
+        <label class="field-group"><span>Technique</span><select data-action="filter" data-filter="technique">${buildOptions(filters.technique, techniqueValues, (value) => value)}</select></label>
+        <label class="field-group"><span>Target</span><select data-action="filter" data-filter="target">${buildOptions(filters.target, targetValues, (value) => value)}</select></label>
+        <label class="field-group"><span>Host</span><select data-action="filter" data-filter="host">${buildOptions(filters.host, hostValues, (value) => value)}</select></label>
+        <label class="field-group"><span>Status</span><select data-action="filter" data-filter="status">${buildOptions(filters.status, statusValues, (value) => statusToLabel(value))}</select></label>
+        <label class="field-group field-search"><span>Search</span><input type="search" data-action="filter" data-filter="q" value="${escapeHtml(filters.q)}" placeholder="Search technique, target, host, status, output" /></label>
+        <label class="field-group field-token"><span>Live token</span><input type="password" data-action="token" value="${escapeHtml(state.liveToken)}" placeholder="Paste bearer token to connect live" autocomplete="off" /></label>
+      </div>
+
+      ${attackSummaryCards(rows)}
+
+      ${state.resyncLink ? '<div class="live-banner review">Cursor gap detected. Resync the trail from persisted history, then reconnect live.</div>' : ''}
+
+      <div class="attack-shell">
+        <div class="attack-list-column">
+          ${attackGroupsMarkup(rows, selected?.id || null)}
+        </div>
+        <aside class="attack-detail" aria-live="polite">
+          ${attemptDetailMarkup(selected)}
+        </aside>
+      </div>
+
+      <div class="workspace-footer">
+        <button type="button" class="secondary-link" data-action="demo">Use demo</button>
+        <button type="button" class="primary-button" data-action="connect-live">Connect live</button>
+        <button type="button" class="secondary-link" data-action="load-more" ${state.loading || !state.hasMore ? 'disabled' : ''}>${state.loading ? 'Loading…' : state.hasMore ? 'Load next batch' : 'No more attempts'}</button>
+        <button type="button" class="secondary-link" data-action="resync" ${state.resyncLink ? '' : 'disabled'}>Resync</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderSidebarLog(active) {
+  const recent = [...state.visibleRows].sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 3);
+  if (active.id === 'attacks') {
+    return `
+      <section class="log-panel" aria-label="Trail updates">
+        <div class="panel-heading compact">
+          <div>
+            <h2>📖 Trail updates</h2>
+            <p>The audit trail is the journey log — exact technique, target, host, and result stay in view.</p>
+          </div>
+          <div class="status-pill ${feedStatusTone()}">${escapeHtml(feedStatusLabel())}</div>
+        </div>
+        <ul class="recent-attempts">
+          ${recent.map((row) => `<li><strong>${escapeHtml(row.technique)}</strong><span>${escapeHtml(row.target)} · ${escapeHtml(row.host)} · ${escapeHtml(row.statusLabel)}</span></li>`).join('')}
+        </ul>
+      </section>
+    `;
+  }
+
+  const journeyLog = [
+    'Day 1 — Basecamp set. Project named, team invited, scope loaded.',
+    'Day 2 — Creek crossed. 240 records packed into the trail log.',
+    `Now — Made camp in ${active.name}. The audit trail is live and attributed.`,
+  ];
+
+  return `
+    <section class="log-panel" aria-label="Journey log">
+      <div class="panel-heading compact">
+        <div>
+          <h2>📖 Journey log</h2>
+          <p>The audit trail is the journey log — one entry per meaningful action.</p>
+        </div>
+      </div>
+      <ul class="journey-list">
+        ${journeyLog.map((entry, index) => `<li class="${index === 2 ? 'is-current' : ''}">${escapeHtml(entry)}</li>`).join('')}
+      </ul>
+    </section>
+  `;
+}
+
+function render() {
+  const active = phaseData[state.activePhase];
+  const currentIndex = phaseOrder.indexOf(state.activePhase);
+  const waypoints = phaseOrder.map((phase, index) => ({ ...phaseData[phase], id: phase, state: index < currentIndex ? 'completed' : index === currentIndex ? 'current' : 'fog' }));
+  const selected = selectedAttempt();
+
+  document.title = `Waypoint — ${active.name}`;
+  document.documentElement.dataset.theme = state.theme;
+
+  root.innerHTML = `
+    <main class="app-shell">
+      <header class="masthead">
+        <div class="masthead-copy">
+          <p class="eyebrow">Waypoint · expedition shell</p>
+          <h1>Recon / Attacks / Findings</h1>
+          <p class="subtitle">A calm trail map for the audit spine, with route skeletons beneath each waypoint.</p>
+        </div>
+        <div class="masthead-actions">
+          <div class="theme-switcher" role="group" aria-label="Theme selection">
+            <button type="button" data-action="theme" data-theme="light" aria-pressed="${state.theme === 'light'}" class="${state.theme === 'light' ? 'is-active' : ''}">Light</button>
+            <button type="button" data-action="theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}" class="${state.theme === 'dark' ? 'is-active' : ''}">Dark</button>
+          </div>
+          <div class="progress-pill" aria-label="Trail progress">Trail ${Math.min(currentIndex + 1, phaseOrder.length)} / ${phaseOrder.length} · ${escapeHtml(active.name)}</div>
+          <div class="metrics" aria-label="Engagement progress">
+            <div class="metric"><span class="metric-label">Traveled</span><strong>${Math.min(currentIndex + 1, phaseOrder.length)} waypoints</strong></div>
+            <div class="metric"><span class="metric-label">To summit</span><strong>${Math.max(0, phaseOrder.length - currentIndex - 1)} left</strong></div>
+          </div>
+        </div>
+      </header>
+
+      <div class="layout">
+        <section class="map-column">
+          <section class="map-card" aria-label="Engagement trail map">
+            <div class="map-stage">
+              <svg viewBox="0 0 640 300" role="img" aria-label="Trail map with waypoint buttons">
+                <rect width="640" height="300" class="map-terrain" />
+                <path d="M60 252 C 132 234, 148 194, 206 182 C 270 168, 286 220, 350 204 C 402 190, 420 148, 472 126 C 516 108, 548 84, 590 60" class="trail-path" />
+                <path d="M0 84 Q 138 44, 250 76 T 470 62 T 640 84" class="contours" />
+                <path d="M0 136 Q 160 94, 286 124 T 640 112" class="contours" />
+                <path d="M0 192 Q 170 160, 332 184 T 640 166" class="contours" />
+                <g class="trees" aria-hidden="true">
+                  <path d="M92 244 L100 224 L108 244 Z" />
+                  <path d="M118 250 L128 228 L138 250 Z" />
+                  <path d="M182 96 L190 76 L198 96 Z" />
+                  <path d="M510 248 L519 230 L528 248 Z" />
+                  <path d="M536 110 L546 88 L556 110 Z" />
+                </g>
+                ${renderWaypoints(waypoints, state.activePhase)}
+              </svg>
+              <div class="waypoint-overlay" aria-label="Trail waypoint shortcuts">
+                ${waypoints.map((waypoint) => `
+                  <button type="button" class="waypoint-hitbox ${waypoint.id === state.activePhase ? 'is-active' : ''}" data-action="phase" data-phase="${waypoint.id}"${waypoint.id === state.activePhase ? ' aria-current="step"' : ''} aria-label="${escapeHtml(waypoint.name)}, ${escapeHtml(waypoint.state)}${waypoint.id === state.activePhase ? ', you are here' : ''}" style="left:${(waypoint.x / 640) * 100}%;top:${(waypoint.y / 300) * 100}%;"></button>
+                `).join('')}
+              </div>
+            </div>
+          </section>
+
+          ${state.activePhase === 'attacks'
+            ? attackWorkspaceMarkup(active, currentIndex, state.visibleRows, selected)
+            : `
+              <section class="workspace-panel" aria-label="${escapeHtml(active.name)} route skeleton">
+                <div class="workspace-header">
+                  <div>
+                    <p class="workspace-kicker">Stage ${currentIndex + 1} of ${phaseOrder.length}</p>
+                    <h2>${escapeHtml(active.workspaceTitle)}</h2>
+                  </div>
+                  <p class="workspace-status">Saved 2 min ago</p>
+                </div>
+                <p class="workspace-lede">${escapeHtml(active.workspaceLede)}</p>
+                <div class="workspace-grid">
+                  ${active.cards.map((card) => `
+                    <section class="skeleton-card">
+                      <h3>${escapeHtml(card.title)}</h3>
+                      <ul>${card.items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+                    </section>
+                  `).join('')}
+                </div>
+                <div class="workspace-footer">
+                  <a class="secondary-link" href="${phasePath(phaseOrder[Math.max(0, currentIndex - 1)])}" data-action="phase" data-phase="${phaseOrder[Math.max(0, currentIndex - 1)]}">Back to ${escapeHtml(phaseData[phaseOrder[Math.max(0, currentIndex - 1)]].name)}</a>
+                  <a class="primary-button" href="${phasePath(phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)])}" data-action="phase" data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}">Continue to ${escapeHtml(phaseData[phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]].name)} →</a>
+                </div>
+              </section>
+            `}
+        </section>
+
+        <aside class="sidebar" aria-label="Guide and trail details">
+          <nav class="route-nav" aria-label="Engagement waypoints">
+            <div class="panel-heading">
+              <h2>Waypoints</h2>
+              <p>All phases stay accessible; fog means no data discovered yet.</p>
+            </div>
+            <ol>
+              ${waypoints.map((waypoint, index) => `
+                <li>
+                  <button type="button" class="route-link ${waypoint.id === state.activePhase ? 'is-active' : ''}" data-action="phase" data-phase="${waypoint.id}"${waypoint.id === state.activePhase ? ' aria-current="step"' : ''}>
+                    <span class="route-link-copy"><strong>${escapeHtml(waypoint.name)}</strong><span>Stage ${index + 1} of ${phaseOrder.length}</span></span>
+                    <span class="route-status ${waypoint.state}">${escapeHtml(waypoint.state === 'fog' ? 'Fog' : waypoint.state === 'current' ? 'Here' : 'Done')}</span>
+                  </button>
+                </li>
+              `).join('')}
+            </ol>
+          </nav>
+
+          <section class="guide-panel artifact" aria-label="Guide's note">
+            <div class="panel-icon" aria-hidden="true">🧭</div>
+            <div>
+              <h2>Guide's note</h2>
+              <p>${escapeHtml(active.note)}</p>
+              <button type="button" class="primary-button" data-action="phase" data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}">${currentIndex < phaseOrder.length - 1 ? `Continue into ${escapeHtml(phaseData[phaseOrder[currentIndex + 1]].name)} →` : `Return to ${escapeHtml(phaseData[phaseOrder[currentIndex - 1]].name)} →`}</button>
+            </div>
+          </section>
+
+          ${renderSidebarLog(active)}
+
+          <section class="route-summary" aria-label="Route summary">
+            <div>
+              <p class="metric-label">Current waypoint</p>
+              <strong>${escapeHtml(active.name)}</strong>
+            </div>
+            <p>${escapeHtml(active.id === 'attacks' ? 'What have we tried, what worked, and what is still fogged? This view keeps the answer obvious.' : active.id === 'findings' ? 'Promotions stay defensible and linked to evidence.' : active.id === 'summit' ? 'Export, verify the manifest, then wipe the disposable box.' : 'Collect signals and keep the pack tidy.' )}</p>
+          </section>
+        </aside>
+      </div>
+    </main>
+  `;
+
+  bindUI();
+}
+
+function bindUI() {
+  root.querySelectorAll('[data-action="theme"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.theme = button.dataset.theme;
+      safeStorageSet('waypoint-theme', state.theme);
+      scheduleRender();
+    });
+  });
+
+  root.querySelectorAll('[data-action="phase"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const phase = button.dataset.phase;
+      if (!phase || phase === state.activePhase) return;
+      state.activePhase = phase;
+      navigateToPhase(phase);
+      scheduleRender();
+    });
+  });
+
+  root.querySelectorAll('[data-action="filter"]').forEach((control) => {
+    control.addEventListener('input', onFilterChange);
+    control.addEventListener('change', onFilterChange);
+  });
+
+  root.querySelector('[data-action="token"]')?.addEventListener('input', (event) => {
+    state.liveToken = event.target.value;
+  });
+
+  root.querySelector('[data-action="connect-live"]')?.addEventListener('click', () => connectLive());
+  root.querySelector('[data-action="demo"]')?.addEventListener('click', () => primeDemoFeed(true));
+  root.querySelector('[data-action="load-more"]')?.addEventListener('click', () => loadNextBatch());
+  root.querySelector('[data-action="resync"]')?.addEventListener('click', () => resyncFromGap());
+
+  root.querySelectorAll('[data-action="select-attempt"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.selectedId = button.dataset.rowId;
+      scheduleRender();
+    });
+  });
+
+  root.querySelectorAll('[data-action="copy-hash"]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const hash = button.dataset.hash || '';
+      if (!hash) return;
+      try {
+        await navigator.clipboard.writeText(hash);
+        button.textContent = 'Copied';
+        setTimeout(() => scheduleRender(), 900);
+      } catch {
+        button.textContent = 'Copy failed';
+        setTimeout(() => scheduleRender(), 900);
+      }
+    });
+  });
+}
+
+function onFilterChange(event) {
+  const { filter } = event.target.dataset;
+  if (!filter) return;
+  state.filters[filter] = event.target.value;
+  refreshVisibleRows();
+  scheduleRender();
 }
 
 window.addEventListener('popstate', () => {
