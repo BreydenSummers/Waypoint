@@ -31,6 +31,96 @@ func TestRedactAuditData(t *testing.T) {
 	}
 }
 
+func TestAppendAuditEventCapturesOutOfBandReviewLifecycle(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "00000000-0000-0000-0000-000000000051"
+	humanID := "00000000-0000-0000-0000-000000000052"
+	claimID := "00000000-0000-0000-0000-000000000053"
+	actionID := "00000000-0000-0000-0000-000000000054"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alice', repeat('a', 64), 'owner')`, humanID, engagementID)
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback()
+
+	flaggedID, err := AppendAuditEvent(ctx, tx, AuditEventInput{
+		EngagementID:  engagementID,
+		Type:          "out-of-band.flagged",
+		Actor:         AuditActorSnapshot{ID: humanID, Kind: "human", Handle: "alice", Role: "owner"},
+		Origin:        AuditOrigin{Kind: "service", Service: "claim-detector"},
+		Subject:       AuditSubject{Type: "out_of_band_claim", ID: claimID, Revision: 1},
+		RequestID:     "req-oob-flagged",
+		CorrelationID: "corr-oob-flagged",
+		Data: map[string]any{
+			"claimId":           claimID,
+			"claimKind":         "entity",
+			"sourceActionId":    nil,
+			"detectionBoundary": "best_effort",
+			"reason":            "missing_captured_source_action",
+			"observedAt":        time.Date(2025, 1, 15, 10, 25, 0, 0, time.UTC),
+		},
+	})
+	if err != nil {
+		t.Fatalf("append flagged event: %v", err)
+	}
+	resolvedID, err := AppendAuditEvent(ctx, tx, AuditEventInput{
+		EngagementID:  engagementID,
+		Type:          "out-of-band.resolved",
+		Actor:         AuditActorSnapshot{ID: humanID, Kind: "human", Handle: "alice", Role: "owner"},
+		Origin:        AuditOrigin{Kind: "rest"},
+		Subject:       AuditSubject{Type: "out_of_band_claim", ID: claimID, Revision: 1},
+		RequestID:     "req-oob-resolved",
+		CorrelationID: "corr-oob-flagged",
+		Data: map[string]any{
+			"claimId":        claimID,
+			"claimKind":      "entity",
+			"sourceActionId": actionID,
+			"resolution":     "linked",
+			"resolvedAt":     time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC),
+			"notes":          "Linked after operator review of the imported host record.",
+		},
+	})
+	if err != nil {
+		t.Fatalf("append resolved event: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	for _, tc := range []struct {
+		id       int64
+		typeName string
+		want     string
+	}{
+		{id: flaggedID, typeName: "out-of-band.flagged", want: `"detectionBoundary":"best_effort"`},
+		{id: resolvedID, typeName: "out-of-band.resolved", want: `"resolution":"linked"`},
+	} {
+		var typ, subjectType, raw string
+		if err := db.QueryRowContext(ctx, `SELECT type, subject_type, data::text FROM audit_event WHERE id = $1`, tc.id).Scan(&typ, &subjectType, &raw); err != nil {
+			t.Fatalf("load %s event: %v", tc.typeName, err)
+		}
+		if typ != tc.typeName || subjectType != "out_of_band_claim" {
+			t.Fatalf("event = (%s, %s), want (%s, out_of_band_claim)", typ, subjectType, tc.typeName)
+		}
+		if !strings.Contains(raw, tc.want) {
+			t.Fatalf("event data = %s, want %s", raw, tc.want)
+		}
+	}
+}
+
 func TestValidateAuditEventInputRejectsIncompleteAIActor(t *testing.T) {
 	err := validateAuditEventInput(AuditEventInput{
 		EngagementID:  "00000000-0000-0000-0000-000000000001",
