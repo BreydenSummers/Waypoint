@@ -1082,9 +1082,7 @@ func upsertEntity(ctx context.Context, tx *sql.Tx, engagementID, kind, keyType, 
 	if err := tx.QueryRowContext(ctx, `
 		INSERT INTO entity (engagement_id, kind, key_type, key_value, attributes)
 		VALUES ($1, $2, $3, $4, $5::jsonb)
-		ON CONFLICT (engagement_id, key_type, key_value)
-		DO UPDATE SET last_seen = now(), updated_at = now(), attributes = entity.attributes || EXCLUDED.attributes
-		WHERE entity.kind = EXCLUDED.kind
+		ON CONFLICT DO NOTHING
 		RETURNING id
 	`, engagementID, kind, keyType, keyValue, jsonArg(attrs)).Scan(&id); err == nil {
 		return id, nil
@@ -1092,14 +1090,23 @@ func upsertEntity(ctx context.Context, tx *sql.Tx, engagementID, kind, keyType, 
 		return "", err
 	}
 
-	var existingID, existingKind string
-	if err := tx.QueryRowContext(ctx, `SELECT id, kind FROM entity WHERE engagement_id = $1 AND key_type = $2 AND key_value = $3`, engagementID, keyType, keyValue).Scan(&existingID, &existingKind); err != nil {
+	row, err := loadEntityByKey(ctx, tx, engagementID, keyType, keyValue, true)
+	if err != nil {
 		return "", err
 	}
-	if existingKind != kind {
+	if row.Kind != kind {
 		return "", errEntityKindConflict
 	}
-	return existingID, nil
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+	if row.MergedIntoEntityID.Valid {
+		return touchEntityByID(ctx, tx, row.MergedIntoEntityID.String, json.RawMessage([]byte(mustJSON(attrs))))
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE entity SET last_seen = now(), updated_at = now(), revision = revision + 1, attributes = attributes || $2::jsonb WHERE id = $1`, row.ID, jsonArg(attrs)); err != nil {
+		return "", err
+	}
+	return row.ID, nil
 }
 
 func entityIdentity(ids []captureEntityIdentifier) (string, string, bool) {
