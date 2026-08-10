@@ -7,6 +7,22 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: waypoint
+          POSTGRES_USER: waypoint
+          POSTGRES_PASSWORD: waypoint
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U waypoint -d waypoint"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      WAYPOINT_TEST_PG_DSN: postgres://waypoint:waypoint@localhost:5432/waypoint?sslmode=disable
     steps:
       - uses: actions/checkout@v4
 
