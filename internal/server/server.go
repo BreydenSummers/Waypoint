@@ -32,6 +32,8 @@ func handler(db *sql.DB) http.Handler {
 	mux.HandleFunc("/readyz", readyz(assets))
 	mux.HandleFunc("/api/v1/captures", captureHandler(db))
 	mux.HandleFunc("/captures", captureHandler(db))
+	mux.HandleFunc("/api/v1/entities/merge", mergeEntityHandler(db))
+	mux.HandleFunc("/api/v1/entities/split", splitEntityHandler(db))
 	mux.HandleFunc("/api/v1/audit-events", auditEventsHandler(db))
 	mux.HandleFunc("/events", auditEventsStreamHandler(db))
 	mux.Handle("/", spa(assets))
