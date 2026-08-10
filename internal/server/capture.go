@@ -162,16 +162,18 @@ type captureEvidenceBytes struct {
 }
 
 type captureProblem struct {
-	Type              string       `json:"type"`
-	Title             string       `json:"title"`
-	Status            int          `json:"status"`
-	Detail            string       `json:"detail,omitempty"`
-	Code              string       `json:"code"`
-	RequestID         string       `json:"requestId"`
-	Retryable         bool         `json:"retryable"`
-	FieldErrors       []fieldError `json:"fieldErrors,omitempty"`
-	ExistingActionID  string       `json:"existingActionId,omitempty"`
-	SupportedVersions []string     `json:"supportedVersions,omitempty"`
+	Type                   string       `json:"type"`
+	Title                  string       `json:"title"`
+	Status                 int          `json:"status"`
+	Detail                 string       `json:"detail,omitempty"`
+	Code                   string       `json:"code"`
+	RequestID              string       `json:"requestId"`
+	Retryable              bool         `json:"retryable"`
+	FieldErrors            []fieldError `json:"fieldErrors,omitempty"`
+	ExistingActionID       string       `json:"existingActionId,omitempty"`
+	MinimumAvailableCursor *string      `json:"minimumAvailableCursor,omitempty"`
+	Resync                 string       `json:"resync,omitempty"`
+	SupportedVersions      []string     `json:"supportedVersions,omitempty"`
 }
 
 type fieldError struct {
