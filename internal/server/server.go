@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"io/fs"
 	"net/http"
@@ -13,6 +14,14 @@ import (
 )
 
 func Handler() http.Handler {
+	return handler(nil)
+}
+
+func HandlerWithDB(db *sql.DB) http.Handler {
+	return handler(db)
+}
+
+func handler(db *sql.DB) http.Handler {
 	assets, err := fs.Sub(webassets.Assets, "dist")
 	if err != nil {
 		panic(err)
@@ -21,6 +30,8 @@ func Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthz)
 	mux.HandleFunc("/readyz", readyz(assets))
+	mux.HandleFunc("/api/v1/captures", captureHandler(db))
+	mux.HandleFunc("/captures", captureHandler(db))
 	mux.Handle("/", spa(assets))
 	return mux
 }
@@ -104,4 +115,3 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
-

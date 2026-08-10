@@ -33,6 +33,7 @@ type AuditSubject struct {
 
 type AuditEventInput struct {
 	EngagementID    string
+	Type            string
 	Actor           AuditActorSnapshot
 	Origin          AuditOrigin
 	Subject         AuditSubject
@@ -58,6 +59,7 @@ func AppendAuditEvent(ctx context.Context, tx *sql.Tx, in AuditEventInput) (int6
 	row := tx.QueryRowContext(ctx, `
 		INSERT INTO audit_event (
 			engagement_id,
+			type,
 			actor_id,
 			actor_kind,
 			actor_handle,
@@ -78,10 +80,11 @@ func AppendAuditEvent(ctx context.Context, tx *sql.Tx, in AuditEventInput) (int6
 			causation_event_id,
 			data
 		) VALUES (
-			$1, $2, $3, $4, $5, NULLIF($6, ''), NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), now(),
-			$10, NULLIF($11, ''), $12, $13, $14, $15, $16, $17, NULLIF($18, ''), $19, $20::jsonb
+			$1, NULLIF($2, ''), $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''), now(),
+			$11, NULLIF($12, ''), $13, $14, $15, $16, $17, NULLIF($18, ''), $19, $20::jsonb
 		) RETURNING id`,
 		in.EngagementID,
+		in.Type,
 		in.Actor.ID,
 		in.Actor.Kind,
 		in.Actor.Handle,

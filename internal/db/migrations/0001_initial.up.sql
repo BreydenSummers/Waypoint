@@ -81,6 +81,8 @@ CREATE TABLE action (
     engagement_id uuid NOT NULL REFERENCES engagement(id) ON DELETE CASCADE,
     actor_id uuid NOT NULL REFERENCES actor(id) ON DELETE RESTRICT,
     source_agent_id uuid NOT NULL,
+    capture_id uuid,
+    capture_fingerprint text,
     initiated_by action_initiated_by NOT NULL,
     phase action_phase NOT NULL,
     command text NOT NULL CHECK (btrim(command) <> ''),
@@ -189,6 +191,7 @@ CREATE TABLE audit_event (
     actor_version text,
     actor_authorized_by uuid,
     occurred_at timestamptz NOT NULL DEFAULT now(),
+    type text,
     origin_kind audit_origin_kind NOT NULL,
     origin_service text,
     subject_type audit_subject_type NOT NULL,
@@ -241,6 +244,7 @@ CREATE INDEX audit_event_engagement_occurred_at_idx ON audit_event (engagement_i
 CREATE INDEX audit_event_engagement_subject_idx ON audit_event (engagement_id, subject_type, subject_id, id DESC);
 CREATE INDEX audit_event_request_id_idx ON audit_event (engagement_id, request_id);
 CREATE INDEX audit_event_correlation_id_idx ON audit_event (engagement_id, correlation_id);
+CREATE INDEX action_capture_scope_unique_idx ON action (engagement_id, actor_id, source_agent_id, capture_id) WHERE capture_id IS NOT NULL;
 
 CREATE OR REPLACE FUNCTION forbid_row_mutation()
 RETURNS trigger

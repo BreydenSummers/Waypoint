@@ -8,6 +8,7 @@ DROP TRIGGER IF EXISTS actor_authorization_guard ON actor;
 DROP FUNCTION IF EXISTS validate_audit_actor_snapshot();
 DROP FUNCTION IF EXISTS validate_actor_authorization();
 DROP FUNCTION IF EXISTS forbid_row_mutation();
+DROP INDEX IF EXISTS action_capture_scope_unique_idx;
 DROP INDEX IF EXISTS audit_event_correlation_id_idx;
 DROP INDEX IF EXISTS audit_event_request_id_idx;
 DROP INDEX IF EXISTS audit_event_engagement_subject_idx;
