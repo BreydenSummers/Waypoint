@@ -3,6 +3,8 @@
   "description": "Event-specific negative compatibility cases; positive human and AI events are embedded in every valid capture case.",
   "cases": [
     { "path": "valid/capture-conflict.json", "valid": true },
+    { "path": "valid/out-of-band-orphan.json", "valid": true },
+    { "path": "valid/out-of-band-resolution.json", "valid": true },
     { "path": "invalid/numeric-cursor.json", "valid": false },
     { "path": "invalid/ai-event-missing-authorizer.json", "valid": false },
     { "path": "invalid/capture-event-data-mismatch.json", "valid": false }

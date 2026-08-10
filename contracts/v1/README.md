@@ -141,11 +141,13 @@ The v1 registry reserves these meanings without requiring all implementation rou
 - `capture.accepted`, `capture.conflict`, `structured-result.appended`;
 - `entity.merged`, `entity.split`;
 - `finding.promoted`, `finding.revised`, `finding.status-changed`;
-- `out-of-band.resolved`, `export.state-changed`, `teardown.authorized`.
+- `out-of-band.flagged`, `out-of-band.resolved`, `export.state-changed`, `teardown.authorized`.
 
-`capture.accepted` and `capture.conflict` have typed data in the current schema. Other registered
-payloads remain redacted objects until their owning task publishes a typed additive contract; the
-envelope and registry meaning cannot be repurposed.
+`capture.accepted`, `capture.conflict`, `out-of-band.flagged`, and `out-of-band.resolved` have typed
+data in the current schema. Other registered payloads remain redacted objects until their owning task
+publishes a typed additive contract; the envelope and registry meaning cannot be repurposed. If a
+claim cannot be tied back to a captured source action, Waypoint flags it for review instead of
+pretending provenance exists.
 
 ## Fixtures and verification
 

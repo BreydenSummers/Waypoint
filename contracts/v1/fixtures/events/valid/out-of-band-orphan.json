@@ -1,0 +1,30 @@
+{
+  "name": "out-of-band-orphan",
+  "description": "An imported entity claim with no captured source action is flagged as best-effort review material.",
+  "expected": { "valid": true },
+  "expectedEvent": {
+    "contractVersion": "1.0.0",
+    "id": "106",
+    "type": "out-of-band.flagged",
+    "engagementId": "11111111-1111-4111-8111-111111111111",
+    "actor": {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "kind": "human",
+      "handle": "alex.operator",
+      "role": "operator"
+    },
+    "occurredAt": "2025-01-15T10:25:00.000Z",
+    "origin": { "kind": "service", "service": "claim-detector" },
+    "subject": { "type": "out_of_band_claim", "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", "revision": 1 },
+    "requestId": "req-oob-001",
+    "correlationId": "claim-001",
+    "data": {
+      "claimId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2",
+      "claimKind": "entity",
+      "sourceActionId": null,
+      "detectionBoundary": "best_effort",
+      "reason": "missing_captured_source_action",
+      "observedAt": "2025-01-15T10:25:00.000Z"
+    }
+  }
+}

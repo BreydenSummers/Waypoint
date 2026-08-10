@@ -221,6 +221,11 @@ def event_consistency_errors(case: dict) -> list[str]:
         errors.append("/actor: event actor snapshot mismatch")
     if case.get("actor", {}).get("kind") == "ai_agent" and not event.get("actor", {}).get("authorizedBy"):
         errors.append("/actor/authorizedBy: AI event authorizer is required")
+
+    if isinstance(event.get("type"), str) and event["type"].startswith("out-of-band."):
+        if event.get("data", {}).get("claimId") != event.get("subject", {}).get("id"):
+            errors.append("/data/claimId: event_claim_mismatch")
+
     return sorted(set(errors))
 
 
@@ -387,18 +392,54 @@ def verify_problems(schemas: dict[str, dict], store: dict[str, dict]) -> int:
     return len(fixture["cases"])
 
 
-def resolve_pointer(document: Any, fragment: str) -> Any:
+def resolve_pointer(
+    document: Any,
+    fragment: str,
+    source_path: Path | None = None,
+    source_document: dict | None = None,
+    seen: set[str] | None = None,
+) -> Any:
     if fragment in {"", "#"}:
         return document
     if not fragment.startswith("#/"):
         raise VerificationFailure(f"unsupported JSON reference fragment {fragment!r}")
     current = document
-    for token in fragment[2:].split("/"):
-        token = decode_pointer_token(token)
+    tokens = [decode_pointer_token(token) for token in fragment[2:].split("/")]
+    index = 0
+    while index <= len(tokens):
+        if isinstance(current, dict) and isinstance(current.get("$ref"), str):
+            current = resolve_json_reference(current["$ref"], source_path or Path("."), source_document or document, seen)
+            continue
+        if index == len(tokens):
+            return current
+        token = tokens[index]
         if not isinstance(current, dict) or token not in current:
             raise VerificationFailure(f"unresolved JSON reference fragment {fragment}")
         current = current[token]
+        index += 1
     return current
+
+
+def resolve_json_reference(reference: str, source_path: Path, source_document: dict, seen: set[str] | None = None) -> Any:
+    if seen is None:
+        seen = set()
+    if reference in seen:
+        raise VerificationFailure(f"cyclic JSON reference detected: {reference}")
+    seen.add(reference)
+
+    destination, separator, fragment_text = reference.partition("#")
+    if destination:
+        target_path = (source_path.parent / destination).resolve()
+        try:
+            target_path.relative_to(CONTRACT.resolve())
+        except ValueError as exc:
+            raise VerificationFailure(f"OpenAPI reference escapes contract tree: {reference}") from exc
+        target_document = load_json(target_path)
+    else:
+        target_path = source_path
+        target_document = source_document
+    fragment = f"#{fragment_text}" if separator else ""
+    return resolve_pointer(target_document, fragment, target_path, target_document, seen)
 
 
 def verify_openapi() -> int:
@@ -415,19 +456,7 @@ def verify_openapi() -> int:
             reference = value.get("$ref")
             if isinstance(reference, str):
                 ref_count += 1
-                destination, separator, fragment_text = reference.partition("#")
-                if destination:
-                    target_path = (source_path.parent / destination).resolve()
-                    try:
-                        target_path.relative_to(CONTRACT.resolve())
-                    except ValueError as exc:
-                        raise VerificationFailure(f"OpenAPI reference escapes contract tree: {reference}") from exc
-                    target_document = load_json(target_path)
-                else:
-                    target_path = source_path
-                    target_document = source_document
-                fragment = f"#{fragment_text}" if separator else ""
-                resolve_pointer(target_document, fragment)
+                resolve_json_reference(reference, source_path, source_document)
             for child in value.values():
                 walk(child, source_path, source_document)
         elif isinstance(value, list):

@@ -79,7 +79,56 @@
         "required": ["type"]
       },
       "then": {
-        "properties": { "data": { "$ref": "#/$defs/CaptureAcceptedData" } }
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actionId",
+              "captureId",
+              "sourceAgentId",
+              "phase",
+              "initiatedBy",
+              "command",
+              "target",
+              "execution",
+              "parseStatus",
+              "egressStatus",
+              "receivedAt",
+              "clockSkewStatus"
+            ],
+            "properties": {
+              "actionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+              "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
+              "sourceAgentId": { "$ref": "common.schema.json#/$defs/Uuid" },
+              "phase": { "enum": ["recon", "attacks"] },
+              "initiatedBy": { "enum": ["manual", "ai"] },
+              "command": { "type": "string", "minLength": 1, "maxLength": 32768 },
+              "target": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "value"],
+                "properties": {
+                  "kind": { "enum": ["ip", "host", "network", "url", "service", "other"] },
+                  "value": { "type": "string", "minLength": 1, "maxLength": 4096 }
+                }
+              },
+              "execution": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["status"],
+                "properties": {
+                  "status": { "enum": ["exited", "signaled", "failed_to_start"] },
+                  "exitCode": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+                }
+              },
+              "parseStatus": { "enum": ["parsed", "needs-plugin", "raw", "parse-failed"] },
+              "egressStatus": { "enum": ["observed", "declared", "disabled", "resolution_failed"] },
+              "receivedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+              "clockSkewStatus": { "enum": ["within_tolerance", "outside_tolerance"] }
+            }
+          }
+        }
       }
     },
     {
@@ -88,7 +137,65 @@
         "required": ["type"]
       },
       "then": {
-        "properties": { "data": { "$ref": "#/$defs/CaptureConflictData" } }
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["captureId", "sourceAgentId", "existingActionId", "reason"],
+            "properties": {
+              "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
+              "sourceAgentId": { "$ref": "common.schema.json#/$defs/Uuid" },
+              "existingActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+              "reason": { "const": "payload_mismatch" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "out-of-band.flagged" } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["claimId", "claimKind", "sourceActionId", "detectionBoundary", "reason", "observedAt"],
+            "properties": {
+              "claimId": { "$ref": "common.schema.json#/$defs/Uuid" },
+              "claimKind": { "enum": ["entity", "result"] },
+              "sourceActionId": { "anyOf": [{ "$ref": "common.schema.json#/$defs/Uuid" }, { "type": "null" }] },
+              "detectionBoundary": { "const": "best_effort" },
+              "reason": { "const": "missing_captured_source_action" },
+              "observedAt": { "$ref": "common.schema.json#/$defs/Timestamp" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "type": { "const": "out-of-band.resolved" } },
+        "required": ["type"]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["claimId", "claimKind", "sourceActionId", "resolution", "resolvedAt"],
+            "properties": {
+              "claimId": { "$ref": "common.schema.json#/$defs/Uuid" },
+              "claimKind": { "enum": ["entity", "result"] },
+              "sourceActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+              "resolution": { "enum": ["linked", "dismissed"] },
+              "resolvedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+              "notes": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            }
+          }
+        }
       }
     }
   ],
@@ -150,6 +257,32 @@
         "sourceAgentId": { "$ref": "common.schema.json#/$defs/Uuid" },
         "existingActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
         "reason": { "const": "payload_mismatch" }
+      }
+    },
+    "OutOfBandClaimFlaggedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimId", "claimKind", "sourceActionId", "detectionBoundary", "reason", "observedAt"],
+      "properties": {
+        "claimId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "claimKind": { "enum": ["entity", "result"] },
+        "sourceActionId": { "anyOf": [{ "$ref": "common.schema.json#/$defs/Uuid" }, { "type": "null" }] },
+        "detectionBoundary": { "const": "best_effort" },
+        "reason": { "const": "missing_captured_source_action" },
+        "observedAt": { "$ref": "common.schema.json#/$defs/Timestamp" }
+      }
+    },
+    "OutOfBandClaimResolvedData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimId", "claimKind", "sourceActionId", "resolution", "resolvedAt"],
+      "properties": {
+        "claimId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "claimKind": { "enum": ["entity", "result"] },
+        "sourceActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "resolution": { "enum": ["linked", "dismissed"] },
+        "resolvedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+        "notes": { "type": "string", "minLength": 1, "maxLength": 4096 }
       }
     }
   }
