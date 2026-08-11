@@ -41,7 +41,7 @@ const phaseData = {
     workspaceLede: 'Promote confirmed results, keep evidence links intact, and draft the report straight from the trail.',
     cards: [
       { title: 'Promotion', items: ['Attack → finding', 'Severity and remediation fields', 'Evidence stays linked'] },
-      { title: 'Report copy', items: ['Client-readable summary', 'Machine-readable bundle', 'Hash manifest hook'] },
+      { title: 'Report copy', items: ['Client-readable summary', 'Machine-readable bundle', 'Empty signatures hook'] },
     ],
   },
   summit: {
@@ -54,8 +54,8 @@ const phaseData = {
     workspaceTitle: 'Summit workspace',
     workspaceLede: 'Final review, export, and bundle integrity checks live here before the box is wiped cleanly.',
     cards: [
-      { title: 'Export bundle', items: ['Database dump', 'Evidence artifacts', 'SHA-256 manifest'] },
-      { title: 'Teardown', items: ['Confirm the report reconstructs', 'Leave the instance disposable', 'No lingering state'] },
+      { title: 'Export bundle', items: ['Database dump', 'Evidence artifacts', 'Offline restore tools'] },
+      { title: 'Teardown', items: ['Confirm the report reconstructs', 'Verify the archive hash', 'No lingering state'] },
     ],
   },
 };
@@ -71,7 +71,7 @@ const reportSnapshot = {
     'Recon: preserve raw discovery and entity provenance.',
     'Attacks: capture every attempt with command, host, IPs, timing, and outcome.',
     'Findings: promote only confirmed results and keep evidence linked.',
-    'Export: freeze the snapshot before PDF rendering and bundle manifest generation.',
+    'Export: freeze the snapshot before PDF rendering, bundle manifest generation, and restore verification.',
   ],
   findings: [
     {
@@ -118,6 +118,31 @@ const reportSnapshot = {
       note: 'AI action stays attributed.',
     },
   ],
+  bundle: {
+    payloads: [
+      { path: 'bundle/database/engagement.dump', size: 8421, sha256: '9c0f5f1f7f8df02f38b1c7f5129e4f3e6dc44a5b47fdb2fefb8af8a7b4f4d201' },
+      { path: 'bundle/evidence/evidence.tar.zst', size: 16384, sha256: '2f2b8e7b40c2b1af5b7c1c2b6e2a0cfd7f4b5d61f7cf7d1de8b8f2f8a9b0c114' },
+      { path: 'bundle/report/frozen-report.pdf', size: 24576, sha256: '1e3b1a6f0dfd7c4a1e6e2c9d2b4b7b8f9f6c5d4e3a2b1c0d9e8f7a6b5c4d3e2f' },
+      { path: 'bundle/report/report-snapshot.json', size: 6184, sha256: '3f6f9e8d7c5b4a29181716151413121110ffeeddbbccaa998877665544332211' },
+      { path: 'bundle/metadata/export-metadata.json', size: 1224, sha256: '7c8d9e0f102132435465768798a9bacbdcedfe0f1e2d3c4b5a69788766554433' },
+      { path: 'bundle/tools/verify-restore.mjs', size: 4096, sha256: '5a6b7c8d9eafb0c1d2e3f405162738495a5b6c7d8e9fafb0c1d2e3f4051627384' },
+      { path: 'bundle/tools/regenerate-report.mjs', size: 4096, sha256: '4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a' },
+    ],
+    outerArchiveSha256: '8e0f1d2c3b4a59687766554433221100ffeeddccbbaa99887766554433221100',
+    signatures: {
+      version: 'v1',
+      items: [],
+    },
+    restore: {
+      tools: ['bundle/tools/verify-restore.mjs', 'bundle/tools/regenerate-report.mjs'],
+      cleanRoom: [
+        'Verify the outer archive hash before restore.',
+        'Reject the manifest if any payload path is missing, duplicated, or traverses upward.',
+        'Regenerate the report from the frozen snapshot rather than live queries.',
+      ],
+      maliciousPaths: ['../escape.dump', '/absolute/report.pdf', 'bundle/../metadata/export-metadata.json'],
+    },
+  },
   attribution: [
     { title: 'Operator', items: ['alex.operator'] },
     { title: 'AI actor', items: ['field-agent-7 · model gpt-4.1 · authorized by alex.operator'] },
@@ -1331,6 +1356,48 @@ function render() {
                   <p>${escapeHtml(item.note)}</p>
                 </article>
               `).join('')}
+            </div>
+          </section>
+
+          <section class="report-section">
+            <h2>Bundle manifest</h2>
+            <div class="report-grid">
+              ${reportSnapshot.bundle.payloads.map((payload) => `
+                <article class="report-card">
+                  <h3>${escapeHtml(payload.path)}</h3>
+                  <p><strong>Size:</strong> ${payload.size} bytes</p>
+                  <p class="report-snippet">${escapeHtml(payload.sha256)}</p>
+                </article>
+              `).join('')}
+            </div>
+            <div class="report-grid" style="margin-top: 12px;">
+              <article class="report-card">
+                <h3>Archive hash</h3>
+                <p class="report-snippet">${escapeHtml(reportSnapshot.bundle.outerArchiveSha256)}</p>
+              </article>
+              <article class="report-card">
+                <h3>Signature hook</h3>
+                <p>${escapeHtml(reportSnapshot.bundle.signatures.version)}</p>
+                <p>${reportSnapshot.bundle.signatures.items.length ? escapeHtml(reportSnapshot.bundle.signatures.items.join(', ')) : 'empty'}</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="report-section">
+            <h2>Restore and regenerate</h2>
+            <div class="report-grid">
+              <article class="report-card">
+                <h3>Offline tools</h3>
+                <ul>${reportSnapshot.bundle.restore.tools.map((tool) => `<li>${escapeHtml(tool)}</li>`).join('')}</ul>
+              </article>
+              <article class="report-card">
+                <h3>Clean-room checks</h3>
+                <ul>${reportSnapshot.bundle.restore.cleanRoom.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+              </article>
+              <article class="report-card">
+                <h3>Malicious paths</h3>
+                <ul>${reportSnapshot.bundle.restore.maliciousPaths.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+              </article>
             </div>
           </section>
 
