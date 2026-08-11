@@ -344,3 +344,20 @@ CREATE TRIGGER audit_event_snapshot_guard
     BEFORE INSERT ON audit_event
     FOR EACH ROW
     EXECUTE FUNCTION validate_audit_actor_snapshot();
+
+CREATE OR REPLACE FUNCTION forbid_finding_evidence_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NEW.evidence_action_ids IS DISTINCT FROM OLD.evidence_action_ids THEN
+        RAISE EXCEPTION 'finding evidence links are immutable' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER finding_evidence_immutable_guard
+    BEFORE UPDATE OF evidence_action_ids ON finding
+    FOR EACH ROW
+    EXECUTE FUNCTION forbid_finding_evidence_mutation();
