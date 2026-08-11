@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "baseline": {
+    "hardware": {
+      "cpu": "4 vCPU",
+      "memory": "8 GiB",
+      "os": "Linux"
+    },
+    "operators": 10,
+    "actions": 100000,
+    "auditEvents": 1000000,
+    "observations": 1000000,
+    "evidenceGiB": 10
+  },
+  "budgets": {
+    "queryP95Ms": 200,
+    "queryP99Ms": 500,
+    "ingestAckP95Ms": 500,
+    "ingestPeakRSSMiB": 32,
+    "sseVisibleP95Ms": 1000,
+    "warmRouteUsableMs": 2000,
+    "localInteractionMs": 100,
+    "exportCompleteMinutes": 15
+  },
+  "faults": [
+    {
+      "name": "disk-full",
+      "expectation": "write paths fail fast without corrupting earlier captures or exports"
+    },
+    {
+      "name": "restart",
+      "expectation": "interrupted upload/export resumes or fails cleanly without duplicate commits"
+    },
+    {
+      "name": "postgresql-interruption",
+      "expectation": "handlers surface retryable service unavailable responses while the database is down"
+    },
+    {
+      "name": "slow-client",
+      "expectation": "bounded SSE readers are disconnected instead of blocking ingest"
+    },
+    {
+      "name": "interrupted-upload",
+      "expectation": "truncated multipart captures are rejected and leave no committed rows"
+    },
+    {
+      "name": "interrupted-export",
+      "expectation": "cancelled bundle generation leaves the live engagement usable"
+    }
+  ]
+}
