@@ -49,6 +49,12 @@ for (const source of [app, distBundle]) {
   if (!source.includes('summit/report') || !source.includes('Frozen report snapshot') || !source.includes('report-shell')) {
     throw new Error('Report snapshot route or semantic sections are missing from source or embedded bundle');
   }
+  if (!source.includes('Verified export receipt') || !source.includes('Break-glass teardown') || !source.includes('Run export preflight')) {
+    throw new Error('Summit export flow or receipt copy is missing from source or embedded bundle');
+  }
+  if (!source.includes('Capture remained live while export froze a clean snapshot.') || !source.includes('WIPE NOW') || !source.includes('Destroy disposable instance')) {
+    throw new Error('Guarded destroy or receipt language is missing from source or embedded bundle');
+  }
   if (source.includes('exact command') || source.includes('AI claims') || source.includes('AI-generated')) {
     throw new Error('Static guide content leaked deferred v2 command or AI guidance');
   }

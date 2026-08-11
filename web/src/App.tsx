@@ -4,6 +4,8 @@ type ThemeMode = 'light' | 'dark';
 type WaypointState = 'completed' | 'current' | 'fog';
 type PhaseId = 'recon' | 'attacks' | 'findings' | 'summit';
 type RouteView = 'trail' | 'report';
+type SummitExportStatus = 'idle' | 'preflight' | 'exporting' | 'verified' | 'failed' | 'canceled';
+type TeardownState = 'idle' | 'armed' | 'destroyed';
 
 type ReportSection = {
   title: string;
@@ -54,6 +56,13 @@ type ReportSnapshot = {
     note: string;
   }>;
   bundle: BundleManifest;
+  receipt: {
+    id: string;
+    verifiedAt: string;
+    captureState: string;
+    manifestHash: string;
+    note: string;
+  };
   attribution: ReportSection[];
   knownCaptureGaps: string[];
 };
@@ -169,6 +178,13 @@ const reportSnapshot: ReportSnapshot = {
       maliciousPaths: ['../escape.dump', '/absolute/report.pdf', 'bundle/../metadata/export-metadata.json'],
     },
   },
+  receipt: {
+    id: 'receipt-q3-2025-01-10',
+    verifiedAt: '2025-01-10T09:02:14Z',
+    captureState: 'Capture remained live while export froze a clean snapshot.',
+    manifestHash: '8e0f1d2c3b4a59687766554433221100ffeeddccbbaa99887766554433221100',
+    note: 'Verified export receipt kept alongside the bundle so teardown stays defensible.',
+  },
   attribution: [
     { title: 'Operator', items: ['alex.operator'] },
     { title: 'AI actor', items: ['field-agent-7 · model gpt-4.1 · authorized by alex.operator'] },
@@ -238,8 +254,9 @@ const waypointDetails: Record<PhaseId, Omit<Waypoint, 'state'>> = {
     workspaceTitle: 'Summit workspace',
     workspaceLede: 'Final review, export, and bundle integrity checks live here before the box is wiped cleanly.',
     cards: [
-      { title: 'Export bundle', items: ['Database dump', 'Evidence artifacts', 'Offline restore tools'] },
-      { title: 'Teardown', items: ['Confirm the report reconstructs', 'Verify the archive hash', 'No lingering state'] },
+      { title: 'Export preflight', items: ['Capture keeps flowing during export', 'Hash manifest and receipt are checked', 'Failure can be retried from the last clean step'] },
+      { title: 'Verified receipt', items: ['Receipt ID is archived with the report', 'Manifest hash is pinned to the snapshot', 'Evidence and PDF stay attributable'] },
+      { title: 'Break glass teardown', items: ['Destroy only after receipt verification', 'Interactive confirmation is required', 'Guarded destroy keeps the audit trail honest'] },
     ],
   },
 };
@@ -422,6 +439,10 @@ export function App() {
   const [view, setView] = useState<RouteView>(initialRoute.view);
   const [activeId, setActiveId] = useState<PhaseId>(initialRoute.phase);
   const [guideQuery, setGuideQuery] = useState('');
+  const [summitExportStatus, setSummitExportStatus] = useState<SummitExportStatus>('idle');
+  const [breakGlassArmed, setBreakGlassArmed] = useState(false);
+  const [destroyPhrase, setDestroyPhrase] = useState('');
+  const [teardownState, setTeardownState] = useState<TeardownState>('idle');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -447,6 +468,29 @@ export function App() {
     document.title = view === 'report' ? 'Waypoint — report snapshot' : `Waypoint — ${waypointDetails[activeId].name}`;
     document.documentElement.dataset.view = view;
   }, [activeId, view]);
+
+  useEffect(() => {
+    if (view !== 'trail' || activeId !== 'summit') {
+      setTeardownState('idle');
+      return;
+    }
+
+    if (summitExportStatus !== 'preflight' && summitExportStatus !== 'exporting') {
+      return;
+    }
+
+    const timers: number[] = [];
+    if (summitExportStatus === 'preflight') {
+      timers.push(window.setTimeout(() => setSummitExportStatus('exporting'), 420));
+    }
+    if (summitExportStatus === 'exporting') {
+      timers.push(window.setTimeout(() => setSummitExportStatus('verified'), 1200));
+    }
+
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [activeId, summitExportStatus, view]);
 
   if (view === 'report') {
     return (
@@ -537,6 +581,26 @@ export function App() {
           </section>
 
           <section className="report-section">
+            <h2>Verified export receipt</h2>
+            <div className="report-grid">
+              <article className="report-card">
+                <h3>Receipt ID</h3>
+                <p className="report-snippet">{reportSnapshot.receipt.id}</p>
+                <p>{reportSnapshot.receipt.note}</p>
+              </article>
+              <article className="report-card">
+                <h3>Receipt state</h3>
+                <p>{reportSnapshot.receipt.captureState}</p>
+                <p><strong>Verified at:</strong> {reportSnapshot.receipt.verifiedAt}</p>
+              </article>
+              <article className="report-card">
+                <h3>Receipt manifest hash</h3>
+                <p className="report-snippet">{reportSnapshot.receipt.manifestHash}</p>
+              </article>
+            </div>
+          </section>
+
+          <section className="report-section">
             <h2>Restore and regenerate</h2>
             <div className="report-grid">
               <article className="report-card">
@@ -622,6 +686,17 @@ export function App() {
       return haystack.includes(query);
     });
   }, [activeId, guideQuery]);
+
+  const summitReceipt = reportSnapshot.receipt;
+  const summitExportMessage = {
+    idle: 'Preflight the bundle before you freeze the snapshot.',
+    preflight: 'Preflight running. Capture stays live while the bundle is checked.',
+    exporting: 'Exporting now. The live audit trail keeps running while the snapshot is frozen.',
+    verified: 'Verified export receipt recorded. Teardown is now guarded by the receipt.',
+    failed: 'Checksum drift detected. Re-run the preflight after fixing the bundle.',
+    canceled: 'Export canceled. Nothing was torn down, and capture remained intact.',
+  }[summitExportStatus];
+  const canDestroy = summitExportStatus === 'verified' && breakGlassArmed && destroyPhrase.trim().toUpperCase() === 'WIPE NOW';
 
   return (
     <main className="app-shell">
@@ -746,6 +821,106 @@ export function App() {
                 </section>
               ))}
             </div>
+
+            {activeId === 'summit' ? (
+              <section className="summit-flow" aria-label="Summit export and teardown flow">
+                <div className="summit-status">
+                  <span className={`status-chip ${summitExportStatus}`}>{summitExportStatus}</span>
+                  <p>{summitExportMessage}</p>
+                </div>
+
+                <div className="summit-controls">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    onClick={() => setSummitExportStatus('preflight')}
+                    disabled={summitExportStatus === 'preflight' || summitExportStatus === 'exporting'}
+                  >
+                    Run export preflight
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-link"
+                    onClick={() => setSummitExportStatus('canceled')}
+                    disabled={summitExportStatus !== 'preflight' && summitExportStatus !== 'exporting'}
+                  >
+                    Cancel export
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-link"
+                    onClick={() => setSummitExportStatus('failed')}
+                  >
+                    Simulate checksum failure
+                  </button>
+                </div>
+
+                {summitExportStatus === 'verified' ? (
+                  <article className="receipt-card" aria-label="Verified export receipt">
+                    <div className="panel-heading compact">
+                      <h3>Receipt verified</h3>
+                      <p>Capture stayed live while the bundle froze.</p>
+                    </div>
+                    <dl className="receipt-grid">
+                      <div>
+                        <dt>Receipt</dt>
+                        <dd>{summitReceipt.id}</dd>
+                      </div>
+                      <div>
+                        <dt>Verified</dt>
+                        <dd>{summitReceipt.verifiedAt}</dd>
+                      </div>
+                      <div>
+                        <dt>Manifest</dt>
+                        <dd className="report-snippet">{summitReceipt.manifestHash}</dd>
+                      </div>
+                    </dl>
+                  </article>
+                ) : null}
+
+                {summitExportStatus === 'failed' ? (
+                  <article className="receipt-card is-failed" aria-label="Export failure recovery">
+                    <div className="panel-heading compact">
+                      <h3>Export needs recovery</h3>
+                      <p>Rerun the preflight after fixing the bundle or evidence mismatch.</p>
+                    </div>
+                    <button type="button" className="primary-button" onClick={() => setSummitExportStatus('preflight')}>
+                      Retry export preflight
+                    </button>
+                  </article>
+                ) : null}
+
+                <article className="break-glass-panel" aria-label="Break-glass teardown guard">
+                  <div className="panel-heading compact">
+                    <h3>Break-glass teardown</h3>
+                    <p>Export receipt required before the live box can be destroyed.</p>
+                  </div>
+                  <label className="break-glass-toggle">
+                    <input type="checkbox" checked={breakGlassArmed} onChange={(event) => setBreakGlassArmed(event.target.checked)} />
+                    Arm the teardown guard
+                  </label>
+                  <label className="break-glass-input">
+                    <span>Type WIPE NOW to confirm</span>
+                    <input value={destroyPhrase} onChange={(event) => setDestroyPhrase(event.target.value)} placeholder="WIPE NOW" />
+                  </label>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    disabled={!canDestroy || teardownState === 'destroyed'}
+                    onClick={() => setTeardownState('destroyed')}
+                  >
+                    {teardownState === 'destroyed' ? 'Teardown queued' : 'Destroy disposable instance'}
+                  </button>
+                  <p className="summit-warning">
+                    {teardownState === 'destroyed'
+                      ? 'Break-glass was used after receipt verification. Nothing else should run here.'
+                      : canDestroy
+                        ? 'Guard armed. The instance can be destroyed deliberately.'
+                        : 'Guard remains locked until the verified receipt and break-glass phrase are in place.'}
+                  </p>
+                </article>
+              </section>
+            ) : null}
 
             <div className="workspace-footer">
               <a className="secondary-link" href={pathForPhase(previousPhase)} onClick={(event) => {

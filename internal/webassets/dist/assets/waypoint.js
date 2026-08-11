@@ -54,8 +54,9 @@ const phaseData = {
     workspaceTitle: 'Summit workspace',
     workspaceLede: 'Final review, export, and bundle integrity checks live here before the box is wiped cleanly.',
     cards: [
-      { title: 'Export bundle', items: ['Database dump', 'Evidence artifacts', 'Offline restore tools'] },
-      { title: 'Teardown', items: ['Confirm the report reconstructs', 'Verify the archive hash', 'No lingering state'] },
+      { title: 'Export preflight', items: ['Capture keeps flowing during export', 'Hash manifest and receipt are checked', 'Failure can be retried from the last clean step'] },
+      { title: 'Verified receipt', items: ['Receipt ID is archived with the report', 'Manifest hash is pinned to the snapshot', 'Evidence and PDF stay attributable'] },
+      { title: 'Break-glass teardown', items: ['Destroy only after receipt verification', 'Interactive confirmation is required', 'Guarded destroy keeps the audit trail honest'] },
     ],
   },
 };
@@ -153,6 +154,13 @@ const reportSnapshot = {
     'One capture recorded egress as off, so the report notes the gap instead of inventing a public IP.',
     'Unknown tools remain raw-first; a missing parser does not drop evidence.',
   ],
+  receipt: {
+    id: 'receipt-q3-2025-01-10',
+    verifiedAt: '2025-01-10T09:02:14Z',
+    captureState: 'Capture remained live while export froze a clean snapshot.',
+    manifestHash: '8e0f1d2c3b4a59687766554433221100ffeeddccbbaa99887766554433221100',
+    note: 'Verified export receipt kept alongside the bundle so teardown stays defensible.',
+  },
 };
 
 const guideExplainers = [
@@ -469,6 +477,11 @@ const state = {
   demoPulseTimer: null,
   renderScheduled: false,
   banner: '',
+  summitExportStatus: 'idle',
+  breakGlassArmed: false,
+  destroyPhrase: '',
+  teardownState: 'idle',
+  summitTimers: [],
 };
 
 function safeStorageGet(key) {
@@ -531,6 +544,35 @@ function navigateToReport(replace = false) {
     return;
   }
   window.history.pushState({}, '', path);
+}
+
+function clearSummitTimers() {
+  for (const timer of state.summitTimers) {
+    clearTimeout(timer);
+  }
+  state.summitTimers = [];
+}
+
+function startSummitExport() {
+  clearSummitTimers();
+  state.summitExportStatus = 'preflight';
+  state.teardownState = 'idle';
+  const preflightTimer = setTimeout(() => {
+    if (state.summitExportStatus === 'preflight') {
+      state.summitExportStatus = 'exporting';
+      scheduleRender();
+      const exportTimer = setTimeout(() => {
+        if (state.summitExportStatus === 'exporting') {
+          state.summitExportStatus = 'verified';
+          scheduleRender();
+        }
+      }, 1200);
+      state.summitTimers.push(exportTimer);
+    }
+    scheduleRender();
+  }, 420);
+  state.summitTimers.push(preflightTimer);
+  scheduleRender();
 }
 
 function formatTime(iso) {
@@ -1384,6 +1426,26 @@ function render() {
           </section>
 
           <section class="report-section">
+            <h2>Verified export receipt</h2>
+            <div class="report-grid">
+              <article class="report-card">
+                <h3>Receipt ID</h3>
+                <p class="report-snippet">${escapeHtml(reportSnapshot.receipt.id)}</p>
+                <p>${escapeHtml(reportSnapshot.receipt.note)}</p>
+              </article>
+              <article class="report-card">
+                <h3>Receipt state</h3>
+                <p>${escapeHtml(reportSnapshot.receipt.captureState)}</p>
+                <p><strong>Verified at:</strong> ${escapeHtml(reportSnapshot.receipt.verifiedAt)}</p>
+              </article>
+              <article class="report-card">
+                <h3>Receipt manifest hash</h3>
+                <p class="report-snippet">${escapeHtml(reportSnapshot.receipt.manifestHash)}</p>
+              </article>
+            </div>
+          </section>
+
+          <section class="report-section">
             <h2>Restore and regenerate</h2>
             <div class="report-grid">
               <article class="report-card">
@@ -1494,6 +1556,64 @@ function render() {
                     </section>
                   `).join('')}
                 </div>
+                ${state.activePhase === 'summit' ? `
+                  <section class="summit-flow" aria-label="Summit export and teardown flow">
+                    <div class="summit-status">
+                      <span class="status-chip ${state.summitExportStatus}">${escapeHtml(state.summitExportStatus)}</span>
+                      <p>${escapeHtml({
+                        idle: 'Preflight the bundle before you freeze the snapshot.',
+                        preflight: 'Preflight running. Capture stays live while the bundle is checked.',
+                        exporting: 'Exporting now. The live audit trail keeps running while the snapshot is frozen.',
+                        verified: 'Verified export receipt recorded. Teardown is now guarded by the receipt.',
+                        failed: 'Checksum drift detected. Re-run the preflight after fixing the bundle.',
+                        canceled: 'Export canceled. Nothing was torn down, and capture remained intact.',
+                      }[state.summitExportStatus])}</p>
+                    </div>
+                    <div class="summit-controls">
+                      <button type="button" class="primary-button" data-action="summit-preflight"${state.summitExportStatus === 'preflight' || state.summitExportStatus === 'exporting' ? ' disabled' : ''}>Run export preflight</button>
+                      <button type="button" class="secondary-link" data-action="summit-cancel"${state.summitExportStatus !== 'preflight' && state.summitExportStatus !== 'exporting' ? ' disabled' : ''}>Cancel export</button>
+                      <button type="button" class="secondary-link" data-action="summit-fail">Simulate checksum failure</button>
+                    </div>
+                    ${state.summitExportStatus === 'verified' ? `
+                      <article class="receipt-card" aria-label="Verified export receipt">
+                        <div class="panel-heading compact">
+                          <h3>Receipt verified</h3>
+                          <p>Capture stayed live while the bundle froze.</p>
+                        </div>
+                        <dl class="receipt-grid">
+                          <div><dt>Receipt</dt><dd>${escapeHtml(reportSnapshot.receipt.id)}</dd></div>
+                          <div><dt>Verified</dt><dd>${escapeHtml(reportSnapshot.receipt.verifiedAt)}</dd></div>
+                          <div><dt>Manifest</dt><dd class="report-snippet">${escapeHtml(reportSnapshot.receipt.manifestHash)}</dd></div>
+                        </dl>
+                      </article>
+                    ` : ''}
+                    ${state.summitExportStatus === 'failed' ? `
+                      <article class="receipt-card is-failed" aria-label="Export failure recovery">
+                        <div class="panel-heading compact">
+                          <h3>Export needs recovery</h3>
+                          <p>Rerun the preflight after fixing the bundle or evidence mismatch.</p>
+                        </div>
+                        <button type="button" class="primary-button" data-action="summit-retry">Retry export preflight</button>
+                      </article>
+                    ` : ''}
+                    <article class="break-glass-panel" aria-label="Break-glass teardown guard">
+                      <div class="panel-heading compact">
+                        <h3>Break-glass teardown</h3>
+                        <p>Export receipt required before the live box can be destroyed.</p>
+                      </div>
+                      <label class="break-glass-toggle">
+                        <input type="checkbox" data-action="summit-arm"${state.breakGlassArmed ? ' checked' : ''} />
+                        Arm the teardown guard
+                      </label>
+                      <label class="break-glass-input">
+                        <span>Type WIPE NOW to confirm</span>
+                        <input type="text" data-action="summit-phrase" value="${escapeHtml(state.destroyPhrase)}" placeholder="WIPE NOW" />
+                      </label>
+                      <button type="button" class="danger-button" data-action="summit-destroy"${state.summitExportStatus !== 'verified' || !state.breakGlassArmed || state.destroyPhrase.trim().toUpperCase() !== 'WIPE NOW' || state.teardownState === 'destroyed' ? ' disabled' : ''}>${state.teardownState === 'destroyed' ? 'Teardown queued' : 'Destroy disposable instance'}</button>
+                      <p class="summit-warning">${escapeHtml(state.teardownState === 'destroyed' ? 'Break-glass was used after receipt verification. Nothing else should run here.' : state.summitExportStatus === 'verified' && state.breakGlassArmed && state.destroyPhrase.trim().toUpperCase() === 'WIPE NOW' ? 'Guard armed. The instance can be destroyed deliberately.' : 'Guard remains locked until the verified receipt and break-glass phrase are in place.')}</p>
+                    </article>
+                  </section>
+                ` : ''}
                 <div class="workspace-footer">
                   <a class="secondary-link" href="${phasePath(phaseOrder[Math.max(0, currentIndex - 1)])}" data-action="phase" data-phase="${phaseOrder[Math.max(0, currentIndex - 1)]}">Back to ${escapeHtml(phaseData[phaseOrder[Math.max(0, currentIndex - 1)]].name)}</a>
                   <a class="primary-button" href="${state.activePhase === 'summit' ? reportPathFor() : phasePath(phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)])}" data-action="${state.activePhase === 'summit' ? 'report' : 'phase'}"${state.activePhase === 'summit' ? '' : ` data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}"`}>${state.activePhase === 'summit' ? 'Open report preview →' : `Continue to ${escapeHtml(phaseData[phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]].name)} →`}</a>
@@ -1598,6 +1718,9 @@ function bindUI() {
     button.addEventListener('click', () => {
       const phase = button.dataset.phase;
       if (!phase || phase === state.activePhase) return;
+      if (state.activePhase === 'summit' && phase !== 'summit') {
+        clearSummitTimers();
+      }
       state.view = 'trail';
       state.activePhase = phase;
       navigateToPhase(phase);
@@ -1617,6 +1740,52 @@ function bindUI() {
   root.querySelector('[data-action="guide-search"]')?.addEventListener('input', (event) => {
     state.guideQuery = event.target.value;
     scheduleRender();
+  });
+
+  root.querySelectorAll('[data-action="summit-preflight"]').forEach((button) => {
+    button.addEventListener('click', () => startSummitExport());
+  });
+
+  root.querySelectorAll('[data-action="summit-cancel"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      clearSummitTimers();
+      state.summitExportStatus = 'canceled';
+      scheduleRender();
+    });
+  });
+
+  root.querySelectorAll('[data-action="summit-fail"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      clearSummitTimers();
+      state.summitExportStatus = 'failed';
+      scheduleRender();
+    });
+  });
+
+  root.querySelectorAll('[data-action="summit-retry"]').forEach((button) => {
+    button.addEventListener('click', () => startSummitExport());
+  });
+
+  root.querySelectorAll('[data-action="summit-arm"]').forEach((control) => {
+    control.addEventListener('change', (event) => {
+      state.breakGlassArmed = event.target.checked;
+      scheduleRender();
+    });
+  });
+
+  root.querySelectorAll('[data-action="summit-phrase"]').forEach((control) => {
+    control.addEventListener('input', (event) => {
+      state.destroyPhrase = event.target.value;
+      scheduleRender();
+    });
+  });
+
+  root.querySelectorAll('[data-action="summit-destroy"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (state.summitExportStatus !== 'verified' || !state.breakGlassArmed || state.destroyPhrase.trim().toUpperCase() !== 'WIPE NOW') return;
+      state.teardownState = 'destroyed';
+      scheduleRender();
+    });
   });
 
   root.querySelector('[data-action="connect-live"]')?.addEventListener('click', () => connectLive());
