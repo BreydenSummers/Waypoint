@@ -3,6 +3,39 @@ import { useEffect, useMemo, useState } from 'react';
 type ThemeMode = 'light' | 'dark';
 type WaypointState = 'completed' | 'current' | 'fog';
 type PhaseId = 'recon' | 'attacks' | 'findings' | 'summit';
+type RouteView = 'trail' | 'report';
+
+type ReportSection = {
+  title: string;
+  items: string[];
+};
+
+type ReportSnapshot = {
+  version: string;
+  title: string;
+  engagement: string;
+  cutoff: string;
+  scope: string[];
+  methodology: string[];
+  findings: Array<{
+    title: string;
+    severity: string;
+    evidence: string[];
+    remediation: string;
+    summary: string;
+  }>;
+  evidence: Array<{
+    label: string;
+    source: string;
+    actor: string;
+    host: string;
+    attribution: string;
+    rawSnippet: string;
+    note: string;
+  }>;
+  attribution: ReportSection[];
+  knownCaptureGaps: string[];
+};
 
 type Waypoint = {
   id: PhaseId;
@@ -31,7 +64,76 @@ type GuideExplainer = {
 };
 
 const engagementPath = '/engagements/demo';
+const reportPath = `${engagementPath}/summit/report`;
 const waypointOrder: PhaseId[] = ['recon', 'attacks', 'findings', 'summit'];
+const reportSnapshot: ReportSnapshot = {
+  version: 'v1',
+  title: 'Frozen report snapshot',
+  engagement: 'Q3 launch',
+  cutoff: '2025-01-10T09:00:00Z',
+  scope: ['10.10.12.0/24', 'corp.local', 'mail01.internal', 'jumpbox-01'],
+  methodology: [
+    'Recon: preserve raw discovery and entity provenance.',
+    'Attacks: capture every attempt with command, host, IPs, timing, and outcome.',
+    'Findings: promote only confirmed results and keep evidence linked.',
+    'Export: freeze the snapshot before PDF rendering and bundle manifest generation.',
+  ],
+  findings: [
+    {
+      title: 'SMB relay attempt blocked by signing',
+      severity: 'Medium',
+      evidence: ['Action 103'],
+      remediation: 'Keep SMB signing on and review relay exposure on the target segment.',
+      summary: 'Relay was stopped by SMB signing on mail01.internal.',
+    },
+    {
+      title: 'AI-authored kerberoast probe stayed attributed',
+      severity: 'Low',
+      evidence: ['Action 104'],
+      remediation: 'Keep AI actor authorization recorded with the same rigor as human operators.',
+      summary: 'An AI-initiated action remained linked to the human authorizer and source host.',
+    },
+  ],
+  evidence: [
+    {
+      label: 'Action 101',
+      source: 'nmap -sn 10.10.12.0/24',
+      actor: 'alex.operator',
+      host: 'jumpbox-01',
+      attribution: '10.0.0.12 → 203.0.113.26',
+      rawSnippet: 'nmap -sn 10.10.12.0/24\nHost is up',
+      note: 'Discovery output preserved as text.',
+    },
+    {
+      label: 'Action 103',
+      source: 'ntlmrelayx --target mail01.internal',
+      actor: 'alex.operator',
+      host: 'jumpbox-01',
+      attribution: '10.0.0.12 → 203.0.113.26',
+      rawSnippet: 'Relay refused: SMB signing required\n<script>alert("x")</script>',
+      note: 'Unsafe raw output stays escaped in the printable snapshot.',
+    },
+    {
+      label: 'Action 104',
+      source: 'GetUserSPNs.py corp.local',
+      actor: 'field-agent-7 (AI)',
+      host: 'field-agent-7',
+      attribution: '10.0.0.12 → 203.0.113.26',
+      rawSnippet: 'Found 2 service principals',
+      note: 'AI action stays attributed.',
+    },
+  ],
+  attribution: [
+    { title: 'Operator', items: ['alex.operator'] },
+    { title: 'AI actor', items: ['field-agent-7 · model gpt-4.1 · authorized by alex.operator'] },
+    { title: 'Exec host IP', items: ['10.0.0.12'] },
+    { title: 'Public egress IP', items: ['203.0.113.26'] },
+  ],
+  knownCaptureGaps: [
+    'One capture recorded egress as off, so the report notes the gap instead of inventing a public IP.',
+    'Unknown tools remain raw-first; a missing parser does not drop evidence.',
+  ],
+};
 
 const waypointDetails: Record<PhaseId, Omit<Waypoint, 'state'>> = {
   recon: {
@@ -188,25 +290,33 @@ function getInitialTheme(): ThemeMode {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-function phaseFromPath(pathname: string): PhaseId {
+function routeFromPath(pathname: string): { view: RouteView; phase: PhaseId } {
+  if (/^\/engagements\/[^/]+\/summit\/report\/?$/.test(pathname)) {
+    return { view: 'report', phase: 'summit' };
+  }
+
   const match = pathname.match(/^\/engagements\/[^/]+\/(recon|attacks|findings|summit)\/?$/);
   if (match) {
-    return match[1] as PhaseId;
+    return { view: 'trail', phase: match[1] as PhaseId };
   }
 
-  return 'attacks';
+  return { view: 'trail', phase: 'attacks' };
 }
 
-function getInitialPhase(): PhaseId {
+function getInitialRoute(): { view: RouteView; phase: PhaseId } {
   if (typeof window === 'undefined') {
-    return 'attacks';
+    return { view: 'trail', phase: 'attacks' };
   }
 
-  return phaseFromPath(window.location.pathname);
+  return routeFromPath(window.location.pathname);
 }
 
 function pathForPhase(phase: PhaseId): string {
   return waypointDetails[phase].path;
+}
+
+function pathForReport(): string {
+  return reportPath;
 }
 
 function stateForIndex(index: number, activeIndex: number): WaypointState {
@@ -251,9 +361,20 @@ function navigateToPhase(phase: PhaseId, replace = false) {
   window.history.pushState({}, '', path);
 }
 
+function navigateToReport(replace = false) {
+  if (replace) {
+    window.history.replaceState({}, '', pathForReport());
+    return;
+  }
+
+  window.history.pushState({}, '', pathForReport());
+}
+
 export function App() {
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
-  const [activeId, setActiveId] = useState<PhaseId>(getInitialPhase);
+  const initialRoute = getInitialRoute();
+  const [view, setView] = useState<RouteView>(initialRoute.view);
+  const [activeId, setActiveId] = useState<PhaseId>(initialRoute.phase);
   const [guideQuery, setGuideQuery] = useState('');
 
   useEffect(() => {
@@ -267,14 +388,104 @@ export function App() {
   }, [theme]);
 
   useEffect(() => {
-    const onPopState = () => setActiveId(phaseFromPath(window.location.pathname));
+    const onPopState = () => {
+      const route = routeFromPath(window.location.pathname);
+      setView(route.view);
+      setActiveId(route.phase);
+    };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
   useEffect(() => {
-    document.title = `Waypoint — ${waypointDetails[activeId].name}`;
-  }, [activeId]);
+    document.title = view === 'report' ? 'Waypoint — report snapshot' : `Waypoint — ${waypointDetails[activeId].name}`;
+    document.documentElement.dataset.view = view;
+  }, [activeId, view]);
+
+  if (view === 'report') {
+    return (
+      <main className="app-shell report-shell" aria-label="Frozen report snapshot">
+        <section className="report-hero artifact">
+          <div>
+            <p className="eyebrow">Waypoint · frozen report snapshot</p>
+            <h1>{reportSnapshot.title}</h1>
+            <p className="subtitle">
+              Version {reportSnapshot.version} · {reportSnapshot.engagement} · Cutoff {reportSnapshot.cutoff}
+            </p>
+          </div>
+          <div className="report-toolbar">
+            <button type="button" className="secondary-link" onClick={() => { setView('trail'); setActiveId('summit'); navigateToPhase('summit'); }}>
+              Back to Summit
+            </button>
+            <button type="button" className="primary-button" onClick={() => window.print()}>
+              Print PDF
+            </button>
+          </div>
+        </section>
+
+        <article className="report-page" aria-label="Printable engagement report">
+          <section className="report-section">
+            <h2>Scope</h2>
+            <ul>{reportSnapshot.scope.map((item) => <li key={item}>{item}</li>)}</ul>
+          </section>
+
+          <section className="report-section">
+            <h2>Methodology</h2>
+            <ul>{reportSnapshot.methodology.map((item) => <li key={item}>{item}</li>)}</ul>
+          </section>
+
+          <section className="report-section">
+            <h2>Findings</h2>
+            <div className="report-grid">
+              {reportSnapshot.findings.map((finding) => (
+                <article key={finding.title} className="report-card">
+                  <p className="report-badge">{finding.severity}</p>
+                  <h3>{finding.title}</h3>
+                  <p>{finding.summary}</p>
+                  <p><strong>Evidence:</strong> {finding.evidence.join(', ')}</p>
+                  <p><strong>Remediation:</strong> {finding.remediation}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="report-section">
+            <h2>Evidence</h2>
+            <div className="report-grid">
+              {reportSnapshot.evidence.map((item) => (
+                <article key={item.label} className="report-card">
+                  <p className="report-badge">{item.label}</p>
+                  <p><strong>Source:</strong> {item.source}</p>
+                  <p><strong>Actor:</strong> {item.actor}</p>
+                  <p><strong>Host:</strong> {item.host}</p>
+                  <p><strong>Attribution:</strong> {item.attribution}</p>
+                  <p className="report-snippet">{item.rawSnippet}</p>
+                  <p>{item.note}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="report-section">
+            <h2>Attribution</h2>
+            <div className="report-grid">
+              {reportSnapshot.attribution.map((section) => (
+                <article key={section.title} className="report-card">
+                  <h3>{section.title}</h3>
+                  <ul>{section.items.map((item) => <li key={item}>{item}</li>)}</ul>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="report-section">
+            <h2>Known capture gaps</h2>
+            <ul>{reportSnapshot.knownCaptureGaps.map((item) => <li key={item}>{item}</li>)}</ul>
+          </section>
+        </article>
+      </main>
+    );
+  }
 
   const activeIndex = waypointOrder.indexOf(activeId);
   const activeWaypoint = waypointDetails[activeId];
@@ -293,7 +504,7 @@ export function App() {
   const previousPhase = waypointOrder[Math.max(0, activeIndex - 1)];
   const nextPhase = waypointOrder[Math.min(waypointOrder.length - 1, activeIndex + 1)];
   const guidePhase = activeIndex < waypointOrder.length - 1 ? nextPhase : previousPhase;
-  const guideButtonLabel = activeIndex < waypointOrder.length - 1 ? `Continue into ${waypointDetails[guidePhase].name} →` : `Return to ${waypointDetails[guidePhase].name} →`;
+  const guideButtonLabel = activeId === 'summit' ? 'Open report preview →' : activeIndex < waypointOrder.length - 1 ? `Continue into ${waypointDetails[guidePhase].name} →` : `Return to ${waypointDetails[guidePhase].name} →`;
 
   const phaseSummary = {
     recon: 'Collect signals and keep the pack tidy.',
@@ -456,12 +667,22 @@ export function App() {
               }}>
                 Back to {waypointDetails[previousPhase].name}
               </a>
-              <a className="primary-button" href={pathForPhase(nextPhase)} onClick={(event) => {
-                event.preventDefault();
-                setActiveId(nextPhase);
-                navigateToPhase(nextPhase);
-              }}>
-                Continue to {waypointDetails[nextPhase].name} →
+              <a
+                className="primary-button"
+                href={activeId === 'summit' ? pathForReport() : pathForPhase(nextPhase)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (activeId === 'summit') {
+                    setView('report');
+                    navigateToReport();
+                    return;
+                  }
+
+                  setActiveId(nextPhase);
+                  navigateToPhase(nextPhase);
+                }}
+              >
+                {activeId === 'summit' ? 'Open report preview →' : `Continue to ${waypointDetails[nextPhase].name} →`}
               </a>
             </div>
           </section>
@@ -517,6 +738,12 @@ export function App() {
                   type="button"
                   className="primary-button"
                   onClick={() => {
+                    if (activeId === 'summit') {
+                      setView('report');
+                      navigateToReport();
+                      return;
+                    }
+
                     setActiveId(guidePhase);
                     navigateToPhase(guidePhase);
                   }}

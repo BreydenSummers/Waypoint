@@ -60,6 +60,76 @@ const phaseData = {
   },
 };
 
+const reportPath = '/engagements/demo/summit/report';
+const reportSnapshot = {
+  version: 'v1',
+  title: 'Frozen report snapshot',
+  engagement: 'Q3 launch',
+  cutoff: '2025-01-10T09:00:00Z',
+  scope: ['10.10.12.0/24', 'corp.local', 'mail01.internal', 'jumpbox-01'],
+  methodology: [
+    'Recon: preserve raw discovery and entity provenance.',
+    'Attacks: capture every attempt with command, host, IPs, timing, and outcome.',
+    'Findings: promote only confirmed results and keep evidence linked.',
+    'Export: freeze the snapshot before PDF rendering and bundle manifest generation.',
+  ],
+  findings: [
+    {
+      title: 'SMB relay attempt blocked by signing',
+      severity: 'Medium',
+      evidence: ['Action 103'],
+      remediation: 'Keep SMB signing on and review relay exposure on the target segment.',
+      summary: 'Relay was stopped by SMB signing on mail01.internal.',
+    },
+    {
+      title: 'AI-authored kerberoast probe stayed attributed',
+      severity: 'Low',
+      evidence: ['Action 104'],
+      remediation: 'Keep AI actor authorization recorded with the same rigor as human operators.',
+      summary: 'An AI-initiated action remained linked to the human authorizer and source host.',
+    },
+  ],
+  evidence: [
+    {
+      label: 'Action 101',
+      source: 'nmap -sn 10.10.12.0/24',
+      actor: 'alex.operator',
+      host: 'jumpbox-01',
+      attribution: '10.0.0.12 → 203.0.113.26',
+      rawSnippet: 'nmap -sn 10.10.12.0/24\nHost is up',
+      note: 'Discovery output preserved as text.',
+    },
+    {
+      label: 'Action 103',
+      source: 'ntlmrelayx --target mail01.internal',
+      actor: 'alex.operator',
+      host: 'jumpbox-01',
+      attribution: '10.0.0.12 → 203.0.113.26',
+      rawSnippet: 'Relay refused: SMB signing required\n<script>alert("x")</script>',
+      note: 'Unsafe raw output stays escaped in the printable snapshot.',
+    },
+    {
+      label: 'Action 104',
+      source: 'GetUserSPNs.py corp.local',
+      actor: 'field-agent-7 (AI)',
+      host: 'field-agent-7',
+      attribution: '10.0.0.12 → 203.0.113.26',
+      rawSnippet: 'Found 2 service principals',
+      note: 'AI action stays attributed.',
+    },
+  ],
+  attribution: [
+    { title: 'Operator', items: ['alex.operator'] },
+    { title: 'AI actor', items: ['field-agent-7 · model gpt-4.1 · authorized by alex.operator'] },
+    { title: 'Exec host IP', items: ['10.0.0.12'] },
+    { title: 'Public egress IP', items: ['203.0.113.26'] },
+  ],
+  knownCaptureGaps: [
+    'One capture recorded egress as off, so the report notes the gap instead of inventing a public IP.',
+    'Unknown tools remain raw-first; a missing parser does not drop evidence.',
+  ],
+};
+
 const guideExplainers = [
   {
     id: 'guide-recon-dns',
@@ -351,9 +421,11 @@ const demoRows = [
 ];
 
 const demoPageSize = 4;
+const initialRoute = getInitialRoute();
 const state = {
   theme: getInitialTheme(),
-  activePhase: getInitialPhase(),
+  view: initialRoute.view,
+  activePhase: initialRoute.phase,
   rows: [],
   visibleRows: [],
   selectedId: null,
@@ -401,18 +473,34 @@ function getInitialTheme() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-function getInitialPhase() {
-  if (typeof window === 'undefined') return 'attacks';
+function getInitialRoute() {
+  if (typeof window === 'undefined') return { view: 'trail', phase: 'attacks' };
+  if (/^\/engagements\/[^/]+\/summit\/report\/?$/.test(window.location.pathname)) {
+    return { view: 'report', phase: 'summit' };
+  }
   const match = window.location.pathname.match(/^\/engagements\/[^/]+\/(recon|attacks|findings|summit)\/?$/);
-  return match ? match[1] : 'attacks';
+  return { view: 'trail', phase: match ? match[1] : 'attacks' };
 }
 
 function phasePath(phase) {
   return phaseData[phase].path;
 }
 
+function reportPathFor() {
+  return reportPath;
+}
+
 function navigateToPhase(phase, replace = false) {
   const path = phasePath(phase);
+  if (replace) {
+    window.history.replaceState({}, '', path);
+    return;
+  }
+  window.history.pushState({}, '', path);
+}
+
+function navigateToReport(replace = false) {
+  const path = reportPathFor();
   if (replace) {
     window.history.replaceState({}, '', path);
     return;
@@ -1184,8 +1272,92 @@ function render() {
     return haystack.includes(guideQuery);
   });
 
-  document.title = `Waypoint — ${active.name}`;
   document.documentElement.dataset.theme = state.theme;
+  document.documentElement.dataset.view = state.view;
+
+  if (state.view === 'report') {
+    document.title = 'Waypoint — report snapshot';
+    root.innerHTML = `
+      <main class="app-shell report-shell" aria-label="Frozen report snapshot">
+        <section class="report-hero artifact">
+          <div>
+            <p class="eyebrow">Waypoint · frozen report snapshot</p>
+            <h1>${escapeHtml(reportSnapshot.title)}</h1>
+            <p class="subtitle">Version ${escapeHtml(reportSnapshot.version)} · ${escapeHtml(reportSnapshot.engagement)} · Cutoff ${escapeHtml(reportSnapshot.cutoff)}</p>
+          </div>
+          <div class="report-toolbar">
+            <button type="button" class="secondary-link" data-action="report-back">Back to Summit</button>
+            <button type="button" class="primary-button" data-action="report-print">Print PDF</button>
+          </div>
+        </section>
+
+        <article class="report-page" aria-label="Printable engagement report">
+          <section class="report-section">
+            <h2>Scope</h2>
+            <ul>${reportSnapshot.scope.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+          </section>
+
+          <section class="report-section">
+            <h2>Methodology</h2>
+            <ul>${reportSnapshot.methodology.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+          </section>
+
+          <section class="report-section">
+            <h2>Findings</h2>
+            <div class="report-grid">
+              ${reportSnapshot.findings.map((finding) => `
+                <article class="report-card">
+                  <p class="report-badge">${escapeHtml(finding.severity)}</p>
+                  <h3>${escapeHtml(finding.title)}</h3>
+                  <p>${escapeHtml(finding.summary)}</p>
+                  <p><strong>Evidence:</strong> ${finding.evidence.map((item) => escapeHtml(item)).join(', ')}</p>
+                  <p><strong>Remediation:</strong> ${escapeHtml(finding.remediation)}</p>
+                </article>
+              `).join('')}
+            </div>
+          </section>
+
+          <section class="report-section">
+            <h2>Evidence</h2>
+            <div class="report-grid">
+              ${reportSnapshot.evidence.map((item) => `
+                <article class="report-card">
+                  <p class="report-badge">${escapeHtml(item.label)}</p>
+                  <p><strong>Source:</strong> ${escapeHtml(item.source)}</p>
+                  <p><strong>Actor:</strong> ${escapeHtml(item.actor)}</p>
+                  <p><strong>Host:</strong> ${escapeHtml(item.host)}</p>
+                  <p><strong>Attribution:</strong> ${escapeHtml(item.attribution)}</p>
+                  <p class="report-snippet">${escapeHtml(item.rawSnippet)}</p>
+                  <p>${escapeHtml(item.note)}</p>
+                </article>
+              `).join('')}
+            </div>
+          </section>
+
+          <section class="report-section">
+            <h2>Attribution</h2>
+            <div class="report-grid">
+              ${reportSnapshot.attribution.map((section) => `
+                <article class="report-card">
+                  <h3>${escapeHtml(section.title)}</h3>
+                  <ul>${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+                </article>
+              `).join('')}
+            </div>
+          </section>
+
+          <section class="report-section">
+            <h2>Known capture gaps</h2>
+            <ul>${reportSnapshot.knownCaptureGaps.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul>
+          </section>
+        </article>
+      </main>
+    `;
+    bindUI();
+    return;
+  }
+
+  document.title = `Waypoint — ${active.name}`;
 
   root.innerHTML = `
     <main class="app-shell">
@@ -1257,7 +1429,7 @@ function render() {
                 </div>
                 <div class="workspace-footer">
                   <a class="secondary-link" href="${phasePath(phaseOrder[Math.max(0, currentIndex - 1)])}" data-action="phase" data-phase="${phaseOrder[Math.max(0, currentIndex - 1)]}">Back to ${escapeHtml(phaseData[phaseOrder[Math.max(0, currentIndex - 1)]].name)}</a>
-                  <a class="primary-button" href="${phasePath(phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)])}" data-action="phase" data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}">Continue to ${escapeHtml(phaseData[phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]].name)} →</a>
+                  <a class="primary-button" href="${state.activePhase === 'summit' ? reportPathFor() : phasePath(phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)])}" data-action="${state.activePhase === 'summit' ? 'report' : 'phase'}"${state.activePhase === 'summit' ? '' : ` data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}"`}>${state.activePhase === 'summit' ? 'Open report preview →' : `Continue to ${escapeHtml(phaseData[phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]].name)} →`}</a>
                 </div>
               </section>
             `}
@@ -1288,7 +1460,7 @@ function render() {
               <p>${escapeHtml(active.note)}</p>
               <div class="guide-tools">
                 <label class="guide-search"><span class="sr-only">Search reviewed guide notes</span><input type="search" data-action="guide-search" value="${escapeHtml(state.guideQuery)}" placeholder="Search reviewed notes and context" aria-label="Search reviewed guide notes" /></label>
-                <button type="button" class="primary-button" data-action="phase" data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}">${currentIndex < phaseOrder.length - 1 ? `Continue into ${escapeHtml(phaseData[phaseOrder[currentIndex + 1]].name)} →` : `Return to ${escapeHtml(phaseData[phaseOrder[currentIndex - 1]].name)} →`}</button>
+                <button type="button" class="primary-button" data-action="${state.activePhase === 'summit' ? 'report' : 'phase'}"${state.activePhase === 'summit' ? '' : ` data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}"`}>${state.activePhase === 'summit' ? 'Open report preview →' : currentIndex < phaseOrder.length - 1 ? `Continue into ${escapeHtml(phaseData[phaseOrder[currentIndex + 1]].name)} →` : `Return to ${escapeHtml(phaseData[phaseOrder[currentIndex - 1]].name)} →`}</button>
               </div>
               <div class="guide-note-list" aria-label="Reviewed guide notes">
                 ${visibleGuideExplainers.length ? visibleGuideExplainers.map((explanation) => `
@@ -1333,10 +1505,33 @@ function bindUI() {
     });
   });
 
+  root.querySelectorAll('[data-action="report"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.view = 'report';
+      state.activePhase = 'summit';
+      navigateToReport();
+      scheduleRender();
+    });
+  });
+
+  root.querySelectorAll('[data-action="report-back"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.view = 'trail';
+      state.activePhase = 'summit';
+      navigateToPhase('summit');
+      scheduleRender();
+    });
+  });
+
+  root.querySelectorAll('[data-action="report-print"]').forEach((button) => {
+    button.addEventListener('click', () => window.print());
+  });
+
   root.querySelectorAll('[data-action="phase"]').forEach((button) => {
     button.addEventListener('click', () => {
       const phase = button.dataset.phase;
       if (!phase || phase === state.activePhase) return;
+      state.view = 'trail';
       state.activePhase = phase;
       navigateToPhase(phase);
       scheduleRender();
@@ -1394,18 +1589,18 @@ function onFilterChange(event) {
 }
 
 window.addEventListener('popstate', () => {
-  const match = window.location.pathname.match(/^\/engagements\/[^/]+\/(recon|attacks|findings|summit)\/?$/);
-  if (match) {
-    state.activePhase = match[1];
-    scheduleRender();
-  }
+  const route = getInitialRoute();
+  state.view = route.view;
+  state.activePhase = route.phase;
+  scheduleRender();
 });
 
 window.addEventListener('beforeunload', cleanupStream);
 
 function boot() {
   document.documentElement.dataset.theme = state.theme;
-  document.title = `Waypoint — ${phaseData[state.activePhase].name}`;
+  document.documentElement.dataset.view = state.view;
+  document.title = state.view === 'report' ? 'Waypoint — report snapshot' : `Waypoint — ${phaseData[state.activePhase].name}`;
   primeDemoFeed(false);
   render();
   if (state.liveToken.trim()) {

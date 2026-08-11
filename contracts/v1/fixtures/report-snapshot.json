@@ -1,0 +1,85 @@
+{
+  "version": "v1",
+  "title": "Frozen report snapshot",
+  "engagement": "Q3 launch",
+  "cutoff": "2025-01-10T09:00:00Z",
+  "scope": [
+    "10.10.12.0/24",
+    "corp.local",
+    "mail01.internal",
+    "jumpbox-01"
+  ],
+  "methodology": [
+    "Recon: preserve raw discovery and entity provenance.",
+    "Attacks: capture every attempt with command, host, IPs, timing, and outcome.",
+    "Findings: promote only confirmed results and keep evidence linked.",
+    "Export: freeze the snapshot before PDF rendering and bundle manifest generation."
+  ],
+  "findings": [
+    {
+      "title": "SMB relay attempt blocked by signing",
+      "severity": "Medium",
+      "evidence": ["Action 103"],
+      "remediation": "Keep SMB signing on and review relay exposure on the target segment.",
+      "summary": "Relay was stopped by SMB signing on mail01.internal."
+    },
+    {
+      "title": "AI-authored kerberoast probe stayed attributed",
+      "severity": "Low",
+      "evidence": ["Action 104"],
+      "remediation": "Keep AI actor authorization recorded with the same rigor as human operators.",
+      "summary": "An AI-initiated action remained linked to the human authorizer and source host."
+    }
+  ],
+  "evidence": [
+    {
+      "label": "Action 101",
+      "source": "nmap -sn 10.10.12.0/24",
+      "actor": "alex.operator",
+      "host": "jumpbox-01",
+      "attribution": "10.0.0.12 → 203.0.113.26",
+      "rawSnippet": "nmap -sn 10.10.12.0/24\nHost is up",
+      "note": "Discovery output preserved as text."
+    },
+    {
+      "label": "Action 103",
+      "source": "ntlmrelayx --target mail01.internal",
+      "actor": "alex.operator",
+      "host": "jumpbox-01",
+      "attribution": "10.0.0.12 → 203.0.113.26",
+      "rawSnippet": "Relay refused: SMB signing required\n<script>alert(\"x\")</script>",
+      "note": "Unsafe raw output stays escaped in the printable snapshot."
+    },
+    {
+      "label": "Action 104",
+      "source": "GetUserSPNs.py corp.local",
+      "actor": "field-agent-7 (AI)",
+      "host": "field-agent-7",
+      "attribution": "10.0.0.12 → 203.0.113.26",
+      "rawSnippet": "Found 2 service principals",
+      "note": "AI action stays attributed."
+    }
+  ],
+  "attribution": [
+    {
+      "title": "Operator",
+      "items": ["alex.operator"]
+    },
+    {
+      "title": "AI actor",
+      "items": ["field-agent-7 · model gpt-4.1 · authorized by alex.operator"]
+    },
+    {
+      "title": "Exec host IP",
+      "items": ["10.0.0.12"]
+    },
+    {
+      "title": "Public egress IP",
+      "items": ["203.0.113.26"]
+    }
+  ],
+  "knownCaptureGaps": [
+    "One capture recorded egress as off, so the report notes the gap instead of inventing a public IP.",
+    "Unknown tools remain raw-first; a missing parser does not drop evidence."
+  ]
+}
