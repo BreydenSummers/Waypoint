@@ -720,6 +720,105 @@ html[data-theme='dark'] .guide-note-card {
   gap: 8px;
 }
 
+.report-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.report-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  padding: 18px;
+}
+
+.report-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.report-page {
+  display: grid;
+  gap: 14px;
+}
+
+.report-section {
+  border-radius: 18px;
+  border: 1px solid var(--artifact-border);
+  background: var(--artifact-parchment);
+  box-shadow: 0 18px 34px var(--artifact-shadow);
+  padding: 18px;
+  color: var(--cocoa);
+}
+
+.report-section h2 {
+  color: var(--dark-cocoa);
+  margin-bottom: 10px;
+}
+
+.report-section ul {
+  display: grid;
+  gap: 8px;
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.report-card {
+  border-radius: 14px;
+  border: 1px solid rgba(139, 94, 52, 0.18);
+  background: rgba(255, 255, 255, 0.34);
+  padding: 14px;
+}
+
+html[data-theme='dark'] .report-card {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.report-card h3 {
+  color: var(--dark-cocoa);
+  margin-bottom: 6px;
+  font-size: 16px;
+}
+
+.report-card p + p,
+.report-card ul {
+  margin-top: 8px;
+}
+
+.report-card ul {
+  padding-left: 18px;
+  list-style: disc;
+}
+
+.report-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(186, 117, 23, 0.14);
+  color: var(--dark-cocoa);
+  margin-bottom: 8px;
+  width: fit-content;
+}
+
+.report-snippet {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(139, 94, 52, 0.08);
+  border: 1px solid rgba(139, 94, 52, 0.16);
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -748,6 +847,35 @@ a:focus-visible,
   50% {
     transform: scale(1.06);
     opacity: 0.88;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .masthead,
+  .map-card,
+  .sidebar,
+  .theme-switcher,
+  .report-toolbar {
+    box-shadow: none;
+  }
+
+  .report-shell {
+    width: 100%;
+    padding-top: 0;
+  }
+
+  .report-section,
+  .report-hero {
+    break-inside: avoid;
+    box-shadow: none;
+  }
+
+  .report-toolbar {
+    display: none;
   }
 }
 
@@ -791,7 +919,8 @@ a:focus-visible,
     padding-top: 18px;
   }
 
-  .workspace-grid {
+  .workspace-grid,
+  .report-grid {
     grid-template-columns: 1fr;
   }
 

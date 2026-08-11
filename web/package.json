@@ -5,7 +5,8 @@
   "scripts": {
     "build": "node build.mjs",
     "lint": "node scripts/check.mjs",
-    "test": "node scripts/check.mjs"
+    "test": "node scripts/check.mjs",
+    "render:report": "node scripts/render-report.mjs"
   },
   "dependencies": {},
   "devDependencies": {}
