@@ -111,7 +111,9 @@ func TestDatabaseProtectionsRejectMutations(t *testing.T) {
 	mustExec(t, db, `INSERT INTO action (id, engagement_id, actor_id, source_agent_id, initiated_by, phase, command, argv, cwd, exec_host_ip, pivot_chain, target_kind, target_value, started_at, ended_at, exit_code, stdout_evidence_id, stderr_evidence_id, parse_status) VALUES ($1, $2, $3, $4, 'manual', 'recon', 'whoami', '[]'::jsonb, '/', '127.0.0.1', '[]'::jsonb, 'host', 'demo.local', now(), now(), 0, $5, $6, 'raw')`, deleteResultActionID, engagementID, humanID, humanID, deleteResultActionStdoutID, deleteResultActionStderrID)
 	mustExec(t, db, `INSERT INTO result (id, engagement_id, action_id, plugin_id, schema_id, schema_version, extracted) VALUES ($1, $2, $3, 'plugin.demo', 'https://schemas.waypoint.security/demo', '1.0.0', '{}'::jsonb)`, deleteResultID, engagementID, deleteResultActionID)
 	mustExec(t, db, `INSERT INTO observation (id, engagement_id, action_id, result_id, entity_id, kind, identifiers, attributes) VALUES (gen_random_uuid(), $1, $2, $3, $4, 'host', '[]'::jsonb, '{}'::jsonb)`, engagementID, actionID, resultID, entityID)
-	mustExec(t, db, `INSERT INTO finding (id, engagement_id, title, severity, status) VALUES (gen_random_uuid(), $1, 'Weak SSH', 'low', 'open')`, engagementID)
+	findingID := "00000000-0000-0000-0000-000000000017"
+	mustExec(t, db, `INSERT INTO finding (id, engagement_id, title, severity, status) VALUES ($1, $2, 'Weak SSH', 'low', 'open')`, findingID, engagementID)
+	mustReject(t, db, `UPDATE finding SET evidence_action_ids = ARRAY[$1]::uuid[] WHERE id = $2`, actionID, findingID)
 	mustExec(t, db, `INSERT INTO audit_event (engagement_id, actor_id, actor_kind, actor_handle, actor_role, actor_agent_name, actor_model, actor_version, actor_authorized_by, origin_kind, subject_type, subject_id, request_id, correlation_id, data) VALUES ($1, $2, 'ai_agent', 'bot', 'operator', 'Waypoint', 'gpt-4.1', '1.0', $3, 'rest', 'action', $4, 'req-1', 'corr-1', '{}'::jsonb)`, engagementID, aiID, humanID, actionID)
 
 	mustReject(t, db, `UPDATE action SET command = 'changed' WHERE id = $1`, actionID)

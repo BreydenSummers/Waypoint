@@ -1,3 +1,5 @@
+DROP TRIGGER IF EXISTS finding_evidence_immutable_guard ON finding;
+DROP FUNCTION IF EXISTS forbid_finding_evidence_mutation();
 DROP TRIGGER IF EXISTS audit_event_snapshot_guard ON audit_event;
 DROP TRIGGER IF EXISTS audit_event_append_only_guard ON audit_event;
 DROP TRIGGER IF EXISTS observation_append_only_guard ON observation;
