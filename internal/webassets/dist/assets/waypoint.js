@@ -1087,7 +1087,7 @@ function renderWaypoints(waypoints, activeId) {
         </g>`;
     }
     return `
-      <g class="waypoint locked" opacity="0.55" data-action="phase" data-phase="${waypoint.id}" aria-label="${escapeHtml(waypoint.name)}, fogged until data lands here.">
+      <g class="waypoint fogged" opacity="0.55" data-action="phase" data-phase="${waypoint.id}" aria-label="${escapeHtml(waypoint.name)}, fogged until data lands here.">
         <circle cx="${waypoint.x}" cy="${waypoint.y}" r="12" fill="#B4A78C" stroke="#8B7355" stroke-width="1.5" />
         <path d="M${waypoint.x - 4} ${waypoint.y - 4} v8 M${waypoint.x - 4} ${waypoint.y - 4} h7 l-2.5 2.5 l2.5 2.5 h-7" stroke="#4A3A28" stroke-width="1.5" fill="none" />
         <text x="${waypoint.x}" y="${waypoint.y + 28}" text-anchor="middle" font-size="11" fill="#8B8069">${escapeHtml(waypoint.name)}</text>
@@ -1610,7 +1610,7 @@ function render() {
                         <input type="text" data-action="summit-phrase" value="${escapeHtml(state.destroyPhrase)}" placeholder="WIPE NOW" />
                       </label>
                       <button type="button" class="danger-button" data-action="summit-destroy"${state.summitExportStatus !== 'verified' || !state.breakGlassArmed || state.destroyPhrase.trim().toUpperCase() !== 'WIPE NOW' || state.teardownState === 'destroyed' ? ' disabled' : ''}>${state.teardownState === 'destroyed' ? 'Teardown queued' : 'Destroy disposable instance'}</button>
-                      <p class="summit-warning">${escapeHtml(state.teardownState === 'destroyed' ? 'Break-glass was used after receipt verification. Nothing else should run here.' : state.summitExportStatus === 'verified' && state.breakGlassArmed && state.destroyPhrase.trim().toUpperCase() === 'WIPE NOW' ? 'Guard armed. The instance can be destroyed deliberately.' : 'Guard remains locked until the verified receipt and break-glass phrase are in place.')}</p>
+                      <p class="summit-warning">${escapeHtml(state.teardownState === 'destroyed' ? 'Break-glass was used after receipt verification. Nothing else should run here.' : state.summitExportStatus === 'verified' && state.breakGlassArmed && state.destroyPhrase.trim().toUpperCase() === 'WIPE NOW' ? 'Guard armed. The instance can be destroyed deliberately.' : 'Guard remains fogged until the verified receipt and break-glass phrase are in place.')}</p>
                     </article>
                   </section>
                 ` : ''}
