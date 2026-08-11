@@ -18,6 +18,18 @@ type Waypoint = {
   cards: Array<{ title: string; items: string[] }>;
 };
 
+type GuideExplainer = {
+  id: string;
+  phase: PhaseId;
+  title: string;
+  summary: string;
+  whenToUse: string;
+  risks: string;
+  contextLabel: string;
+  contextHref: string;
+  keywords: string[];
+};
+
 const engagementPath = '/engagements/demo';
 const waypointOrder: PhaseId[] = ['recon', 'attacks', 'findings', 'summit'];
 
@@ -88,6 +100,75 @@ const journeyLog = [
   'Day 1 — Basecamp set. Project named, team invited, scope loaded.',
   'Day 2 — Creek crossed. 240 records packed into the trail log.',
   'Now — Made camp in Attacks. The audit trail is live and attributed.',
+];
+
+const guideExplainers: GuideExplainer[] = [
+  {
+    id: 'guide-recon-dns',
+    phase: 'recon',
+    title: 'DNS discovery',
+    summary: 'Use reviewed DNS notes to map hostnames, aliases, and service records before you touch the target.',
+    whenToUse: 'Best when names or service patterns will steer the next pass.',
+    risks: 'DNS changes quickly; confirm anything important against live evidence before you promote it.',
+    contextLabel: 'Open Recon context note',
+    contextHref: '#guide-recon-dns',
+    keywords: ['dns', 'records', 'names', 'recon'],
+  },
+  {
+    id: 'guide-recon-dedup',
+    phase: 'recon',
+    title: 'Host deduplication',
+    summary: 'Prefer stable identifiers such as MAC, AD SID, or FQDN when multiple sightings point at the same host.',
+    whenToUse: 'Best when DHCP churn or duplicated hostnames make the pack ambiguous.',
+    risks: 'Never collapse evidence by hand; keep the observation trail visible until the merge is deliberate.',
+    contextLabel: 'Review dedup guidance',
+    contextHref: '#guide-recon-dedup',
+    keywords: ['host', 'dedup', 'merge', 'fqdns'],
+  },
+  {
+    id: 'guide-attacks-smb-signing',
+    phase: 'attacks',
+    title: 'SMB signing',
+    summary: 'Use this to reason about relay risk and why unsigned sessions matter in Windows-heavy environments.',
+    whenToUse: 'Best when you are checking share access or auth surfaces.',
+    risks: 'Pair the note with the captured wrapper output; the same behaviour can mean different things across hosts.',
+    contextLabel: 'Open attacks context note',
+    contextHref: '#guide-attacks-smb-signing',
+    keywords: ['smb', 'relay', 'signing', 'attacks'],
+  },
+  {
+    id: 'guide-attacks-safe-output',
+    phase: 'attacks',
+    title: 'Safe output rendering',
+    summary: 'Keep raw tool output escaped so hostile HTML, ANSI, or scripts never take over the page.',
+    whenToUse: 'Best whenever a tool prints untrusted output or a parser fails.',
+    risks: 'Rendered output should stay text-only; the raw artefact belongs in evidence, not the DOM.',
+    contextLabel: 'Review output handling',
+    contextHref: '#guide-attacks-safe-output',
+    keywords: ['output', 'rendering', 'raw', 'safe'],
+  },
+  {
+    id: 'guide-findings-linking',
+    phase: 'findings',
+    title: 'Evidence-linked promotion',
+    summary: 'Promote only confirmed results and keep the source action linked so the report stays defensible.',
+    whenToUse: 'Best when an attack has enough proof to become a finding.',
+    risks: 'Never drop the action trail; a finding without evidence is just a claim.',
+    contextLabel: 'Open promotion note',
+    contextHref: '#guide-findings-linking',
+    keywords: ['finding', 'evidence', 'promotion', 'report'],
+  },
+  {
+    id: 'guide-summit-manifest',
+    phase: 'summit',
+    title: 'Bundle manifest',
+    summary: 'Export the bundle, verify the hash manifest, and only then tear down the disposable box.',
+    whenToUse: 'Best at the final review before the engagement closes.',
+    risks: 'If the manifest does not match, stop and inspect the artefacts before wiping anything.',
+    contextLabel: 'Review export manifest',
+    contextHref: '#guide-summit-manifest',
+    keywords: ['bundle', 'manifest', 'export', 'summit'],
+  },
 ];
 
 function getInitialTheme(): ThemeMode {
@@ -173,6 +254,7 @@ function navigateToPhase(phase: PhaseId, replace = false) {
 export function App() {
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
   const [activeId, setActiveId] = useState<PhaseId>(getInitialPhase);
+  const [guideQuery, setGuideQuery] = useState('');
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -219,6 +301,28 @@ export function App() {
     findings: 'Promotions stay defensible and linked to evidence.',
     summit: 'Export, verify the manifest, then wipe the disposable box.',
   }[activeId];
+
+  const visibleGuideExplainers = useMemo(() => {
+    const query = guideQuery.trim().toLowerCase();
+    return guideExplainers.filter((explanation) => {
+      const haystack = [
+        explanation.phase,
+        explanation.title,
+        explanation.summary,
+        explanation.whenToUse,
+        explanation.risks,
+        explanation.keywords.join(' '),
+      ]
+        .join(' ')
+        .toLowerCase();
+
+      if (!query) {
+        return explanation.phase === activeId;
+      }
+
+      return haystack.includes(query);
+    });
+  }, [activeId, guideQuery]);
 
   return (
     <main className="app-shell">
@@ -395,19 +499,56 @@ export function App() {
 
           <section className="guide-panel artifact" aria-label="Guide's note">
             <div className="panel-icon" aria-hidden="true">🧭</div>
-            <div>
+            <div className="guide-copy">
               <h2>Guide's note</h2>
               <p>{activeWaypoint.note}</p>
-              <button
-                type="button"
-                className="primary-button"
-                onClick={() => {
-                  setActiveId(guidePhase);
-                  navigateToPhase(guidePhase);
-                }}
-              >
-                {guideButtonLabel}
-              </button>
+              <div className="guide-tools">
+                <label className="guide-search">
+                  <span className="sr-only">Search reviewed guide notes</span>
+                  <input
+                    type="search"
+                    value={guideQuery}
+                    onChange={(event) => setGuideQuery(event.target.value)}
+                    placeholder="Search reviewed notes and context"
+                    aria-label="Search reviewed guide notes"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={() => {
+                    setActiveId(guidePhase);
+                    navigateToPhase(guidePhase);
+                  }}
+                >
+                  {guideButtonLabel}
+                </button>
+              </div>
+
+              <div className="guide-note-list" aria-label="Reviewed guide notes">
+                {visibleGuideExplainers.length ? (
+                  visibleGuideExplainers.map((explanation) => (
+                    <article key={explanation.id} id={explanation.id} className="guide-note-card">
+                      <p className="guide-note-kicker">{waypointDetails[explanation.phase].name} · reviewed note</p>
+                      <h3>{explanation.title}</h3>
+                      <p>{explanation.summary}</p>
+                      <dl>
+                        <div>
+                          <dt>When</dt>
+                          <dd>{explanation.whenToUse}</dd>
+                        </div>
+                        <div>
+                          <dt>Risks</dt>
+                          <dd>{explanation.risks}</dd>
+                        </div>
+                      </dl>
+                      <a href={explanation.contextHref}>{explanation.contextLabel}</a>
+                    </article>
+                  ))
+                ) : (
+                  <p className="guide-note-empty">No reviewed notes match this search.</p>
+                )}
+              </div>
             </div>
           </section>
 
