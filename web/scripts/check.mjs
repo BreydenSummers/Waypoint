@@ -35,8 +35,17 @@ for (const source of [app, distBundle]) {
   if (!source.includes("workspaceLede: 'Collect raw signals, preserve provenance, and keep the audit spine instant to query.'")) {
     throw new Error('Recon workspace lede missing from source or embedded bundle');
   }
+  if (!source.includes("workspaceTitle: 'Findings workspace'")) {
+    throw new Error('Findings workspace title missing from source or embedded bundle');
+  }
+  if (!source.includes("workspaceLede: 'Promote confirmed results, keep evidence links intact, and draft the report straight from the trail.'")) {
+    throw new Error('Findings workspace lede missing from source or embedded bundle');
+  }
   if (!source.includes("note: 'Imported records, host notes, and discovery output stay in your pack here.'")) {
     throw new Error('Recon guide note missing from source or embedded bundle');
+  }
+  if (!source.includes("note: 'No promoted results yet — this waypoint stays in fog until the first finding lands.'")) {
+    throw new Error('Findings guide note missing from source or embedded bundle');
   }
   if (!source.includes('guideExplainers') || !source.includes('guide-note-card') || !source.includes('guide-search')) {
     throw new Error('Static guide content system is missing from source or embedded bundle');
