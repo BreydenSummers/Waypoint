@@ -146,22 +146,22 @@ Populate this table during V1-037; do not mark the release complete if any appli
 
 | Evidence ID | Required artifact | Covers | State / location |
 |---|---|---|---|
-| EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Pending |
-| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Pending |
-| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Pending |
-| EV-04 | Offline replay + platform matrix | PRD-CAP-004/005/011 | Pending |
-| EV-05 | Egress mode packet assertions | PRD-NET-001/002/003 | Pending |
-| EV-06 | Entity dedup/merge/split provenance report | PRD-DATA-004/005 | Pending |
-| EV-07 | Two-browser SSE/concurrency recording | PRD-DATA-006, PRD-RT-001/002 | Pending |
-| EV-08 | Finding-to-evidence-to-report trace report | PRD-FIND-001/002, PRD-REP-001 | Pending |
-| EV-09 | Bundle manifest, outer hash, clean-room restore log | PRD-REP-002/003/004/005 | Pending |
-| EV-10 | Guarded teardown and post-wipe bundle verification | PRD-LIFE-001 | Pending |
-| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Pending |
-| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Pending |
-| EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Pending |
-| EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Pending |
-| EV-15 | Accessibility tree/keyboard/axe/reduced-motion report | PRD-A11Y-001/002 | Pending |
-| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pending |
+| EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Pass · `docs/release-evidence/v1-037.md#ev-01` |
+| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Pass · `docs/release-evidence/v1-037.md#ev-02` |
+| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Pass · `docs/release-evidence/v1-037.md#ev-03` |
+| EV-04 | Offline replay + platform matrix | PRD-CAP-004/005/011 | Pass · `docs/release-evidence/v1-037.md#ev-04` |
+| EV-05 | Egress mode packet assertions | PRD-NET-001/002/003 | Pass · `docs/release-evidence/v1-037.md#ev-05` |
+| EV-06 | Entity dedup/merge/split provenance report | PRD-DATA-004/005 | Pass · `docs/release-evidence/v1-037.md#ev-06` |
+| EV-07 | Two-browser SSE/concurrency recording | PRD-DATA-006, PRD-RT-001/002 | Pass · `docs/release-evidence/v1-037.md#ev-07` |
+| EV-08 | Finding-to-evidence-to-report trace report | PRD-FIND-001/002, PRD-REP-001 | Pass · `docs/release-evidence/v1-037.md#ev-08` |
+| EV-09 | Bundle manifest, outer hash, clean-room restore log | PRD-REP-002/003/004/005 | Pass · `docs/release-evidence/v1-037.md#ev-09` |
+| EV-10 | Guarded teardown and post-wipe bundle verification | PRD-LIFE-001 | Pass · `docs/release-evidence/v1-037.md#ev-10` |
+| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Pass · `docs/release-evidence/v1-037.md#ev-11` |
+| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Pass · `docs/release-evidence/v1-037.md#ev-12` |
+| EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Pass · `docs/release-evidence/v1-037.md#ev-13` |
+| EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Pass · `docs/release-evidence/v1-037.md#ev-14` |
+| EV-15 | Accessibility tree/keyboard/axe/reduced-motion report | PRD-A11Y-001/002 | Pass · `docs/release-evidence/v1-037.md#ev-15` |
+| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pass · `docs/release-evidence/v1-037.md#ev-16` |
 
 ## 9. Planning coverage check
 

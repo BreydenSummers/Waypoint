@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/netip"
@@ -174,6 +175,8 @@ type captureRequest struct {
 	Stdout   captureEvidenceBytes
 	Stderr   captureEvidenceBytes
 }
+
+const maxCaptureEvidenceBytes int64 = 32 << 20
 
 type captureEvidenceBytes struct {
 	digest     string
@@ -475,25 +478,37 @@ func readCaptureRequest(r *http.Request) (captureRequest, error) {
 			return out, err
 		}
 		name := part.FormName()
-		data, err := io.ReadAll(part)
-		_ = part.Close()
-		if err != nil {
-			return out, err
-		}
 		if seen[name] {
+			_ = part.Close()
 			return out, captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", Retryable: false, Detail: "duplicate multipart part"}}
 		}
 		seen[name] = true
 		switch name {
 		case "envelope":
+			data, err := io.ReadAll(part)
+			_ = part.Close()
+			if err != nil {
+				return out, err
+			}
 			if err := decodeStrictJSON(data, &out.Envelope); err != nil {
 				return out, captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", Retryable: false, Detail: err.Error()}}
 			}
 		case "stdout":
+			data, err := readLimitedMultipartPart(part, maxCaptureEvidenceBytes, "/stdout")
+			_ = part.Close()
+			if err != nil {
+				return out, err
+			}
 			out.Stdout = captureEvidenceBytes{digest: digestBytes(data), byteLength: int64(len(data))}
 		case "stderr":
+			data, err := readLimitedMultipartPart(part, maxCaptureEvidenceBytes, "/stderr")
+			_ = part.Close()
+			if err != nil {
+				return out, err
+			}
 			out.Stderr = captureEvidenceBytes{digest: digestBytes(data), byteLength: int64(len(data))}
 		default:
+			_ = part.Close()
 			return out, captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", Retryable: false, Detail: fmt.Sprintf("unexpected multipart part %q", name)}}
 		}
 	}
@@ -516,6 +531,17 @@ func decodeStrictJSON(data []byte, v any) error {
 	return dec.Decode(v)
 }
 
+func readLimitedMultipartPart(part *multipart.Part, limit int64, pointer string) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(part, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", Retryable: false, FieldErrors: []fieldError{{Pointer: pointer, Code: "invalid_range", Message: fmt.Sprintf("%s evidence is too large; maximum allowed is %d bytes.", strings.TrimPrefix(pointer, "/"), limit)}}}}
+	}
+	return data, nil
+}
+
 func validateCaptureEnvelope(env captureEnvelope, actor actorRecord) *captureProblem {
 	if env.ContractVersion != "1.0.0" {
 		return badField("/contractVersion", "unsupported_contract_version", "contractVersion must be 1.0.0.")
@@ -526,10 +552,10 @@ func validateCaptureEnvelope(env captureEnvelope, actor actorRecord) *capturePro
 	if env.Phase != "recon" && env.Phase != "attacks" {
 		return badField("/phase", "invalid_enum", "phase must be recon or attacks.")
 	}
-	if env.InitiatedBy != "manual" && env.InitiatedBy != "ai" && env.InitiatedBy != "scan-library" {
+	if env.InitiatedBy != "manual" && env.InitiatedBy != "ai" && env.InitiatedBy != "scan-library" { // reserved compatibility value; unavailable in v1
 		return badField("/initiatedBy", "invalid_enum", "unsupported initiation mode.")
 	}
-	if env.InitiatedBy == "scan-library" {
+	if env.InitiatedBy == "scan-library" { // reserved compatibility value; unavailable in v1
 		return badField("/initiatedBy", "reserved_value", "scan-library is reserved.")
 	}
 	if actor.Kind == "ai_agent" && env.InitiatedBy != "ai" {

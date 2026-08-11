@@ -28,9 +28,7 @@ accidentally promise deferred capabilities or misdescribe AI attribution as AI a
 | AI actor | A first-class attributed command initiator with its own token, model/version, human authorizer, and decision context. This is v1 audit infrastructure, not an offensive model feature. |
 | Hash verified | SHA-256 payload/outer-archive integrity checked. It never means signed or author-verified. |
 
-Security terms keep their normal technical meaning. For example, “SMB signing” may appear in a
-technique note and is unrelated to cryptographic signing of an export. “Scan” may describe a captured
-operator command; only the guided Scan library is deferred.
+Security terms keep their normal technical meaning. For example, “SMB signing” may appear in a technique note and is unrelated to cryptographic signing of an export. A captured operator command may include the word scan; that remains ordinary tool output and not a deferred capability. Only the guided Scan library is deferred.
 
 ### Explicitly deferred claims
 
@@ -47,7 +45,7 @@ when clearly labeled deferred/v2, as an inert compatibility extension, or as a n
 | `deferred-ai-plugin-generation` | AI parser generation or engagement-time parser upload. `needs-plugin` remains v1. |
 | `deferred-windows-offline-agent` | Offline-buffering remote agent for Windows. The Windows operator wrapper remains v1. |
 | `deferred-cryptographic-signing` | Cryptographic signing/key management or signer-identity claims. The empty signature hook remains. |
-| `nonlinear-phase-gating` | Locked/disabled phase behavior or prerequisite-based waypoint unlocking. |
+| `nonlinear-phase-gating` | Prerequisite-based waypoint gating or hidden phase state. |
 
 The machine-readable policy is [`../v1-scope.json`](../v1-scope.json). Product claim surfaces are
 linted line by line. A deferred term is acceptable only with explicit boundary context on that line;

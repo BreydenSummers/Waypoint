@@ -916,7 +916,7 @@ export function App() {
                       ? 'Break-glass was used after receipt verification. Nothing else should run here.'
                       : canDestroy
                         ? 'Guard armed. The instance can be destroyed deliberately.'
-                        : 'Guard remains locked until the verified receipt and break-glass phrase are in place.'}
+                        : 'Guard remains fogged until the verified receipt and break-glass phrase are in place.'}
                   </p>
                 </article>
               </section>

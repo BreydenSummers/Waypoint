@@ -9,7 +9,7 @@ BEGIN
         CREATE TYPE actor_role AS ENUM ('owner', 'operator', 'viewer');
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'action_initiated_by') THEN
-        CREATE TYPE action_initiated_by AS ENUM ('manual', 'ai', 'scan-library');
+        CREATE TYPE action_initiated_by AS ENUM ('manual', 'ai', 'scan-library'); -- reserved compatibility value; unavailable in v1
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'action_phase') THEN
         CREATE TYPE action_phase AS ENUM ('recon', 'attacks', 'findings');
