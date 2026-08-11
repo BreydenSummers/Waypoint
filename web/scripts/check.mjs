@@ -28,6 +28,17 @@ for (const source of [app, distBundle]) {
   if (!source.includes("note: 'Imported records, host notes, and discovery output stay in your pack here.'")) {
     throw new Error('Recon guide note missing from source or embedded bundle');
   }
+  if (!source.includes('guideExplainers') || !source.includes('guide-note-card') || !source.includes('guide-search')) {
+    throw new Error('Static guide content system is missing from source or embedded bundle');
+  }
+  for (const token of ['guide-recon-dns', 'guide-recon-dedup', 'guide-attacks-smb-signing', 'guide-attacks-safe-output', 'guide-findings-linking', 'guide-summit-manifest']) {
+    if (!source.includes(token)) {
+      throw new Error(`Guide explainer ${token} missing from source or embedded bundle`);
+    }
+  }
+  if (source.includes('exact command') || source.includes('AI claims') || source.includes('AI-generated')) {
+    throw new Error('Static guide content leaked deferred v2 command or AI guidance');
+  }
 }
 
 console.log('web skeleton check passed');

@@ -324,6 +324,82 @@ html[data-theme='dark'] .route-link { background: rgba(0, 0, 0, 0.1); }
 .route-summary p,
 .workspace-panel p,
 .detail-card p { line-height: 1.6; }
+.guide-copy {
+  min-width: 0;
+  flex: 1;
+}
+.guide-tools {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.guide-search {
+  flex: 1 1 240px;
+}
+.guide-search input {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(139, 94, 52, 0.24);
+  background: rgba(255, 255, 255, 0.38);
+  color: var(--cocoa);
+  padding: 0 12px;
+}
+html[data-theme='dark'] .guide-search input {
+  background: rgba(255, 255, 255, 0.08);
+}
+.guide-note-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+.guide-note-card {
+  border-radius: 14px;
+  border: 1px solid rgba(139, 94, 52, 0.18);
+  background: rgba(255, 255, 255, 0.28);
+  padding: 12px;
+}
+html[data-theme='dark'] .guide-note-card {
+  background: rgba(0, 0, 0, 0.08);
+}
+.guide-note-card h3 {
+  color: var(--dark-cocoa);
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+.guide-note-kicker {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--chrome-muted);
+  margin-bottom: 6px;
+}
+.guide-note-card dl {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+.guide-note-card dt {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dark-cocoa);
+}
+.guide-note-card dd {
+  margin: 2px 0 0;
+  color: var(--cocoa);
+}
+.guide-note-card a {
+  display: inline-flex;
+  margin-top: 10px;
+  color: var(--harvest);
+  font-weight: 700;
+}
+.guide-note-empty {
+  color: var(--chrome-muted);
+  padding: 6px 2px;
+}
 .panel-icon {
   width: 42px;
   height: 42px;

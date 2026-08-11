@@ -60,6 +60,75 @@ const phaseData = {
   },
 };
 
+const guideExplainers = [
+  {
+    id: 'guide-recon-dns',
+    phase: 'recon',
+    title: 'DNS discovery',
+    summary: 'Use reviewed DNS notes to map hostnames, aliases, and service records before you touch the target.',
+    whenToUse: 'Best when names or service patterns will steer the next pass.',
+    risks: 'DNS changes quickly; confirm anything important against live evidence before you promote it.',
+    contextLabel: 'Open Recon context note',
+    contextHref: '#guide-recon-dns',
+    keywords: ['dns', 'records', 'names', 'recon'],
+  },
+  {
+    id: 'guide-recon-dedup',
+    phase: 'recon',
+    title: 'Host deduplication',
+    summary: 'Prefer stable identifiers such as MAC, AD SID, or FQDN when multiple sightings point at the same host.',
+    whenToUse: 'Best when DHCP churn or duplicated hostnames make the pack ambiguous.',
+    risks: 'Never collapse evidence by hand; keep the observation trail visible until the merge is deliberate.',
+    contextLabel: 'Review dedup guidance',
+    contextHref: '#guide-recon-dedup',
+    keywords: ['host', 'dedup', 'merge', 'fqdns'],
+  },
+  {
+    id: 'guide-attacks-smb-signing',
+    phase: 'attacks',
+    title: 'SMB signing',
+    summary: 'Use this to reason about relay risk and why unsigned sessions matter in Windows-heavy environments.',
+    whenToUse: 'Best when you are checking share access or auth surfaces.',
+    risks: 'Pair the note with the captured wrapper output; the same behaviour can mean different things across hosts.',
+    contextLabel: 'Open attacks context note',
+    contextHref: '#guide-attacks-smb-signing',
+    keywords: ['smb', 'relay', 'signing', 'attacks'],
+  },
+  {
+    id: 'guide-attacks-safe-output',
+    phase: 'attacks',
+    title: 'Safe output rendering',
+    summary: 'Keep raw tool output escaped so hostile HTML, ANSI, or scripts never take over the page.',
+    whenToUse: 'Best whenever a tool prints untrusted output or a parser fails.',
+    risks: 'Rendered output should stay text-only; the raw artefact belongs in evidence, not the DOM.',
+    contextLabel: 'Review output handling',
+    contextHref: '#guide-attacks-safe-output',
+    keywords: ['output', 'rendering', 'raw', 'safe'],
+  },
+  {
+    id: 'guide-findings-linking',
+    phase: 'findings',
+    title: 'Evidence-linked promotion',
+    summary: 'Promote only confirmed results and keep the source action linked so the report stays defensible.',
+    whenToUse: 'Best when an attack has enough proof to become a finding.',
+    risks: 'Never drop the action trail; a finding without evidence is just a claim.',
+    contextLabel: 'Open promotion note',
+    contextHref: '#guide-findings-linking',
+    keywords: ['finding', 'evidence', 'promotion', 'report'],
+  },
+  {
+    id: 'guide-summit-manifest',
+    phase: 'summit',
+    title: 'Bundle manifest',
+    summary: 'Export the bundle, verify the hash manifest, and only then tear down the disposable box.',
+    whenToUse: 'Best at the final review before the engagement closes.',
+    risks: 'If the manifest does not match, stop and inspect the artefacts before wiping anything.',
+    contextLabel: 'Review export manifest',
+    contextHref: '#guide-summit-manifest',
+    keywords: ['bundle', 'manifest', 'export', 'summit'],
+  },
+];
+
 function makeAttack(id, occurredAt, payload) {
   const actor = payload.actor || { id: 'actor-default', kind: 'human', handle: 'alex.operator', role: 'operator' };
   const origin = payload.origin || { kind: 'collector', service: 'wrapper' };
@@ -292,6 +361,7 @@ const state = {
   highWaterCursor: null,
   hasMore: false,
   filters: { technique: 'all', target: 'all', host: 'all', status: 'all', q: '' },
+  guideQuery: '',
   mode: 'demo',
   liveToken: safeStorageGet('waypoint-audit-token') || '',
   resyncLink: '',
@@ -1096,6 +1166,23 @@ function render() {
   const currentIndex = phaseOrder.indexOf(state.activePhase);
   const waypoints = phaseOrder.map((phase, index) => ({ ...phaseData[phase], id: phase, state: index < currentIndex ? 'completed' : index === currentIndex ? 'current' : 'fog' }));
   const selected = selectedAttempt();
+  const guideQuery = state.guideQuery.trim().toLowerCase();
+  const visibleGuideExplainers = guideExplainers.filter((explanation) => {
+    const haystack = [
+      explanation.phase,
+      explanation.title,
+      explanation.summary,
+      explanation.whenToUse,
+      explanation.risks,
+      explanation.keywords.join(' '),
+    ].join(' ').toLowerCase();
+
+    if (!guideQuery) {
+      return explanation.phase === state.activePhase;
+    }
+
+    return haystack.includes(guideQuery);
+  });
 
   document.title = `Waypoint — ${active.name}`;
   document.documentElement.dataset.theme = state.theme;
@@ -1196,10 +1283,27 @@ function render() {
 
           <section class="guide-panel artifact" aria-label="Guide's note">
             <div class="panel-icon" aria-hidden="true">🧭</div>
-            <div>
+            <div class="guide-copy">
               <h2>Guide's note</h2>
               <p>${escapeHtml(active.note)}</p>
-              <button type="button" class="primary-button" data-action="phase" data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}">${currentIndex < phaseOrder.length - 1 ? `Continue into ${escapeHtml(phaseData[phaseOrder[currentIndex + 1]].name)} →` : `Return to ${escapeHtml(phaseData[phaseOrder[currentIndex - 1]].name)} →`}</button>
+              <div class="guide-tools">
+                <label class="guide-search"><span class="sr-only">Search reviewed guide notes</span><input type="search" data-action="guide-search" value="${escapeHtml(state.guideQuery)}" placeholder="Search reviewed notes and context" aria-label="Search reviewed guide notes" /></label>
+                <button type="button" class="primary-button" data-action="phase" data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}">${currentIndex < phaseOrder.length - 1 ? `Continue into ${escapeHtml(phaseData[phaseOrder[currentIndex + 1]].name)} →` : `Return to ${escapeHtml(phaseData[phaseOrder[currentIndex - 1]].name)} →`}</button>
+              </div>
+              <div class="guide-note-list" aria-label="Reviewed guide notes">
+                ${visibleGuideExplainers.length ? visibleGuideExplainers.map((explanation) => `
+                  <article class="guide-note-card" id="${escapeHtml(explanation.id)}">
+                    <p class="guide-note-kicker">${escapeHtml(phaseData[explanation.phase].name)} · reviewed note</p>
+                    <h3>${escapeHtml(explanation.title)}</h3>
+                    <p>${escapeHtml(explanation.summary)}</p>
+                    <dl>
+                      <div><dt>When</dt><dd>${escapeHtml(explanation.whenToUse)}</dd></div>
+                      <div><dt>Risks</dt><dd>${escapeHtml(explanation.risks)}</dd></div>
+                    </dl>
+                    <a href="${escapeHtml(explanation.contextHref)}">${escapeHtml(explanation.contextLabel)}</a>
+                  </article>
+                `).join('') : '<p class="guide-note-empty">No reviewed notes match this search.</p>'}
+              </div>
             </div>
           </section>
 
@@ -1246,6 +1350,11 @@ function bindUI() {
 
   root.querySelector('[data-action="token"]')?.addEventListener('input', (event) => {
     state.liveToken = event.target.value;
+  });
+
+  root.querySelector('[data-action="guide-search"]')?.addEventListener('input', (event) => {
+    state.guideQuery = event.target.value;
+    scheduleRender();
   });
 
   root.querySelector('[data-action="connect-live"]')?.addEventListener('click', () => connectLive());
