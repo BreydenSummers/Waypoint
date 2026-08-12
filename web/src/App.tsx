@@ -67,6 +67,14 @@ type ReportSnapshot = {
   knownCaptureGaps: string[];
 };
 
+type GuideBriefing = {
+  what: string;
+  whenToUse: string;
+  risks: string;
+  contextLabel: string;
+  contextHref: string;
+};
+
 type Waypoint = {
   id: PhaseId;
   name: string;
@@ -76,6 +84,7 @@ type Waypoint = {
   x: number;
   y: number;
   note: string;
+  briefing: GuideBriefing;
   workspaceTitle: string;
   workspaceLede: string;
   cards: Array<{ title: string; items: string[] }>;
@@ -85,7 +94,7 @@ type GuideExplainer = {
   id: string;
   phase: PhaseId;
   title: string;
-  summary: string;
+  what: string;
   whenToUse: string;
   risks: string;
   contextLabel: string;
@@ -206,7 +215,14 @@ const waypointDetails: Record<PhaseId, Omit<Waypoint, 'state'>> = {
     path: `${engagementPath}/recon`,
     x: 72,
     y: 248,
-    note: 'Imported records, host notes, and discovery output stay in your pack here.',
+    note: 'Reviewed offline briefing: keep discovery, provenance, and dedup hints in the pack before you move on.',
+    briefing: {
+      what: 'Preserve imported records, host notes, and discovery output as evidence you can revisit later.',
+      whenToUse: 'Use this before live attempts, and again whenever the pack needs dedup or scope review.',
+      risks: 'Fast-changing names and duplicated hosts can blur the trail if you collapse sightings too early.',
+      contextLabel: 'Open reviewed Recon briefing',
+      contextHref: '#briefing-recon',
+    },
     workspaceTitle: 'Recon workspace',
     workspaceLede: 'Collect raw signals, preserve provenance, and keep the audit spine instant to query.',
     cards: [
@@ -221,7 +237,14 @@ const waypointDetails: Record<PhaseId, Omit<Waypoint, 'state'>> = {
     path: `${engagementPath}/attacks`,
     x: 228,
     y: 182,
-    note: 'Captured actions land here with source, host, egress IP, and outcome.',
+    note: 'Reviewed offline briefing: capture each attempt with source, host, egress, and outcome.',
+    briefing: {
+      what: 'Track every attempt with source host, egress IP, target, and outcome so the audit spine stays clear.',
+      whenToUse: 'Use this while running actions through the wrapper and when you need to explain an attempted path.',
+      risks: 'If output is rendered carelessly, the trail can lie about what happened or leak untrusted content.',
+      contextLabel: 'Open reviewed Attacks briefing',
+      contextHref: '#briefing-attacks',
+    },
     workspaceTitle: 'Attacks workspace',
     workspaceLede: 'Run commands through the wrapper, keep the path to each attempt obvious, and preserve evidence.',
     cards: [
@@ -236,7 +259,14 @@ const waypointDetails: Record<PhaseId, Omit<Waypoint, 'state'>> = {
     path: `${engagementPath}/findings`,
     x: 430,
     y: 128,
-    note: 'No promoted results yet — this waypoint stays in fog until the first finding lands.',
+    note: 'Reviewed offline briefing: keep confirmed results grounded until the first finding is promoted.',
+    briefing: {
+      what: 'Promote only confirmed results and keep the source action attached so the report remains defensible.',
+      whenToUse: 'Use this after an attack has enough proof to become a finding and before you write report copy.',
+      risks: 'A finding without evidence is only a claim, so keep the action trail visible through promotion.',
+      contextLabel: 'Open reviewed Findings briefing',
+      contextHref: '#briefing-findings',
+    },
     workspaceTitle: 'Findings workspace',
     workspaceLede: 'Promote confirmed results, keep evidence links intact, and draft the report straight from the trail.',
     cards: [
@@ -251,7 +281,14 @@ const waypointDetails: Record<PhaseId, Omit<Waypoint, 'state'>> = {
     path: `${engagementPath}/summit`,
     x: 586,
     y: 64,
-    note: 'Reach the summit to export the engagement bundle and prepare teardown.',
+    note: 'Reviewed offline briefing: verify the manifest, pin the receipt, and only then tear down the box.',
+    briefing: {
+      what: 'Export the bundle, verify the hash manifest, and keep the receipt alongside the frozen snapshot.',
+      whenToUse: 'Use this at final review when the engagement is ready to close and teardown is the next step.',
+      risks: 'If the manifest drifts, stop before wiping anything so the preserved bundle stays defensible.',
+      contextLabel: 'Open reviewed Summit briefing',
+      contextHref: '#briefing-summit',
+    },
     workspaceTitle: 'Summit workspace',
     workspaceLede: 'Final review, export, and bundle integrity checks live here before the box is wiped cleanly.',
     cards: [
@@ -273,7 +310,7 @@ const guideExplainers: GuideExplainer[] = [
     id: 'guide-recon-dns',
     phase: 'recon',
     title: 'DNS discovery',
-    summary: 'Use reviewed DNS notes to map hostnames, aliases, and service records before you touch the target.',
+    what: 'Map hostnames, aliases, and service records from reviewed DNS evidence before you touch the target.',
     whenToUse: 'Best when names or service patterns will steer the next pass.',
     risks: 'DNS changes quickly; confirm anything important against live evidence before you promote it.',
     contextLabel: 'Open Recon context note',
@@ -284,7 +321,7 @@ const guideExplainers: GuideExplainer[] = [
     id: 'guide-recon-dedup',
     phase: 'recon',
     title: 'Host deduplication',
-    summary: 'Prefer stable identifiers such as MAC, AD SID, or FQDN when multiple sightings point at the same host.',
+    what: 'Prefer stable identifiers such as MAC, AD SID, or FQDN when multiple sightings point at the same host.',
     whenToUse: 'Best when DHCP churn or duplicated hostnames make the pack ambiguous.',
     risks: 'Never collapse evidence by hand; keep the observation trail visible until the merge is deliberate.',
     contextLabel: 'Review dedup guidance',
@@ -295,9 +332,9 @@ const guideExplainers: GuideExplainer[] = [
     id: 'guide-attacks-smb-signing',
     phase: 'attacks',
     title: 'SMB signing',
-    summary: 'Use this to reason about relay risk and why unsigned sessions matter in Windows-heavy environments.',
+    what: 'Understand relay risk and why unsigned sessions matter in Windows-heavy environments.',
     whenToUse: 'Best when you are checking share access or auth surfaces.',
-    risks: 'Pair the note with the captured wrapper output; the same behaviour can mean different things across hosts.',
+    risks: 'Pair the note with captured wrapper output; the same behaviour can mean different things across hosts.',
     contextLabel: 'Open attacks context note',
     contextHref: '#guide-attacks-smb-signing',
     keywords: ['smb', 'relay', 'signing', 'attacks'],
@@ -306,7 +343,7 @@ const guideExplainers: GuideExplainer[] = [
     id: 'guide-attacks-safe-output',
     phase: 'attacks',
     title: 'Safe output rendering',
-    summary: 'Keep raw tool output escaped so hostile HTML, ANSI, or scripts never take over the page.',
+    what: 'Keep raw tool output escaped so hostile HTML, ANSI, or scripts never take over the page.',
     whenToUse: 'Best whenever a tool prints untrusted output or a parser fails.',
     risks: 'Rendered output should stay text-only; the raw artefact belongs in evidence, not the DOM.',
     contextLabel: 'Review output handling',
@@ -317,7 +354,7 @@ const guideExplainers: GuideExplainer[] = [
     id: 'guide-findings-linking',
     phase: 'findings',
     title: 'Evidence-linked promotion',
-    summary: 'Promote only confirmed results and keep the source action linked so the report stays defensible.',
+    what: 'Promote only confirmed results and keep the source action linked so the report stays defensible.',
     whenToUse: 'Best when an attack has enough proof to become a finding.',
     risks: 'Never drop the action trail; a finding without evidence is just a claim.',
     contextLabel: 'Open promotion note',
@@ -328,7 +365,7 @@ const guideExplainers: GuideExplainer[] = [
     id: 'guide-summit-manifest',
     phase: 'summit',
     title: 'Bundle manifest',
-    summary: 'Export the bundle, verify the hash manifest, and only then tear down the disposable box.',
+    what: 'Export the bundle, verify the hash manifest, and only then tear down the disposable box.',
     whenToUse: 'Best at the final review before the engagement closes.',
     risks: 'If the manifest does not match, stop and inspect the artefacts before wiping anything.',
     contextLabel: 'Review export manifest',
@@ -672,7 +709,7 @@ export function App() {
       const haystack = [
         explanation.phase,
         explanation.title,
-        explanation.summary,
+        explanation.what,
         explanation.whenToUse,
         explanation.risks,
         explanation.keywords.join(' '),
@@ -987,6 +1024,27 @@ export function App() {
             <div className="guide-copy">
               <h2>Guide's note</h2>
               <p>{activeWaypoint.note}</p>
+
+              <article id={`briefing-${activeWaypoint.id}`} className="guide-note-card">
+                <p className="guide-note-kicker">{activeWaypoint.name} · reviewed phase briefing</p>
+                <h3>Offline phase briefing</h3>
+                <dl>
+                  <div>
+                    <dt>What</dt>
+                    <dd>{activeWaypoint.briefing.what}</dd>
+                  </div>
+                  <div>
+                    <dt>When</dt>
+                    <dd>{activeWaypoint.briefing.whenToUse}</dd>
+                  </div>
+                  <div>
+                    <dt>Risks</dt>
+                    <dd>{activeWaypoint.briefing.risks}</dd>
+                  </div>
+                </dl>
+                <a href={activeWaypoint.briefing.contextHref}>{activeWaypoint.briefing.contextLabel}</a>
+              </article>
+
               <div className="guide-tools">
                 <label className="guide-search">
                   <span className="sr-only">Search reviewed guide notes</span>
@@ -994,7 +1052,7 @@ export function App() {
                     type="search"
                     value={guideQuery}
                     onChange={(event) => setGuideQuery(event.target.value)}
-                    placeholder="Search reviewed notes and context"
+                    placeholder="Search reviewed phases and techniques"
                     aria-label="Search reviewed guide notes"
                   />
                 </label>
@@ -1022,8 +1080,11 @@ export function App() {
                     <article key={explanation.id} id={explanation.id} className="guide-note-card">
                       <p className="guide-note-kicker">{waypointDetails[explanation.phase].name} · reviewed note</p>
                       <h3>{explanation.title}</h3>
-                      <p>{explanation.summary}</p>
                       <dl>
+                        <div>
+                          <dt>What</dt>
+                          <dd>{explanation.what}</dd>
+                        </div>
                         <div>
                           <dt>When</dt>
                           <dd>{explanation.whenToUse}</dd>
