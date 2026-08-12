@@ -34,6 +34,7 @@ func TestComposeDeploymentFilesCoverOneStepDeployment(t *testing.T) {
 	dockerfile := mustReadFile(t, "Dockerfile")
 	for _, want := range []string{
 		"FROM node:22-bookworm AS web",
+		"COPY contracts ./contracts",
 		"FROM golang:1.22-bookworm AS build",
 		"COPY --from=web /src/internal/webassets/dist ./internal/webassets/dist",
 		"HEALTHCHECK --interval=10s --timeout=2s --start-period=15s --retries=6 CMD curl -fsS http://127.0.0.1:8080/readyz >/dev/null || exit 1",
