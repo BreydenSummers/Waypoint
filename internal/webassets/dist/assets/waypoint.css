@@ -1013,6 +1013,224 @@ html[data-theme='dark'] .field-group input {
   align-items: start;
 }
 
+.findings-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.finding-list-panel,
+.finding-editor-card,
+.finding-validation-panel,
+.finding-trace-panel,
+.finding-revision-panel {
+  border-radius: 18px;
+  border: 1px solid var(--workspace-border);
+  background: var(--workspace-surface);
+  box-shadow: 0 18px 34px var(--chrome-shadow);
+}
+
+.finding-list-panel,
+.finding-editor-card {
+  padding: 14px;
+}
+
+.finding-list {
+  display: grid;
+  gap: 10px;
+}
+
+.finding-card {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(139, 94, 52, 0.12);
+  background: rgba(255, 255, 255, 0.24);
+  color: inherit;
+}
+
+html[data-theme='dark'] .finding-card {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.finding-card.is-selected {
+  border-color: rgba(186, 117, 23, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(250, 238, 218, 0.16);
+}
+
+.finding-card-head,
+.finding-card-meta,
+.finding-trace-list,
+.revision-list,
+.validation-list,
+.finding-details-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.finding-details-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.finding-card-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: flex-start;
+}
+
+.finding-card-head h4 {
+  color: var(--chrome-strong);
+  font-size: 16px;
+  margin-top: 2px;
+}
+
+.finding-card-summary,
+.finding-empty,
+.finding-trace-panel p,
+.finding-revision-panel p,
+.finding-validation-panel p {
+  color: var(--chrome-muted);
+}
+
+.finding-card-meta {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.finding-card-meta dt,
+.finding-card-meta dd {
+  font-size: 12px;
+}
+
+.finding-card-meta dt {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--chrome-muted);
+}
+
+.finding-card-meta dd {
+  margin: 4px 0 0;
+  color: var(--chrome-strong);
+}
+
+.finding-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.finding-field {
+  min-width: 0;
+}
+
+.finding-field-wide {
+  grid-column: 1 / -1;
+}
+
+.finding-field textarea,
+.finding-field input,
+.finding-field select {
+  min-height: 40px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(139, 94, 52, 0.24);
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--chrome-strong);
+  padding: 0 12px;
+}
+
+.finding-field textarea {
+  min-height: 96px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+html[data-theme='dark'] .finding-field textarea,
+html[data-theme='dark'] .finding-field input,
+html[data-theme='dark'] .finding-field select {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.finding-actions {
+  margin-top: 14px;
+}
+
+.finding-details-grid {
+  margin-top: 14px;
+}
+
+.finding-validation-panel,
+.finding-trace-panel,
+.finding-revision-panel {
+  padding: 14px;
+}
+
+.validation-list li {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(139, 94, 52, 0.16);
+  background: rgba(255, 255, 255, 0.26);
+}
+
+html[data-theme='dark'] .validation-list li,
+html[data-theme='dark'] .revision-list li,
+html[data-theme='dark'] .trace-chip {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.validation-list li.is-pass {
+  border-color: rgba(99, 153, 34, 0.18);
+}
+
+.validation-list li.is-warn {
+  border-color: rgba(186, 117, 23, 0.2);
+}
+
+.trace-group h4,
+.revision-list strong,
+.validation-list strong {
+  color: var(--dark-cocoa);
+}
+
+.trace-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.trace-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  border: 1px solid rgba(139, 94, 52, 0.18);
+  background: rgba(255, 255, 255, 0.26);
+  color: var(--chrome-strong);
+}
+
+.revision-list li {
+  border-radius: 12px;
+  border: 1px solid rgba(139, 94, 52, 0.16);
+  background: rgba(255, 255, 255, 0.26);
+  padding: 10px 12px;
+}
+
+.revision-list span,
+.revision-list small {
+  color: var(--chrome-muted);
+}
+
+.finding-empty {
+  padding: 10px 0;
+}
+
 .attack-list-column,
 .attack-detail {
   min-width: 0;
@@ -1285,10 +1503,16 @@ html[data-theme='dark'] .live-banner {
 
 @media (max-width: 1080px) {
   .attack-shell,
+  .findings-shell,
   .evidence-split,
   .detail-grid,
-  .provenance-grid {
+  .provenance-grid,
+  .finding-editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .finding-field-wide {
+    grid-column: auto;
   }
 }
 
