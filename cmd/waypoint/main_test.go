@@ -13,7 +13,7 @@ import (
 func TestOpenConfiguredDatabaseAppliesMigrations(t *testing.T) {
 	dsn := os.Getenv("WAYPOINT_TEST_PG_DSN")
 	if dsn == "" {
-		t.Skip("WAYPOINT_TEST_PG_DSN not set")
+		t.Fatal("WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
