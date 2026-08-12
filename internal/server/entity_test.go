@@ -86,11 +86,19 @@ func TestEntityMergeSplitPreviewUndoAndProvenance(t *testing.T) {
 		t.Fatalf("merge audit data = %s", data)
 	}
 
+	var resolvedID string
+	if err := db.QueryRowContext(ctx, `SELECT entity_id FROM observation WHERE id = $1`, observationID).Scan(&resolvedID); err != nil {
+		t.Fatalf("load merged provenance observation: %v", err)
+	}
+	if resolvedID != sourceID {
+		t.Fatalf("merged observation entity = %q, want %q", resolvedID, sourceID)
+	}
+
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		t.Fatalf("begin provenance tx: %v", err)
 	}
-	resolvedID, err := upsertEntity(ctx, tx, engagementID, "host", "fqdn", "alpha.local", map[string]any{"role": "source", "state": "updated"})
+	resolvedID, err = upsertEntity(ctx, tx, engagementID, "host", "fqdn", "alpha.local", map[string]any{"role": "source", "state": "updated"})
 	if err != nil {
 		t.Fatalf("upsert merged entity: %v", err)
 	}
@@ -138,8 +146,8 @@ func TestEntityMergeSplitPreviewUndoAndProvenance(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT type, actor_kind, actor_handle, actor_role, request_id, data::text FROM audit_event WHERE subject_id = $1 ORDER BY id DESC LIMIT 1`, sourceID).Scan(&typ, &actorKind, &actorHandle, &actorRole, &requestID, &data); err != nil {
 		t.Fatalf("load split audit event: %v", err)
 	}
-	if typ != "entity.split" || requestID != "req-split" {
-		t.Fatalf("split audit event = %s %s", typ, requestID)
+	if typ != "entity.split" || actorKind != "human" || actorHandle != "alex.operator" || actorRole != "operator" || requestID != "req-split" {
+		t.Fatalf("split audit event = %s %s %s %s %s", typ, actorKind, actorHandle, actorRole, requestID)
 	}
 	if !bytes.Contains([]byte(data), []byte(`"observationId":"`+observationID+`"`)) {
 		t.Fatalf("split audit data = %s", data)
@@ -165,6 +173,118 @@ func TestEntityMergeSplitPreviewUndoAndProvenance(t *testing.T) {
 	}
 	if resolvedID != sourceID {
 		t.Fatalf("observation entity = %q, want %q", resolvedID, sourceID)
+	}
+}
+
+func TestEntityIdentityNormalizationConflictAndConcurrentDeduplication(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	actorID := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+	token := "entity-dedup-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, actorID, engagementID, hashHex(token))
+
+	for _, tc := range []struct {
+		name    string
+		ids     []captureEntityIdentifier
+		wantKey string
+		wantVal string
+	}{
+		{name: "sid precedence", ids: []captureEntityIdentifier{{Type: "hostname", Value: "workstation"}, {Type: "ad_sid", Value: "  S-1-5-21-123  "}, {Type: "mac", Value: "00:11:22:33:44:55"}}, wantKey: "ad_sid", wantVal: "S-1-5-21-123"},
+		{name: "mac normalization", ids: []captureEntityIdentifier{{Type: "mac", Value: "00-11-22-33-44-55"}}, wantKey: "mac", wantVal: "00:11:22:33:44:55"},
+		{name: "fqdn precedence", ids: []captureEntityIdentifier{{Type: "hostname", Value: "Workstation.EXAMPLE.LOCAL."}, {Type: "ip", Value: "10.0.0.7"}, {Type: "fqdn", Value: "  App.EXAMPLE.local. "}}, wantKey: "fqdn", wantVal: "app.example.local"},
+		{name: "hostname ip fallback", ids: []captureEntityIdentifier{{Type: "hostname", Value: "Host01.EXAMPLE.LOCAL."}, {Type: "ip", Value: "10.0.0.7"}}, wantKey: "hostname_ip", wantVal: "hostname=host01.example.local|ip=10.0.0.7"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gotKey, gotVal, ok := entityIdentity(tc.ids)
+			if !ok || gotKey != tc.wantKey || gotVal != tc.wantVal {
+				t.Fatalf("entityIdentity() = %q %q %v, want %q %q true", gotKey, gotVal, ok, tc.wantKey, tc.wantVal)
+			}
+		})
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin conflict tx: %v", err)
+	}
+	if _, err := upsertEntity(ctx, tx, engagementID, "host", "fqdn", "conflict.local", map[string]any{"stage": "seed"}); err != nil {
+		t.Fatalf("seed conflict entity: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit conflict seed: %v", err)
+	}
+
+	tx, err = db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin conflicting tx: %v", err)
+	}
+	if _, err := upsertEntity(ctx, tx, engagementID, "service", "fqdn", "conflict.local", map[string]any{"stage": "conflict"}); err != errEntityKindConflict {
+		t.Fatalf("conflicting upsert error = %v, want %v", err, errEntityKindConflict)
+	}
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("rollback conflicting tx: %v", err)
+	}
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	ids := make(chan string, 2)
+	errs := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			tx, err := db.BeginTx(ctx, nil)
+			if err != nil {
+				errs <- err
+				return
+			}
+			defer tx.Rollback()
+			<-start
+			id, err := upsertEntity(ctx, tx, engagementID, "host", "fqdn", "dedup.local", map[string]any{"worker": worker})
+			if err != nil {
+				errs <- err
+				return
+			}
+			if err := tx.Commit(); err != nil {
+				errs <- err
+				return
+			}
+			ids <- id
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	close(ids)
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent upsert error: %v", err)
+		}
+	}
+	var gotIDs []string
+	for id := range ids {
+		gotIDs = append(gotIDs, id)
+	}
+	if len(gotIDs) != 2 || gotIDs[0] != gotIDs[1] {
+		t.Fatalf("concurrent upsert ids = %v, want the same entity twice", gotIDs)
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entity WHERE engagement_id = $1 AND key_type = 'fqdn' AND key_value = 'dedup.local'`, engagementID).Scan(&count); err != nil {
+		t.Fatalf("count dedup entity: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("dedup entity count = %d, want 1", count)
 	}
 }
 
