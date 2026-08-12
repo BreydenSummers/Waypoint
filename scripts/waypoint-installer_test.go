@@ -294,3 +294,143 @@ func readToken(t *testing.T, path string) string {
 	}
 	return strings.TrimSpace(string(b))
 }
+
+type destroyFixture struct {
+	scriptPath  string
+	workDir     string
+	configPath  string
+	bundlePath  string
+	receiptPath string
+	installRoot string
+	stateRoot   string
+	logRoot     string
+	env         []string
+}
+
+func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing.T) {
+	blocked := setupDestroyFixture(t)
+	wrongBundle := filepath.Join(filepath.Dir(blocked.bundlePath), "wrong.tar")
+	mustWriteFile(t, wrongBundle, "wrong bundle")
+
+	failed := runInstallerExpectFailure(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", blocked.bundlePath)
+	if !strings.Contains(failed, "--receipt is required") {
+		t.Fatalf("destroy without receipt failed with %q, want receipt guard", failed)
+	}
+	if _, err := os.Stat(blocked.stateRoot); err != nil {
+		t.Fatalf("state root removed on guarded failure: %v", err)
+	}
+
+	failed = runInstallerExpectFailure(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", wrongBundle, "--receipt", blocked.receiptPath)
+	if !strings.Contains(failed, "does not match the requested bundle") {
+		t.Fatalf("destroy with wrong bundle failed with %q, want bundle-path guard", failed)
+	}
+	if _, err := os.Stat(blocked.installRoot); err != nil {
+		t.Fatalf("install root removed on failed destroy: %v", err)
+	}
+
+	runInstaller(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", blocked.bundlePath, "--receipt", blocked.receiptPath)
+	for _, path := range []string{blocked.installRoot, blocked.stateRoot, blocked.logRoot} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be removed, got err=%v", path, err)
+		}
+	}
+	installedLog, err := os.ReadFile(filepath.Join(filepath.Dir(blocked.configPath), "installer-calls.log"))
+	if err != nil {
+		t.Fatalf("read installer log: %v", err)
+	}
+	for _, want := range []string{"systemctl stop waypoint", "systemctl stop postgresql"} {
+		if !strings.Contains(string(installedLog), want) {
+			t.Fatalf("installer log missing %q:\n%s", want, installedLog)
+		}
+	}
+
+	breakGlass := setupDestroyFixture(t)
+	runInstaller(t, breakGlass.scriptPath, breakGlass.env, breakGlass.workDir, "destroy", "--config", breakGlass.configPath, "--bundle", breakGlass.bundlePath, "--force")
+	for _, path := range []string{breakGlass.installRoot, breakGlass.stateRoot, breakGlass.logRoot} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected %s to be removed by break-glass teardown, got err=%v", path, err)
+		}
+	}
+}
+
+func setupDestroyFixture(t *testing.T) destroyFixture {
+	t.Helper()
+
+	root := t.TempDir()
+	installRoot := filepath.Join(root, "opt", "waypoint")
+	stateRoot := filepath.Join(root, "var", "lib", "waypoint")
+	logRoot := filepath.Join(root, "var", "log", "waypoint")
+	workDir := filepath.Join(root, "work")
+	mustMkdirAll(t, workDir)
+
+	osRelease := filepath.Join(root, "os-release")
+	mustWriteFile(t, osRelease, "ID=ubuntu\nVERSION_ID=\"24.04\"\n")
+
+	packagePath := filepath.Join(root, "waypoint-bin")
+	mustWriteFile(t, packagePath, "#!/bin/sh\necho waypoint\n")
+	if err := os.Chmod(packagePath, 0o755); err != nil {
+		t.Fatalf("chmod package: %v", err)
+	}
+
+	stubDir := filepath.Join(root, "stubs")
+	mustMkdirAll(t, stubDir)
+	stubLog := filepath.Join(root, "installer-calls.log")
+	mustWriteExecutable(t, filepath.Join(stubDir, "systemctl"), "#!/bin/sh\necho systemctl \"$*\" >> \"$INSTALLER_STUB_LOG\"\ncase \"$1\" in\n  is-active) echo active ;;\nesac\nexit 0\n")
+	mustWriteExecutable(t, filepath.Join(stubDir, "psql"), "#!/bin/sh\necho psql \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
+	mustWriteExecutable(t, filepath.Join(stubDir, "pg_isready"), "#!/bin/sh\necho pg_isready \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
+
+	readyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/readyz" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	}))
+	t.Cleanup(readyServer.Close)
+
+	configPath := filepath.Join(root, "installer.env")
+	mustWriteFile(t, configPath, strings.Join([]string{
+		"WAYPOINT_VERSION=1.0.0",
+		"WAYPOINT_PUBLIC_URL=" + readyServer.URL,
+		"WAYPOINT_DB_DSN=postgres://waypoint:waypoint@localhost:5432/waypoint?sslmode=disable",
+		"WAYPOINT_PACKAGE_PATH=" + packagePath,
+		"WAYPOINT_INSTALL_ROOT=" + installRoot,
+		"WAYPOINT_STATE_ROOT=" + stateRoot,
+		"WAYPOINT_LOG_ROOT=" + logRoot,
+		"",
+	}, "\n"))
+
+	bundlePath := filepath.Join(root, "bundle", "verified-export.tar")
+	mustWriteFile(t, bundlePath, "bundle")
+	receiptPath := filepath.Join(root, "receipt.json")
+	mustWriteJSON(t, receiptPath, map[string]any{
+		"status":       "verified",
+		"receiptId":    "receipt-q3-2025-01-10",
+		"verifiedAt":   "2025-01-10T09:02:14Z",
+		"bundlePath":   bundlePath,
+		"manifestHash": "8e0f1d2c3b4a59687766554433221100ffeeddccbbaa99887766554433221100",
+	})
+
+	env := baseInstallerEnv(osRelease)
+	env = append(env,
+		"WAYPOINT_INSTALLER_UNAME_MACHINE=x86_64",
+		"PATH="+stubDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"INSTALLER_STUB_LOG="+stubLog,
+	)
+
+	scriptPath := installerScriptPath(t)
+	runInstaller(t, scriptPath, env, workDir, "install", "--config", configPath)
+
+	return destroyFixture{
+		scriptPath:  scriptPath,
+		workDir:     workDir,
+		configPath:  configPath,
+		bundlePath:  bundlePath,
+		receiptPath: receiptPath,
+		installRoot: installRoot,
+		stateRoot:   stateRoot,
+		logRoot:     logRoot,
+		env:         env,
+	}
+}
