@@ -1,14 +1,16 @@
-import { readFile } from 'node:fs/promises';
+import { access, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = resolve(webRoot, '..');
 const app = await readFile(resolve(webRoot, 'src/App.tsx'), 'utf8');
 const styles = await readFile(resolve(webRoot, 'src/styles.css'), 'utf8');
 const distBundle = await readFile(resolve(webRoot, '../internal/webassets/dist/assets/waypoint.js'), 'utf8');
 const distStyles = await readFile(resolve(webRoot, '../internal/webassets/dist/assets/waypoint.css'), 'utf8');
 const index = await readFile(resolve(webRoot, 'index.html'), 'utf8');
 const distIndex = await readFile(resolve(webRoot, '../internal/webassets/dist/index.html'), 'utf8');
+const rootArtifacts = ['waypoint', 'server.test'];
 const reportFixture = JSON.parse(await readFile(resolve(webRoot, '../contracts/v1/fixtures/report-snapshot.json'), 'utf8'));
 const reportRenderer = await readFile(resolve(webRoot, 'scripts/report-renderer.mjs'), 'utf8');
 const renderReportScript = await readFile(resolve(webRoot, 'scripts/render-report.mjs'), 'utf8');
@@ -60,6 +62,12 @@ if (!distBundle.includes('reportSnapshotFallback') || !distBundle.includes('jour
 }
 if (distBundle.includes('Frozen report snapshot') && !distBundle.includes('Runtime report snapshot')) {
   throw new Error('Report snapshot title was not updated to runtime wording');
+}
+
+for (const artifact of rootArtifacts) {
+  if (await access(resolve(repoRoot, artifact)).then(() => true, () => false)) {
+    throw new Error(`generated runtime artifact should not live at repo root: ${artifact}`);
+  }
 }
 
 const requiredReportKeys = ['version', 'title', 'engagement', 'cutoff', 'scope', 'methodology', 'findings', 'evidence', 'bundle', 'attribution', 'knownCaptureGaps'];
