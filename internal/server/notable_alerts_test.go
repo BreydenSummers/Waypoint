@@ -121,6 +121,12 @@ func TestNotableAlertsAreDeduplicatedAndStreamed(t *testing.T) {
 	if frame["id"] == "" {
 		t.Fatal("sse frame missing id")
 	}
+	if !strings.Contains(frame["data"], `"sourceCaptureId":"`+ack.CaptureID+`"`) {
+		t.Fatalf("alert data missing immutable source capture link: %s", frame["data"])
+	}
+	if !strings.Contains(frame["data"], `"sourceActionId":"`+ack.ActionID+`"`) {
+		t.Fatalf("alert data missing source action link: %s", frame["data"])
+	}
 
 	repeat := notableAlertEnvelope("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2", "10.0.0.0/24")
 	resp = doCaptureRequest(t, ts.Config.Handler, token, "alert-req-2", repeat, []byte("stdout"), []byte("stderr"))
@@ -135,6 +141,68 @@ func TestNotableAlertsAreDeduplicatedAndStreamed(t *testing.T) {
 		t.Fatalf("fresh capture status = %d, want %d", resp.Code, http.StatusCreated)
 	}
 	assertAlertCounts(t, db, engagementID, 1, 2)
+}
+
+func TestNotableAlertSelectionIsDeterministic(t *testing.T) {
+	cases := []struct {
+		name       string
+		extracted  map[string]any
+		wantRule   string
+		wantDedupe string
+	}{
+		{
+			name: "successful authentication prefers stable key order",
+			extracted: map[string]any{
+				"zulu":  map[string]any{"success": true, "username": "zoe", "target": "10.0.0.9", "method": "rdp"},
+				"alpha": map[string]any{"success": true, "username": "alice", "target": "10.0.0.5", "method": "ssh"},
+			},
+			wantRule:   "successful-authentication",
+			wantDedupe: "successful-authentication|alice|10.0.0.5|ssh",
+		},
+		{
+			name: "reachable segment prefers stable key order",
+			extracted: map[string]any{
+				"zulu":  map[string]any{"segment": "10.0.9.0/24", "reachable": true},
+				"alpha": map[string]any{"segment": "10.0.0.0/24", "reachable": true},
+			},
+			wantRule:   "first-newly-reachable-segment",
+			wantDedupe: "first-newly-reachable-segment|10.0.0.0/24",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := notableAlertsForResult(&captureParseResult{Extracted: tc.extracted}, "action-1", "result-1", nil)
+			if len(got) != 1 {
+				t.Fatalf("alerts = %d, want 1", len(got))
+			}
+			if got[0].RuleID != tc.wantRule {
+				t.Fatalf("rule = %q, want %q", got[0].RuleID, tc.wantRule)
+			}
+			if got[0].DedupeKey != tc.wantDedupe {
+				t.Fatalf("dedupe = %q, want %q", got[0].DedupeKey, tc.wantDedupe)
+			}
+		})
+	}
+}
+
+func TestStructuredResultValidationGatesNotableAlerts(t *testing.T) {
+	plugin := capturePluginSelection{ID: "waypoint.nmap", Version: "1.0.0", ContractVersion: "1.0.0", ArtifactSHA256: strings.Repeat("a", 64), Match: capturePluginMatch{Binary: "nmap", Reason: "match", Specificity: 20}}
+	result := captureParseResult{
+		SchemaID:      "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+		SchemaVersion: "1.0.0",
+		Extracted: map[string]any{
+			"authentication": map[string]any{"success": true, "username": "alice", "target": "10.0.0.5", "method": "ssh"},
+		},
+		Entities: []captureParsedEntity{{
+			Kind:        "host",
+			Identifiers: nil,
+			Attributes:  map[string]any{"state": "up"},
+		}},
+	}
+	if pb := validateStructuredResult(plugin, result); pb == nil {
+		t.Fatal("validateStructuredResult accepted an invalid structured result")
+	}
 }
 
 func notableAlertEnvelope(captureID, segment string) map[string]any {
