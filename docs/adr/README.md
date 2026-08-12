@@ -16,6 +16,9 @@ product-owner approval.
 | [ADR-0004](0004-parser-isolation.md) | Parser isolation and raw-first failure behavior | PRD-CAP-002/003 |
 | [ADR-0005](0005-export-semantics.md) | Snapshot, bundle, manifest, and teardown semantics | PRD-REP-002–005, PRD-LIFE-001 |
 | [ADR-0006](0006-v1-vocabulary-and-deferrals.md) | v1 product vocabulary and deferred capability claims | PRD-UX-002–006, PRD-DEF-001–007 |
+| [ADR-0007](0007-attribution-lifecycle-and-read-model.md) | Lossless action attribution, actor lifecycle, authoritative reads, and claim review | PRD-AUD-001, PRD-CAP-009, PRD-ID-001/002 |
+| [ADR-0008](0008-standard-mcp-transport.md) | Standard MCP Streamable HTTP and REST service parity | PRD-CAP-008 |
+| [ADR-0009](0009-export-jobs-receipts-and-teardown.md) | Persisted export jobs, verified receipts, and teardown authorization | PRD-REP-001–005, PRD-LIFE-001 |
 
 ## Verification
 

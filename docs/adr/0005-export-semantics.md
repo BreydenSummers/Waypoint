@@ -33,9 +33,10 @@ also does not identify who produced an export, so calling the v1 result signed w
   or signatures and product copy must say “SHA-256 verified” or “hash verified,” never “signed,”
   “signature verified,” or equivalent identity/provenance claims.
 - Export is successful only after local verification completes and a durable export receipt is
-  audited. The supported destroy flow requires that receipt and exact verified bundle path. An
-  interactive `--force` is an explicit preservation bypass; host administrators can also delete
-  volumes directly, and both limits are documented.
+  audited. Persisted job transitions, receipt authority, and the external destroy handshake follow
+  [ADR-0009](0009-export-jobs-receipts-and-teardown.md). The supported destroy flow requires that
+  receipt and exact verified bundle path. An interactive `--force` is an explicit preservation
+  bypass; host administrators can also delete volumes directly, and both limits are documented.
 - Bundles contain sensitive client data. Export warns operators, writes restrictive permissions
   where supported, never silently redacts immutable evidence, and documents encrypted transport and
   storage responsibilities.

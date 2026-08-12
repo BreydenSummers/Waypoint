@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/export-job-page.schema.json",
+  "title": "Keyset-paginated export job page",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "items", "page"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "items": { "type": "array", "maxItems": 500, "items": { "$ref": "export-job.schema.json" } },
+    "page": { "$ref": "common.schema.json#/$defs/Page" }
+  }
+}

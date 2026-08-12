@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/teardown-authorization.schema.json",
+  "title": "Single-use teardown authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "engagementId", "receiptId", "exportJobId", "bundlePath", "archiveSha256", "manifestSha256", "requestedBy", "requestedAt", "expiresAt", "status"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "receiptId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "exportJobId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "bundlePath": { "$ref": "common.schema.json#/$defs/SafeRelativePath" },
+    "archiveSha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+    "manifestSha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+    "requestedBy": { "$ref": "actor.schema.json" },
+    "requestedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "expiresAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "status": { "enum": ["authorized", "consumed", "expired"] },
+    "consumedAt": { "$ref": "common.schema.json#/$defs/Timestamp" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "consumed" } }, "required": ["status"] },
+      "then": { "required": ["consumedAt"] },
+      "else": { "not": { "required": ["consumedAt"] } }
+    }
+  ]
+}

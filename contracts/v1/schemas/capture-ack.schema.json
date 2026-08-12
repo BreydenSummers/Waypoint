@@ -4,7 +4,7 @@
   "title": "Durable capture acknowledgement",
   "type": "object",
   "additionalProperties": false,
-  "required": ["contractVersion", "actionId", "captureId", "auditEventCursor", "receivedAt", "idempotency"],
+  "required": ["contractVersion", "actionId", "captureId", "auditEventCursor", "receivedAt", "idempotency", "clockSkew"],
   "properties": {
     "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
     "actionId": { "$ref": "common.schema.json#/$defs/Uuid" },
@@ -12,7 +12,10 @@
     "auditEventCursor": { "$ref": "common.schema.json#/$defs/Cursor" },
     "receivedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
     "idempotency": { "enum": ["created", "replayed"] },
-    "clockSkew": {
+    "clockSkew": { "$ref": "#/$defs/ClockSkew" }
+  },
+  "$defs": {
+    "ClockSkew": {
       "type": "object",
       "additionalProperties": false,
       "required": ["status", "offsetMs"],

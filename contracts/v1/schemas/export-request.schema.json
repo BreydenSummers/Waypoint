@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/export-request.schema.json",
+  "title": "Create persisted export job request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["formatVersion"],
+  "properties": {
+    "formatVersion": { "const": "1.0.0" },
+    "retryOfJobId": { "$ref": "common.schema.json#/$defs/Uuid" }
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/entity.schema.json",
+  "title": "Authoritative entity with immutable observation provenance",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "engagementId", "kind", "identifiers", "attributes", "observations", "firstSeen", "lastSeen", "revision"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "kind": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[a-z][a-z0-9_-]*$" },
+    "identifiers": { "type": "array", "maxItems": 256, "items": { "$ref": "structured-result.schema.json#/$defs/EntityIdentifier" } },
+    "attributes": { "type": "object", "maxProperties": 256 },
+    "observations": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "observedAt", "claimStatus"],
+        "properties": {
+          "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+          "sourceActionId": { "oneOf": [{ "$ref": "common.schema.json#/$defs/Uuid" }, { "type": "null" }] },
+          "outOfBandClaimId": { "$ref": "common.schema.json#/$defs/Uuid" },
+          "claimStatus": { "enum": ["captured", "pending_review", "dismissed"] },
+          "observedAt": { "$ref": "common.schema.json#/$defs/Timestamp" }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "claimStatus": { "const": "captured" } }, "required": ["claimStatus"] },
+            "then": { "required": ["sourceActionId"], "properties": { "sourceActionId": { "$ref": "common.schema.json#/$defs/Uuid" } } },
+            "else": { "required": ["outOfBandClaimId"] }
+          }
+        ]
+      }
+    },
+    "firstSeen": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "lastSeen": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "revision": { "type": "integer", "minimum": 1 }
+  }
+}

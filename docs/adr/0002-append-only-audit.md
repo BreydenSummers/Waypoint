@@ -13,9 +13,10 @@ central audit promise. The running instance is disposable only after its durable
 ## Decision
 
 - `action` remains the immutable command-capture spine. Add an append-only `audit_event` stream for
-  every meaningful state mutation: actor/engagement provisioning or revocation, capture receipt or
-  conflict, entity merge/split, finding promotion/revision/status change, out-of-band resolution,
-  export state transition, and teardown authorization.
+  every meaningful state mutation: actor/engagement provisioning, credential rotation or revocation;
+  capture receipt or conflict; entity merge/split; finding promotion/revision/status change;
+  out-of-band flag/resolution; export state/receipt verification or invalidation; and teardown
+  authorization/consumption.
 - Every action has exactly one engagement-scoped human or AI actor. Every audit event records that
   initiating actor, engagement, server timestamp, event type, subject, correlation/request ID, and
   redacted before/after metadata. Service-derived work inherits the actor and source action that

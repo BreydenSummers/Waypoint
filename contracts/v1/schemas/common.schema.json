@@ -40,6 +40,27 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 4096
+    },
+    "Page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hasMore"],
+      "properties": {
+        "nextCursor": { "$ref": "#/$defs/Cursor" },
+        "hasMore": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "hasMore": { "const": true } }, "required": ["hasMore"] },
+          "then": { "required": ["nextCursor"] }
+        }
+      ]
+    },
+    "SafeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)[^\\x00]+$"
     }
   }
 }

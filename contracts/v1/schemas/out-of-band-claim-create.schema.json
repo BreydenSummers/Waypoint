@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/out-of-band-claim-create.schema.json",
+  "title": "Observed claim submission",
+  "description": "The server assigns the claim ID and validates any asserted source action in credential-derived engagement scope.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["claimKind", "claimedSubjectId", "observedAt"],
+  "properties": {
+    "claimKind": { "enum": ["entity", "result"] },
+    "claimedSubjectId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "assertedSourceActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "observedAt": { "$ref": "common.schema.json#/$defs/Timestamp" }
+  }
+}

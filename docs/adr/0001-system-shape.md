@@ -23,7 +23,8 @@ collectors, parsers, and report rendering must not become independent mutation p
   transaction boundary.
 - REST is the write protocol. SSE is an authorized, resumable read feed over persisted audit-event
   IDs. MCP exposes only narrow authenticated ingestion/status tools and delegates to the same core
-  services as REST; it is not a second implementation of writes.
+  services as REST; it is not a second implementation of writes. Standard MCP transport and its
+  closed tool inventory follow [ADR-0008](0008-standard-mcp-transport.md).
 - The collection repository owns Go operator-wrapper and remote-agent binaries, the plugin SDK,
   release-pinned parser artifacts, and parser fixtures. Core owns versioned ingestion and structured
   result schemas plus compatibility fixtures. Both sides negotiate explicit contract versions.
@@ -38,7 +39,9 @@ The default deployment has two containers but only one PostgreSQL container and 
 object store, message broker, external renderer, or model service. Go keeps the service and
 cross-platform collector operational surfaces small; React/TypeScript supports an accessible SVG
 shell and data-heavy workspaces. Cross-repository integration must be contract- and fixture-based,
-so neither repository may rely on unpublished implementation details in the other.
+so neither repository may rely on unpublished implementation details in the other. Authoritative
+resource projections and actor lifecycle follow
+[ADR-0007](0007-attribution-lifecycle-and-read-model.md).
 
 A filesystem evidence volume is intentionally coupled to PostgreSQL references and therefore needs
 the atomic placement and reconciliation rules in [ADR-0003](0003-content-addressed-evidence.md).

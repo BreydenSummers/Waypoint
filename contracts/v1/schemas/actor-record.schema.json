@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/actor-record.schema.json",
+  "title": "Current actor lifecycle record",
+  "description": "Authoritative non-secret actor state. Historical events keep their actor snapshot after this state changes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "engagementId", "actor", "status", "credentialVersion", "createdAt", "createdBy"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "actor": { "$ref": "actor.schema.json" },
+    "status": { "enum": ["active", "revoked"] },
+    "credentialVersion": { "type": "integer", "minimum": 1 },
+    "createdAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "createdBy": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "lastRotatedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "lastRotatedBy": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "revokedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "revokedBy": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "revision": { "type": "integer", "minimum": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "revoked" } }, "required": ["status"] },
+      "then": { "required": ["revokedAt", "revokedBy"] },
+      "else": { "not": { "anyOf": [{ "required": ["revokedAt"] }, { "required": ["revokedBy"] }] } }
+    },
+    {
+      "if": { "required": ["lastRotatedAt"] },
+      "then": { "required": ["lastRotatedBy"] }
+    },
+    {
+      "if": { "required": ["lastRotatedBy"] },
+      "then": { "required": ["lastRotatedAt"] }
+    }
+  ]
+}

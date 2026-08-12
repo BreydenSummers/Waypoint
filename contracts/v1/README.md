@@ -1,8 +1,12 @@
 # Waypoint API and event contract v1.0.0
 
-This directory is the G0 integration boundary between core and collectors. The canonical API is
-[`openapi.json`](openapi.json); a generated aggregate and schema catalog live in `generated/`. JSON Schemas
-use draft 2020-12 and are closed by default. Fixtures are synthetic and normative.
+This directory is the G0 integration boundary between core, collectors, MCP clients, the web client,
+and export/teardown tooling. The canonical API is [`openapi.json`](openapi.json); a generated
+aggregate and schema catalog live in `generated/`. JSON Schemas use draft 2020-12 and are closed by
+default. Fixtures are synthetic and normative. Architecture is fixed by
+[ADR-0007](../../docs/adr/0007-attribution-lifecycle-and-read-model.md),
+[ADR-0008](../../docs/adr/0008-standard-mcp-transport.md), and
+[ADR-0009](../../docs/adr/0009-export-jobs-receipts-and-teardown.md).
 
 ## Contract and compatibility policy
 
@@ -54,6 +58,39 @@ Metadata is limited to 1 MiB encoded JSON; stdout and stderr each have an implem
 quota no larger than the schema ceiling. Servers may configure lower limits and report them in
 operator configuration. Assessment strings are untrusted text, never HTML, paths, or commands for
 core to execute.
+
+## Lossless persistence, actors, and authoritative reads
+
+An accepted capture is read back as [`Action`](schemas/action.schema.json): credential-derived
+engagement and event-time actor snapshot plus the **complete** accepted envelope, server receipt/skew,
+distinct evidence references, and causal audit cursor. Source-agent platform, execution failure or
+signal, exec-host method/interface/confidence, egress mode/status/time, pivots, timing, argv/cwd,
+parser state, and AI rationale may not be collapsed or dropped by storage. Audit events are safe
+ordered summaries; they are not a substitute for this authoritative record.
+
+`/actions`, `/actors`, `/entities`, `/evidence`, `/out-of-band-claims`, and `/exports` are bounded,
+credential-scoped resources. Collection reads use ascending keyset pagination. Absent and
+foreign-engagement IDs return the same `resource_not_found` shape. Evidence bytes are streamed only
+through opaque evidence IDs and revalidated against immutable metadata.
+
+Actor reads never contain tokens. Provision/rotate responses return a generated token once; later
+reads expose only active/revoked state and credential version. AI provisioning requires agent
+name/model/version and an active human `authorizedBy`. Rotation and revocation use optimistic
+revision checks and emit append-only actor events.
+
+## Standard MCP contract
+
+`POST /api/v1/mcp` is one MCP Streamable HTTP JSON-RPC 2.0 endpoint pinned to protocol revision
+`2025-03-26`; custom REST-shaped `/mcp/*` aliases are not part of the contract. Clients initialize,
+send `notifications/initialized`, discover `tools/list`, and call exactly two tools:
+`waypoint_ingest_capture` and `waypoint_capture_status`. The MCP session ID is transport state, never
+an authorization scope.
+
+MCP capture takes the same envelope/idempotency key and distinct base64 evidence streams, then calls
+the same application service as REST. Accepted semantics and stable application problems are equal;
+only audit origin differs. JSON-RPC dispatch failures use standard protocol errors. Base64 MCP
+uploads may have a lower configured quota than streaming REST and fail without truncation. MCP does
+not expose shell, filesystem, SQL, prompt, resource, sampling, or generic command tools.
 
 ## Idempotency rules
 
@@ -116,13 +153,16 @@ output, parser output, or foreign-scope existence.
 | 400 | `invalid_request`, `cursor_invalid`, `cursor_mismatch` | No; correct request/spool metadata. |
 | 401 | `unauthenticated` | No; provision/rotate the actor credential. |
 | 403 | `forbidden` | No; correct engagement role/scope. |
-| 409 | `idempotency_conflict` | No; investigate changed duplicate; never overwrite. |
+| 404 | `resource_not_found` | No; absent and foreign-scope resources are intentionally indistinguishable. |
+| 409 | `idempotency_conflict`, `state_conflict` | No; investigate duplicate or reload the current revision. |
 | 410 | `cursor_expired` | REST resync, then reconnect. |
+| 412/428 | `precondition_failed`, `precondition_required` | No; re-read state and provide the required exact precondition. |
 | 413 | `payload_too_large` | No automatic retry; preserve spool and escalate quota. |
-| 422 | `evidence_integrity_mismatch` | Re-read local spool; retry only after local verification. |
+| 422 | `evidence_integrity_mismatch`, `receipt_verification_failed` | Re-read local bytes; teardown stays blocked on receipt failure. |
 | 426 | `unsupported_contract_version` | No; install a supported client. |
 | 429 | `rate_limited` | Yes, using `Retry-After` with jitter. |
-| 500/503 | `internal_error`, `service_unavailable` | Yes with bounded exponential backoff and same idempotency key. |
+| 500/503 | `internal_error`, `service_unavailable` | Yes with bounded exponential backoff and the same idempotency key. |
+| 507 | `capacity_insufficient` | No automatic retry; preserve state and free or add export capacity. |
 
 Examples, including a rejected secret-bearing extension, are in
 [`fixtures/problems.json`](fixtures/problems.json).
@@ -137,24 +177,49 @@ Initial bootstrap is attributed atomically to the first human.
 The v1 registry reserves these meanings without requiring all implementation routes at G0:
 
 - `engagement.provisioned`, `engagement.status-changed`;
-- `actor.provisioned`, `actor.revoked`;
+- `actor.provisioned`, `actor.credential-rotated`, `actor.revoked`;
 - `capture.accepted`, `capture.conflict`, `structured-result.appended`;
 - `entity.merged`, `entity.split`;
 - `finding.promoted`, `finding.revised`, `finding.status-changed`;
-- `out-of-band.flagged`, `out-of-band.resolved`, `export.state-changed`, `teardown.authorized`.
+- `out-of-band.flagged`, `out-of-band.resolved`, `export.state-changed`,
+  `export.receipt-verified`, `export.receipt-invalidated`, `teardown.authorized`, and
+  `teardown.consumed`.
 
-`capture.accepted`, `capture.conflict`, `out-of-band.flagged`, and `out-of-band.resolved` have typed
-data in the current schema. Other registered payloads remain redacted objects until their owning task
-publishes a typed additive contract; the envelope and registry meaning cannot be repurposed. If a
-claim cannot be tied back to a captured source action, Waypoint flags it for review instead of
-pretending provenance exists.
+`capture.accepted`, `capture.conflict`, actor lifecycle, out-of-band claim, export-state, and teardown
+authorization events have typed data in the current schema. Other registered payloads remain redacted
+objects until their owning task publishes a typed additive contract; the envelope and registry
+meaning cannot be repurposed.
+
+## Claims, persisted exports, receipts, and teardown
+
+The claim service assigns IDs. A submitted entity/result observation that cannot prove a valid
+captured source action becomes `pending` with `detectionBoundary=best_effort`; it is never silently
+promoted to captured provenance. An operator can link it to an engagement-scoped immutable action or
+dismiss it while retaining the visible gap. Waypoint can flag only observations it receives; wholly
+unobserved execution cannot be guaranteed captured.
+
+Export is a server-owned persisted job, not browser state. It retains preflight/progress/cancel/
+failure/completion state, snapshot cutoff, causal actor, artifact digests, and audit transitions.
+Only a job that generated and locally verified the database dump, all evidence, frozen report JSON,
+PDF, metadata, offline tools/instructions, manifest, and outer archive can become `completed`. The
+manifest contains every payload exactly once but excludes itself; the outer archive digest covers
+the complete archive. The `signatures.items` hook is empty in v1 and makes no signer-identity claim.
+
+Successful verification creates an immutable server receipt bound to the exact job, engagement,
+cutoff, bundle path, manifest digest, and archive digest. Teardown re-verifies those bytes and issues
+a short-lived single-use authorization bound to the receipt; an external deployment command consumes
+it before removing app/database/evidence volumes. Caller-authored/browser-local receipt JSON is never
+authority.
 
 ## Fixtures and verification
 
 The mandatory matrix in [`fixtures/captures/index.json`](fixtures/captures/index.json) covers every
 human/AI × known/unknown combination plus invalid attribution, parser state, version/idempotency,
 reserved-value, and evidence metadata cases. Valid capture fixtures embed the exact expected human
-or AI `capture.accepted` event. Event-specific invalid cases are indexed separately.
+or AI `capture.accepted` event. Event-specific invalid cases are indexed separately. Normative
+remediation fixtures additionally cover lossless action reads, actor lifecycle, standard MCP
+handshake/tool parity, pending/dismissed out-of-band claims, completed export/manifest/report,
+server receipt binding, and guarded teardown authorization.
 
 Run from the repository root:
 
@@ -175,13 +240,19 @@ fixture, idempotency/cursor semantics, and event/capture consistency. The verifi
 
 | Requirement | Contract evidence |
 |---|---|
-| PRD-AUD-001, PRD-NET-001/002 | Capture source, target, timing, result, exec/egress/pivot schema and fixtures. |
-| PRD-AUD-002/003, PRD-ID-002 | Actor-kind semantic checks, mandatory AI authorizer/context, paired events. |
+| PRD-AUD-001, PRD-NET-001/002 | Lossless authoritative action retains the complete capture source, target, timing, execution, exec/egress/pivot, parser, and evidence envelope. |
+| PRD-AUD-002/003, PRD-ID-001/002 | Actor lifecycle, one-time token, actor-kind checks, mandatory human AI authorizer/context, and paired events. |
 | PRD-CAP-001/002/003 | Raw multipart streams, parsed/needs-plugin/failure states, plugin/result envelope. |
 | PRD-CAP-007/011 | OpenAPI capture operation and actor/source-scoped retry/conflict matrix. |
+| PRD-CAP-008 | Standard MCP initialization/discovery/tool-call schemas and closed capture/status inventory with REST parity fixture. |
+| PRD-CAP-009/010 | Server-assigned pending/link/dismiss claim resources, events, and explicit best-effort boundary. |
+| PRD-REP-001 | Frozen report schema links findings and known gaps to full authoritative actions. |
+| PRD-REP-002/003/004 | Bundle payload/manifest inventory, outer digest receipt, empty signature hook, and clean-room tool categories. |
+| PRD-REP-005, PRD-LIFE-001 | Persisted preflight/progress/cancel job, verified receipt, and exact single-use teardown binding. |
 | PRD-RT-001 | Persisted string cursor, keyset REST, resumable bounded SSE and cursor fixtures. |
 | PRD-CORE-002, PRD-DATA-006 | Same-transaction actor event envelope and immutable retry behavior. |
-| PRD-PERF-001/002 | Bounded pages/metadata/evidence and streaming multipart contract. |
+| PRD-PERF-001/002 | Bounded authoritative pages and streaming REST evidence contract. |
 
-Architecture: ADR-0001 (single write/read paths), ADR-0002 (append-only events), ADR-0003
-(content-addressed streams), and ADR-0004 (untrusted parser output/raw fallback).
+Architecture: ADR-0001 (single service), ADR-0002 (append-only events), ADR-0003
+(content-addressed streams), ADR-0004 (raw-first parser boundary), ADR-0005 (bundle semantics),
+ADR-0007 (lossless read model/claims), ADR-0008 (standard MCP), and ADR-0009 (jobs/receipts/teardown).

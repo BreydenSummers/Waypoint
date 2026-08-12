@@ -5,16 +5,82 @@
   "description": "Generated aggregate for compatibility tooling; canonical schemas remain in ../schemas.",
   "oneOf": [
     {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/actor-record.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/actor-provision-request.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/actor-credential.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/actor-page.schema.json"
+    },
+    {
       "$ref": "https://schemas.waypoint.security/contracts/v1/capture-envelope.schema.json"
     },
     {
       "$ref": "https://schemas.waypoint.security/contracts/v1/capture-ack.schema.json"
     },
     {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/action.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/action-page.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/entity.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/entity-page.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/evidence.schema.json"
+    },
+    {
       "$ref": "https://schemas.waypoint.security/contracts/v1/audit-event.schema.json"
     },
     {
       "$ref": "https://schemas.waypoint.security/contracts/v1/audit-page.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/out-of-band-claim.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/out-of-band-claim-create.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/out-of-band-resolution.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/out-of-band-claim-page.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/mcp-message.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/report-snapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/export-request.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/export-job.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/export-job-page.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/export-manifest.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/export-receipt.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/teardown-request.schema.json"
+    },
+    {
+      "$ref": "https://schemas.waypoint.security/contracts/v1/teardown-authorization.schema.json"
     },
     {
       "$ref": "https://schemas.waypoint.security/contracts/v1/problem.schema.json"

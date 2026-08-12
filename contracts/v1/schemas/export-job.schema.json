@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/export-job.schema.json",
+  "title": "Persisted export job",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "engagementId", "requestedBy", "state", "progress", "formatVersion", "createdAt", "updatedAt", "revision"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "requestedBy": { "$ref": "actor.schema.json" },
+    "state": { "enum": ["queued", "preflighting", "running", "verifying", "cancel_requested", "cancelled", "failed", "completed"] },
+    "progress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "percent"],
+      "properties": {
+        "stage": { "enum": ["queued", "capacity_preflight", "snapshot", "database_dump", "evidence", "report_snapshot", "pdf", "tools", "manifest", "archive", "verification", "complete"] },
+        "percent": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "processedBytes": { "type": "integer", "minimum": 0 },
+        "estimatedTotalBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "formatVersion": { "const": "1.0.0" },
+    "retryOfJobId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "snapshotId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "cutoff": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["archivePath", "archiveByteLength", "archiveSha256", "manifestSha256", "reportSnapshotId", "receiptId"],
+      "properties": {
+        "archivePath": { "$ref": "common.schema.json#/$defs/SafeRelativePath" },
+        "archiveByteLength": { "type": "integer", "minimum": 1 },
+        "archiveSha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+        "manifestSha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+        "reportSnapshotId": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "receiptId": { "$ref": "common.schema.json#/$defs/Uuid" }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": { "enum": ["capacity_insufficient", "snapshot_failed", "dump_failed", "evidence_integrity_failed", "report_failed", "archive_failed", "verification_failed", "cancelled"] },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2048 },
+        "retryable": { "type": "boolean" }
+      }
+    },
+    "createdAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "startedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "completedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "revision": { "type": "integer", "minimum": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "state": { "const": "completed" } }, "required": ["state"] },
+      "then": { "required": ["snapshotId", "cutoff", "bundle", "startedAt", "completedAt"], "properties": { "progress": { "properties": { "stage": { "const": "complete" }, "percent": { "const": 100 } } } } }
+    },
+    {
+      "if": { "properties": { "state": { "enum": ["failed", "cancelled"] } }, "required": ["state"] },
+      "then": { "required": ["failure", "completedAt"] }
+    }
+  ]
+}
