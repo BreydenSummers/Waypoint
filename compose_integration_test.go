@@ -29,7 +29,7 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 
 	project := fmt.Sprintf("waypoint-compose-%d-%d", os.Getpid(), time.Now().UnixNano())
 	overridePath := filepath.Join(t.TempDir(), "compose.override.yml")
-	override := []byte("services:\n  waypoint:\n    ports:\n      - target: 8080\n        published: 0\n        protocol: tcp\n        host_ip: 127.0.0.1\n")
+	override := []byte("services:\n  waypoint:\n    ports:\n      - target: 8080\n        published: 0\n        protocol: tcp\n")
 	if err := os.WriteFile(overridePath, override, 0o600); err != nil {
 		t.Fatalf("write compose override: %v", err)
 	}
@@ -123,6 +123,7 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 
 	runCompose("restart", "waypoint")
 	waitForHTTP(t, baseURL+"/readyz", http.StatusOK)
+	assertHTTPBodyContains(t, baseURL+"/engagements/demo", http.StatusOK, `id="root"`)
 
 	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", fmt.Sprintf("SELECT COUNT(*) FROM action WHERE engagement_id = '%s'", engagementID))); got != "1" {
 		t.Fatalf("post-restart action count = %s, want 1", got)
@@ -138,6 +139,14 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	}
 	if got := strings.TrimSpace(runCompose("exec", "-T", "waypoint", "sh", "-lc", fmt.Sprintf("cat %s", shellQuote(stderrPath)))); got != string(stderr) {
 		t.Fatalf("stderr evidence = %q, want %q", got, stderr)
+	}
+
+	runCompose("down", "-v", "--remove-orphans")
+	if got := strings.TrimSpace(runCompose("ps", "-q")); got != "" {
+		t.Fatalf("post-teardown compose ps = %q, want empty", got)
+	}
+	if got := strings.TrimSpace(runCompose("ps", "-q", "postgres")); got != "" {
+		t.Fatalf("post-teardown postgres ps = %q, want empty", got)
 	}
 }
 
