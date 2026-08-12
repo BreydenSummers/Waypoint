@@ -33,3 +33,4 @@ smoke: build
 
 clean:
 	rm -rf $(BIN_DIR)
+	rm -f waypoint server.test
