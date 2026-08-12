@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +11,7 @@ import (
 	"testing/fstest"
 )
 
-func TestHandlerServesHealthReadyAndSPA(t *testing.T) {
+func TestHandlerServesHealthAndSPA(t *testing.T) {
 	ts := httptest.NewServer(Handler())
 	defer ts.Close()
 
@@ -25,19 +27,6 @@ func TestHandlerServesHealthReadyAndSPA(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), `"status":"ok"`) {
 		t.Fatalf("healthz body = %q, want ok", body)
-	}
-
-	resp, err = http.Get(ts.URL + "/readyz")
-	if err != nil {
-		t.Fatalf("readyz request failed: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("readyz status = %d, want %d", resp.StatusCode, http.StatusOK)
-	}
-	body, _ = io.ReadAll(resp.Body)
-	if !strings.Contains(string(body), `"status":"ready"`) {
-		t.Fatalf("readyz body = %q, want ready", body)
 	}
 
 	resp, err = http.Get(ts.URL + "/")
@@ -83,12 +72,55 @@ func TestHandlerServesHealthReadyAndSPA(t *testing.T) {
 	}
 }
 
+func TestReadyzRequiresDatabase(t *testing.T) {
+	assets := fstest.MapFS{
+		"index.html":          &fstest.MapFile{Data: []byte("ok")},
+		"assets/waypoint.js":  &fstest.MapFile{Data: []byte("ok")},
+		"assets/waypoint.css": &fstest.MapFile{Data: []byte("ok")},
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rr := httptest.NewRecorder()
+	readyz(assets, nil).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+	}
+}
+
+func TestReadyzChecksDatabaseHealth(t *testing.T) {
+	assets := fstest.MapFS{
+		"index.html":          &fstest.MapFile{Data: []byte("ok")},
+		"assets/waypoint.js":  &fstest.MapFile{Data: []byte("ok")},
+		"assets/waypoint.css": &fstest.MapFile{Data: []byte("ok")},
+	}
+
+	healthy := &fakeReadyDB{}
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rr := httptest.NewRecorder()
+	readyz(assets, healthy).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("readyz status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if !healthy.called {
+		t.Fatal("expected readiness check to ping the database")
+	}
+
+	unhealthy := &fakeReadyDB{err: errors.New("db down")}
+	rr = httptest.NewRecorder()
+	readyz(assets, unhealthy).ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz status = %d, want %d", rr.Code, http.StatusServiceUnavailable)
+	}
+}
+
 func TestRequiredAssetsPresentDetectsMissingAsset(t *testing.T) {
 	assets := fstest.MapFS{
 		"index.html":              &fstest.MapFile{Data: []byte("ok")},
 		"assets/waypoint.js":      &fstest.MapFile{Data: []byte("ok")},
 		"assets/waypoint.css":     &fstest.MapFile{Data: []byte("ok")},
-		"assets/extra/ignored.js":  &fstest.MapFile{Data: []byte("ok")},
+		"assets/extra/ignored.js": &fstest.MapFile{Data: []byte("ok")},
 	}
 	if err := requiredAssetsPresent(assets); err != nil {
 		t.Fatalf("required assets unexpectedly missing: %v", err)
@@ -101,4 +133,14 @@ func TestRequiredAssetsPresentDetectsMissingAsset(t *testing.T) {
 	if err := requiredAssetsPresent(missingCSS); err == nil {
 		t.Fatal("requiredAssetsPresent() = nil, want error when css is missing")
 	}
+}
+
+type fakeReadyDB struct {
+	called bool
+	err    error
+}
+
+func (f *fakeReadyDB) PingContext(context.Context) error {
+	f.called = true
+	return f.err
 }

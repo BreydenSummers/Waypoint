@@ -43,8 +43,11 @@ func TestApplyMigrationsOnRealPostgreSQL(t *testing.T) {
 	if err := ApplyMigrations(ctx, db); err != nil {
 		t.Fatalf("apply migrations: %v", err)
 	}
+	if err := ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("reapply migrations: %v", err)
+	}
 
-	mustHaveTables(t, db, []string{"engagement", "actor", "evidence", "action", "entity", "result", "observation", "finding", "audit_event", "audit"})
+	mustHaveTables(t, db, []string{"engagement", "actor", "evidence", "action", "entity", "result", "observation", "finding", "audit_event", "audit", "schema_migrations"})
 	mustHaveIndexes(t, db, []string{
 		"action_engagement_started_at_idx",
 		"action_engagement_actor_started_at_idx",
