@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+import { buildReportHtml } from './report-renderer.mjs';
 import { computeArchiveHash, isSafeBundlePath, sha256, verifyBundle } from './bundle-tools.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -86,6 +87,7 @@ const snapshotPayload = manifest.payloads.find((item) => item.path === 'bundle/r
 snapshotPayload.size = snapshotBytes.length;
 snapshotPayload.sha256 = sha256(snapshotBytes);
 await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+const frozenSnapshot = JSON.parse(snapshotBytes.toString('utf8'));
 
 const archiveSha256 = await computeArchiveHash(bundleRoot, manifest, { includeManifestBytes: true, manifestBytes: await readFile(manifestPath), excludedPaths: new Set(['bundle/metadata/export-manifest.json', 'bundle/report/report-snapshot.json', 'bundle/metadata/export-archive.sha256']) });
 await writeFile(sidecarPath, `${archiveSha256}\n`, 'utf8');
@@ -96,6 +98,22 @@ const verifyOutput = JSON.parse(verifyRun.stdout);
 assert.equal(verifyOutput.status, 'verified');
 assert.equal(verifyOutput.payloadCount, manifest.payloads.length);
 assert.equal(verifyOutput.archiveSha256, archiveSha256);
+assert.equal(verifyOutput.source, 'manifest');
+assert.equal(verifyOutput.manifestPath, 'bundle/metadata/export-manifest.json');
+assert.equal(verifyOutput.snapshotPath, 'bundle/report/report-snapshot.json');
+
+const outputHtml = join(tempRoot, 'restored-report.html');
+const regenRun = spawnSync('node', [resolve(repoRoot, 'bundle/tools/regenerate-report.mjs'), bundleRoot, outputHtml], { encoding: 'utf8' });
+assert.equal(regenRun.status, 0, regenRun.stderr);
+const regenerated = await readFile(outputHtml, 'utf8');
+assert.equal(regenerated, buildReportHtml(frozenSnapshot));
+assert.match(regenerated, /Verify the outer archive hash before restore\./);
+assert.match(regenerated, /bundle\/database\/engagement\.dump/);
+assert.match(regenerated, /bundle\/tools\/verify-restore\.mjs/);
+
+await writeFile(dumpPath, 'postgres dump bytes mutated\n', 'utf8');
+await assert.rejects(() => verifyBundle(bundleRoot), /(size|sha256) mismatch for bundle\/database\/engagement\.dump/);
+await writeFile(dumpPath, 'postgres dump bytes\n', 'utf8');
 
 await writeFile(sidecarPath, `${archiveSha256}-tampered\n`, 'utf8');
 await assert.rejects(() => verifyBundle(bundleRoot), /outer archive hash mismatch/);
@@ -103,14 +121,21 @@ await writeFile(sidecarPath, `${archiveSha256}\n`, 'utf8');
 
 await writeFile(manifestPath, JSON.stringify({
   ...manifest,
+  payloads: [...manifest.payloads, manifest.payloads[0]],
+}, null, 2), 'utf8');
+await assert.rejects(() => verifyBundle(bundleRoot), /duplicate bundle path: bundle\/database\/engagement\.dump/);
+await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+await writeFile(manifestPath, JSON.stringify({
+  ...manifest,
   payloads: [...manifest.payloads, { path: '../escape.dump', size: 1, sha256: sha256(Buffer.from('x')) }],
 }, null, 2), 'utf8');
 await assert.rejects(() => verifyBundle(bundleRoot), /unsafe bundle path/);
 
-const outputHtml = join(tempRoot, 'restored-report.html');
-const regenRun = spawnSync('node', [resolve(repoRoot, 'bundle/tools/regenerate-report.mjs'), bundleRoot, outputHtml], { encoding: 'utf8' });
-assert.equal(regenRun.status, 1, regenRun.stderr);
-assert.match(regenRun.stderr, /unsafe bundle path/);
+const unsafeOutputHtml = join(tempRoot, 'unsafe-report.html');
+const unsafeRegenRun = spawnSync('node', [resolve(repoRoot, 'bundle/tools/regenerate-report.mjs'), bundleRoot, unsafeOutputHtml], { encoding: 'utf8' });
+assert.equal(unsafeRegenRun.status, 1, unsafeRegenRun.stderr);
+assert.match(unsafeRegenRun.stderr, /unsafe bundle path/);
 
-const regenerated = await readFile(outputHtml, 'utf8').catch(() => '');
-assert.equal(regenerated, '');
+const unsafeRegenerated = await readFile(unsafeOutputHtml, 'utf8').catch(() => '');
+assert.equal(unsafeRegenerated, '');
