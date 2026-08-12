@@ -121,6 +121,13 @@ await writeFile(sidecarPath, `${archiveSha256}\n`, 'utf8');
 
 await writeFile(manifestPath, JSON.stringify({
   ...manifest,
+  signatures: { version: 'v1', items: ['signed'] },
+}, null, 2), 'utf8');
+await assert.rejects(() => verifyBundle(bundleRoot), /bundle manifest signature hook must be versioned and empty/);
+await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+await writeFile(manifestPath, JSON.stringify({
+  ...manifest,
   payloads: [...manifest.payloads, manifest.payloads[0]],
 }, null, 2), 'utf8');
 await assert.rejects(() => verifyBundle(bundleRoot), /duplicate bundle path: bundle\/database\/engagement\.dump/);
