@@ -383,21 +383,34 @@ func captureHandler(db *sql.DB, store *evidenceStore, originKind string) http.Ha
 			return
 		}
 
+		receivedAt := time.Now().UTC()
+		skew := clockSkew(req.Envelope.Timing.EndedAt, receivedAt)
 		actionID := newUUID()
 		if _, err := tx.ExecContext(r.Context(), `
 			INSERT INTO action (
-				id, engagement_id, actor_id, source_agent_id, capture_id, capture_fingerprint, initiated_by, phase, command, argv, cwd,
-				exec_host_ip, egress_public_ip, pivot_chain, target_kind, target_value, target_port, target_transport,
-				started_at, ended_at, exit_code, stdout_evidence_id, stderr_evidence_id, plugin_id, parse_status, decision_context
+				id, engagement_id, actor_id, source_agent_id, source_agent_kind, source_agent_name, source_agent_version, source_agent_platform_os, source_agent_platform_arch,
+				capture_id, capture_fingerprint, initiated_by, phase, command, argv, cwd,
+				exec_host_ip, exec_host_method, exec_host_interface, exec_host_confidence,
+				egress_public_ip, egress_mode, egress_status, egress_observed_at, pivot_chain, target_kind, target_value, target_port, target_transport,
+				started_at, ended_at, execution_status, exit_code, execution_signal, execution_failure_code,
+				received_at, clock_skew_status, clock_skew_offset_ms, stdout_evidence_id, stderr_evidence_id, plugin_id, parse_status, decision_context
 			) VALUES (
-				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11,
-				$12::inet, $13::inet, $14::jsonb, $15, $16, $17, $18,
-				$19, $20, $21, $22, $23, $24, $25, $26::jsonb
+				$1, $2, $3, $4, $5, $6, $7, $8, $9,
+				$10, $11, $12, $13, $14, $15::jsonb, $16,
+				$17::inet, $18, $19, $20,
+				$21::inet, $22, $23, $24, $25::jsonb, $26, $27, $28, $29,
+				$30, $31, $32, $33, $34, $35,
+				$36, $37, $38, $39, $40, $41, $42, $43::jsonb
 			)`,
 			actionID,
 			actor.EngagementID,
 			actor.ID,
 			req.Envelope.SourceAgent.ID,
+			req.Envelope.SourceAgent.Kind,
+			req.Envelope.SourceAgent.Name,
+			req.Envelope.SourceAgent.Version,
+			req.Envelope.SourceAgent.Platform.OS,
+			req.Envelope.SourceAgent.Platform.Arch,
 			req.Envelope.CaptureID,
 			fingerprint,
 			req.Envelope.InitiatedBy,
@@ -406,7 +419,13 @@ func captureHandler(db *sql.DB, store *evidenceStore, originKind string) http.Ha
 			mustJSON(req.Envelope.Argv),
 			req.Envelope.Cwd,
 			req.Envelope.Network.ExecHost.Address,
+			req.Envelope.Network.ExecHost.Method,
+			nullIfEmpty(req.Envelope.Network.ExecHost.Interface),
+			req.Envelope.Network.ExecHost.Confidence,
 			nullIfEmpty(req.Envelope.Network.Egress.Address),
+			req.Envelope.Network.Egress.Mode,
+			req.Envelope.Network.Egress.Status,
+			req.Envelope.Network.Egress.ObservedAt,
 			mustJSON(req.Envelope.Network.PivotChain),
 			req.Envelope.Target.Kind,
 			req.Envelope.Target.Value,
@@ -414,7 +433,13 @@ func captureHandler(db *sql.DB, store *evidenceStore, originKind string) http.Ha
 			nullIfEmpty(req.Envelope.Target.Transport),
 			req.Envelope.Timing.StartedAt,
 			req.Envelope.Timing.EndedAt,
+			req.Envelope.Execution.Status,
 			exitCodeValue(req.Envelope.Execution.ExitCode),
+			nullIfEmpty(req.Envelope.Execution.Signal),
+			nullIfEmpty(req.Envelope.Execution.FailureCode),
+			receivedAt,
+			skew.Status,
+			skew.OffsetMs,
 			stdoutID,
 			stderrID,
 			pluginID(req.Envelope.Parsing),
@@ -439,7 +464,6 @@ func captureHandler(db *sql.DB, store *evidenceStore, originKind string) http.Ha
 			}
 		}
 
-		receivedAt := time.Now().UTC()
 		acceptedID, err := dbutil.AppendAuditEvent(r.Context(), tx, dbutil.AuditEventInput{
 			EngagementID:  actor.EngagementID,
 			Type:          "capture.accepted",
@@ -460,7 +484,7 @@ func captureHandler(db *sql.DB, store *evidenceStore, originKind string) http.Ha
 			return
 		}
 
-		ack := captureAck{ContractVersion: "1.0.0", ActionID: actionID, CaptureID: req.Envelope.CaptureID, AuditEventCursor: eventCursor(acceptedID), ReceivedAt: receivedAt, Idempotency: "created", ClockSkew: clockSkew(req.Envelope.Timing.EndedAt, receivedAt)}
+		ack := captureAck{ContractVersion: "1.0.0", ActionID: actionID, CaptureID: req.Envelope.CaptureID, AuditEventCursor: eventCursor(acceptedID), ReceivedAt: receivedAt, Idempotency: "created", ClockSkew: skew}
 		if err := tx.Commit(); err != nil {
 			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "commit create failed"})
 			return
@@ -827,10 +851,12 @@ func loadExistingCapture(ctx context.Context, tx *sql.Tx, engagementID, actorID,
 func replayAck(ctx context.Context, tx *sql.Tx, actionID, captureID string) (captureAck, error) {
 	var eventID int64
 	var receivedAt, endedAt time.Time
-	if err := tx.QueryRowContext(ctx, `SELECT a.id, a.occurred_at, act.ended_at FROM audit_event a JOIN action act ON act.id = a.subject_id WHERE a.subject_type = 'action' AND a.subject_id = $1 AND a.type = 'capture.accepted' ORDER BY a.id DESC LIMIT 1`, actionID).Scan(&eventID, &receivedAt, &endedAt); err != nil {
+	var clockStatus sql.NullString
+	var clockOffset sql.NullInt64
+	if err := tx.QueryRowContext(ctx, `SELECT a.id, act.received_at, act.clock_skew_status, act.clock_skew_offset_ms, act.ended_at FROM audit_event a JOIN action act ON act.id = a.subject_id WHERE a.subject_type = 'action' AND a.subject_id = $1 AND a.type = 'capture.accepted' ORDER BY a.id DESC LIMIT 1`, actionID).Scan(&eventID, &receivedAt, &clockStatus, &clockOffset, &endedAt); err != nil {
 		return captureAck{}, err
 	}
-	return captureAck{ContractVersion: "1.0.0", ActionID: actionID, CaptureID: captureID, AuditEventCursor: eventCursor(eventID), ReceivedAt: receivedAt, Idempotency: "replayed", ClockSkew: clockSkew(endedAt, receivedAt)}, nil
+	return captureAck{ContractVersion: "1.0.0", ActionID: actionID, CaptureID: captureID, AuditEventCursor: eventCursor(eventID), ReceivedAt: receivedAt, Idempotency: "replayed", ClockSkew: clockSkewFromStored(clockStatus, clockOffset, endedAt, receivedAt)}, nil
 }
 
 func upsertEvidence(ctx context.Context, tx *sql.Tx, engagementID, kind, mediaType, sha string, byteLength int64) (string, error) {
@@ -1276,6 +1302,14 @@ func skewStatus(endedAt, receivedAt time.Time) string {
 func clockSkew(endedAt, receivedAt time.Time) *captureSkew {
 	return &captureSkew{Status: skewStatus(endedAt, receivedAt), OffsetMs: clockOffsetMs(endedAt, receivedAt)}
 }
+
+func clockSkewFromStored(status sql.NullString, offset sql.NullInt64, endedAt, receivedAt time.Time) *captureSkew {
+	if status.Valid && offset.Valid {
+		return &captureSkew{Status: status.String, OffsetMs: offset.Int64}
+	}
+	return clockSkew(endedAt, receivedAt)
+}
+
 func clockOffsetMs(endedAt, receivedAt time.Time) int64 {
 	return receivedAt.Sub(endedAt).Milliseconds()
 }

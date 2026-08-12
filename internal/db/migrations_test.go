@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -58,6 +59,11 @@ func TestApplyMigrationsOnRealPostgreSQL(t *testing.T) {
 		"audit_event_request_id_idx",
 		"audit_event_correlation_id_idx",
 		"action_capture_scope_unique_idx",
+		"action_engagement_source_agent_kind_idx",
+		"action_engagement_exec_host_method_idx",
+		"action_engagement_egress_mode_status_idx",
+		"action_engagement_execution_status_idx",
+		"action_engagement_clock_skew_status_idx",
 		"entity_identity_unique",
 		"finding_affected_entity_ids_idx",
 		"observation_entity_observed_at_idx",
@@ -98,8 +104,8 @@ func TestApplyMigrationsSerializesConcurrentStarters(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema migrations: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("schema migration count = %d, want 2", count)
+	if count != 3 {
+		t.Fatalf("schema migration count = %d, want 3", count)
 	}
 }
 
@@ -191,6 +197,136 @@ func TestActorAuthorizationConstraint(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role, authorized_by) VALUES ($1, $2, 'human', 'bob', repeat('c', 64), 'viewer', $3)`, "00000000-0000-0000-0000-000000000014", "00000000-0000-0000-0000-000000000011", "00000000-0000-0000-0000-000000000012"); err == nil {
 		t.Fatal("expected human insert with authorized_by to fail")
 	}
+}
+
+func TestActionAttributionSchemaRoundTrip(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "00000000-0000-0000-0000-000000000021"
+	actorID := "00000000-0000-0000-0000-000000000022"
+	sourceAgentID := "00000000-0000-0000-0000-000000000023"
+	captureID := "00000000-0000-0000-0000-000000000024"
+	actionID := "00000000-0000-0000-0000-000000000025"
+	stdoutID := "00000000-0000-0000-0000-000000000026"
+	stderrID := "00000000-0000-0000-0000-000000000027"
+	startedAt := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
+	endedAt := time.Date(2025, 1, 15, 10, 0, 1, 250000000, time.UTC)
+	egressObservedAt := time.Date(2025, 1, 15, 9, 59, 55, 0, time.UTC)
+	receivedAt := time.Date(2025, 1, 15, 10, 0, 2, 0, time.UTC)
+
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', repeat('a', 64), 'operator')`, actorID, engagementID)
+	mustExec(t, db, `INSERT INTO evidence (id, engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, $2, 'stdout', repeat('b', 64), 3, 'text/plain; charset=utf-8', 'stdout/roundtrip')`, stdoutID, engagementID)
+	mustExec(t, db, `INSERT INTO evidence (id, engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, $2, 'stderr', repeat('c', 64), 0, 'text/plain; charset=utf-8', 'stderr/roundtrip')`, stderrID, engagementID)
+	mustExec(t, db, `INSERT INTO action (
+		id, engagement_id, actor_id, source_agent_id, source_agent_kind, source_agent_name, source_agent_version, source_agent_platform_os, source_agent_platform_arch,
+		capture_id, capture_fingerprint, initiated_by, phase, command, argv, cwd,
+		exec_host_ip, exec_host_method, exec_host_interface, exec_host_confidence,
+		egress_public_ip, egress_mode, egress_status, egress_observed_at, pivot_chain, target_kind, target_value, target_port, target_transport,
+		started_at, ended_at, execution_status, exit_code, execution_signal, execution_failure_code,
+		received_at, clock_skew_status, clock_skew_offset_ms, stdout_evidence_id, stderr_evidence_id, plugin_id, parse_status, decision_context
+	) VALUES (
+		$1, $2, $3, $4, 'operator_wrapper', 'waypoint-wrapper', '1.0.0', 'linux', 'amd64',
+		$5, repeat('a', 64), 'manual', 'recon', 'nmap', '["nmap","-sV","demo.local"]'::jsonb, '/',
+		'10.10.0.12', 'route_selection', 'eth0', 'confirmed',
+		'198.51.100.24', 'manual', 'declared', $6, '[]'::jsonb, 'host', 'demo.local', 443, 'tcp',
+		$7, $8, 'exited', 0, NULL, NULL,
+		$9, 'within_tolerance', 750, $10, $11, NULL, 'raw', NULL
+	)`, actionID, engagementID, actorID, sourceAgentID, captureID, egressObservedAt, startedAt, endedAt, receivedAt, stdoutID, stderrID)
+
+	var (
+		gotSourceAgentID      string
+		gotSourceAgentKind    string
+		gotSourceAgentName    string
+		gotSourceAgentVersion string
+		gotSourceAgentOS      string
+		gotSourceAgentArch    string
+		gotCaptureID          string
+		gotCaptureFingerprint string
+		gotExecHostMethod     string
+		gotExecHostInterface  string
+		gotExecHostConfidence string
+		gotEgressIP           string
+		gotEgressMode         string
+		gotEgressStatus       string
+		gotEgressObservedAt   time.Time
+		gotExecutionStatus    string
+		gotExecutionSignal    string
+		gotExecutionFailure   string
+		gotReceivedAt         time.Time
+		gotClockSkewStatus    string
+		gotClockSkewOffset    int64
+	)
+	if err := db.QueryRowContext(ctx, `SELECT
+		source_agent_id::text, source_agent_kind::text, source_agent_name, source_agent_version,
+		source_agent_platform_os::text, source_agent_platform_arch::text,
+		capture_id::text, capture_fingerprint,
+		exec_host_method::text, COALESCE(exec_host_interface, ''), exec_host_confidence::text,
+		COALESCE(egress_public_ip::text, ''), egress_mode::text, egress_status::text, egress_observed_at,
+		execution_status::text, COALESCE(execution_signal, ''), COALESCE(execution_failure_code, ''),
+		received_at, clock_skew_status::text, clock_skew_offset_ms
+		FROM action WHERE id = $1`, actionID).Scan(
+		&gotSourceAgentID, &gotSourceAgentKind, &gotSourceAgentName, &gotSourceAgentVersion,
+		&gotSourceAgentOS, &gotSourceAgentArch,
+		&gotCaptureID, &gotCaptureFingerprint,
+		&gotExecHostMethod, &gotExecHostInterface, &gotExecHostConfidence,
+		&gotEgressIP, &gotEgressMode, &gotEgressStatus, &gotEgressObservedAt,
+		&gotExecutionStatus, &gotExecutionSignal, &gotExecutionFailure,
+		&gotReceivedAt, &gotClockSkewStatus, &gotClockSkewOffset,
+	); err != nil {
+		t.Fatalf("load action attribution: %v", err)
+	}
+	if gotSourceAgentID != sourceAgentID || gotSourceAgentKind != "operator_wrapper" || gotSourceAgentName != "waypoint-wrapper" || gotSourceAgentVersion != "1.0.0" || gotSourceAgentOS != "linux" || gotSourceAgentArch != "amd64" {
+		t.Fatalf("source agent round trip mismatch: %q %q %q %q %q %q", gotSourceAgentID, gotSourceAgentKind, gotSourceAgentName, gotSourceAgentVersion, gotSourceAgentOS, gotSourceAgentArch)
+	}
+	if gotCaptureID != captureID || gotCaptureFingerprint != strings.Repeat("a", 64) {
+		t.Fatalf("provenance round trip mismatch: %q %q", gotCaptureID, gotCaptureFingerprint)
+	}
+	if gotExecHostMethod != "route_selection" || gotExecHostInterface != "eth0" || gotExecHostConfidence != "confirmed" {
+		t.Fatalf("exec host round trip mismatch: %q %q %q", gotExecHostMethod, gotExecHostInterface, gotExecHostConfidence)
+	}
+	if gotEgressIP != "198.51.100.24" || gotEgressMode != "manual" || gotEgressStatus != "declared" || !gotEgressObservedAt.Equal(egressObservedAt) {
+		t.Fatalf("egress round trip mismatch: %q %q %q %s", gotEgressIP, gotEgressMode, gotEgressStatus, gotEgressObservedAt)
+	}
+	if gotExecutionStatus != "exited" || gotExecutionSignal != "" || gotExecutionFailure != "" {
+		t.Fatalf("execution round trip mismatch: %q %q %q", gotExecutionStatus, gotExecutionSignal, gotExecutionFailure)
+	}
+	if !gotReceivedAt.Equal(receivedAt) || gotClockSkewStatus != "within_tolerance" || gotClockSkewOffset != 750 {
+		t.Fatalf("clock skew round trip mismatch: %s %q %d", gotReceivedAt, gotClockSkewStatus, gotClockSkewOffset)
+	}
+
+	mustReject(t, db, `INSERT INTO action (
+		id, engagement_id, actor_id, source_agent_id, source_agent_kind, source_agent_name, source_agent_version, source_agent_platform_os,
+		capture_id, capture_fingerprint, initiated_by, phase, command, argv, cwd, exec_host_ip, exec_host_method, exec_host_confidence,
+		egress_public_ip, egress_mode, egress_status, egress_observed_at, pivot_chain, target_kind, target_value, started_at, ended_at,
+		execution_status, exit_code, stdout_evidence_id, stderr_evidence_id, parse_status
+	) VALUES (
+		gen_random_uuid(), $1, $2, gen_random_uuid(), 'operator_wrapper', 'waypoint-wrapper', '1.0.0', 'linux',
+		$3, repeat('d', 64), 'manual', 'recon', 'nmap', '[]'::jsonb, '/', '10.10.0.12', 'route_selection', 'confirmed',
+		'198.51.100.24', 'manual', 'declared', $4, '[]'::jsonb, 'host', 'demo.local', $5, $6,
+		'exited', 0, $7, $8, 'raw'
+	)`, engagementID, actorID, captureID, egressObservedAt, startedAt, endedAt, stdoutID, stderrID)
+
+	mustReject(t, db, `INSERT INTO action (
+		id, engagement_id, actor_id, source_agent_id, source_agent_kind, source_agent_name, source_agent_version, source_agent_platform_os, source_agent_platform_arch,
+		capture_id, capture_fingerprint, initiated_by, phase, command, argv, cwd, exec_host_ip, exec_host_method, exec_host_confidence,
+		egress_public_ip, egress_mode, egress_status, pivot_chain, target_kind, target_value, started_at, ended_at,
+		execution_status, exit_code, stdout_evidence_id, stderr_evidence_id, parse_status
+	) VALUES (
+		gen_random_uuid(), $1, $2, gen_random_uuid(), 'operator_wrapper', 'waypoint-wrapper', '1.0.0', 'linux', 'amd64',
+		$3, repeat('e', 64), 'manual', 'recon', 'nmap', '[]'::jsonb, '/', '10.10.0.12', 'route_selection', 'confirmed',
+		'198.51.100.24', 'manual', 'declared', '[]'::jsonb, 'host', 'demo.local', $4, $5,
+		'signaled', 0, $6, $7, 'raw'
+	)`, engagementID, actorID, captureID, startedAt, endedAt, stdoutID, stderrID)
 }
 
 func mustExec(t *testing.T, db *sql.DB, query string, args ...any) {
