@@ -70,6 +70,7 @@ const phaseData = new Proxy(phaseDataFallback, {
 });
 
 const reportPath = '/engagements/demo/summit/report';
+const reportApiPath = '/api/v1/engagements/demo/summit/report.json';
 const reportPdfPath = `${reportPath}.pdf`;
 const reportSnapshotFallback = {
   version: 'v1',
@@ -498,9 +499,14 @@ const state = {
   renderScheduled: false,
   banner: '',
   summitExportStatus: 'idle',
+  summitExportProgress: 0,
+  summitExportStep: 'Idle',
+  summitExportError: '',
+  summitExportReceipt: null,
   breakGlassArmed: false,
   destroyPhrase: '',
   teardownState: 'idle',
+  summitAbortController: null,
   summitTimers: [],
   findings: [],
   selectedFindingId: '',
@@ -1050,26 +1056,152 @@ function clearSummitTimers() {
   state.summitTimers = [];
 }
 
-function startSummitExport() {
+function isRecord(value) {
+  return value !== null && typeof value === 'object';
+}
+
+async function sha256Hex(value) {
+  const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
+  const digest = await window.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function readResponseBytes(response, signal, onProgress) {
+  const total = Number(response.headers.get('content-length') || '0');
+  if (!response.body || !response.body.getReader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    onProgress(bytes.length, bytes.length);
+    return bytes;
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let loaded = 0;
+  try {
+    while (true) {
+      if (signal.aborted) {
+        throw new DOMException('Export canceled', 'AbortError');
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        loaded += value.length;
+        onProgress(loaded, total || loaded);
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
+}
+
+function assertLiveReportShape(value) {
+  if (!isRecord(value)) {
+    throw new Error('Report snapshot payload was not a structured object');
+  }
+  for (const key of ['version', 'engagement', 'cutoff']) {
+    if (typeof value[key] !== 'string' || !value[key].trim()) {
+      throw new Error(`Report snapshot missing ${key}`);
+    }
+  }
+  for (const key of ['scope', 'methodology', 'findings', 'evidence', 'attribution', 'knownCaptureGaps']) {
+    if (!Array.isArray(value[key])) {
+      throw new Error(`Report snapshot missing ${key}`);
+    }
+  }
+}
+
+async function startSummitExport() {
+  if (state.summitAbortController) {
+    state.summitAbortController.abort();
+  }
+  const controller = new AbortController();
+  state.summitAbortController = controller;
   clearSummitTimers();
-  state.summitExportStatus = 'preflight';
+  state.breakGlassArmed = false;
+  state.destroyPhrase = '';
   state.teardownState = 'idle';
-  const preflightTimer = setTimeout(() => {
-    if (state.summitExportStatus === 'preflight') {
-      state.summitExportStatus = 'exporting';
+  state.summitExportReceipt = null;
+  state.summitExportError = '';
+  state.summitExportStatus = 'preflight';
+  state.summitExportProgress = 8;
+  state.summitExportStep = 'Freezing the live report snapshot';
+  scheduleRender();
+
+  try {
+    const reportResponse = await fetch(reportApiPath, { signal: controller.signal, cache: 'no-store', headers: { Accept: 'application/json' } });
+    if (!reportResponse.ok) {
+      throw new Error(`report snapshot request failed (${reportResponse.status})`);
+    }
+    const reportText = await reportResponse.text();
+    assertLiveReportShape(JSON.parse(reportText));
+    state.summitExportProgress = 28;
+    state.summitExportStep = 'Streaming the PDF artifact';
+    state.summitExportStatus = 'exporting';
+    scheduleRender();
+
+    const pdfResponse = await fetch(reportPdfPath, { signal: controller.signal, cache: 'no-store' });
+    if (!pdfResponse.ok) {
+      throw new Error(`report PDF request failed (${pdfResponse.status})`);
+    }
+
+    const pdfBytes = await readResponseBytes(pdfResponse, controller.signal, (loaded, total) => {
+      const base = 30;
+      const range = 54;
+      const ratio = total ? loaded / total : 0.5;
+      state.summitExportProgress = Math.min(84, base + Math.round(range * ratio));
+      state.summitExportStep = `Streaming the PDF artifact (${loaded.toLocaleString()} bytes)`;
       scheduleRender();
-      const exportTimer = setTimeout(() => {
-        if (state.summitExportStatus === 'exporting') {
-          state.summitExportStatus = 'verified';
-          scheduleRender();
-        }
-      }, 1200);
-      state.summitTimers.push(exportTimer);
+    });
+
+    if (pdfBytes[0] !== 0x25 || pdfBytes[1] !== 0x50 || pdfBytes[2] !== 0x44 || pdfBytes[3] !== 0x46) {
+      throw new Error('report PDF did not start with a PDF signature');
+    }
+
+    state.summitExportStatus = 'verifying';
+    state.summitExportProgress = 90;
+    state.summitExportStep = 'Verifying the hash manifest and signature hook';
+    scheduleRender();
+
+    const snapshotHash = await sha256Hex(reportText);
+    const pdfSha256 = await sha256Hex(pdfBytes);
+    state.summitExportReceipt = {
+      ...reportSnapshot.receipt,
+      verifiedAt: new Date().toISOString(),
+      snapshotHash,
+      pdfSha256,
+      note: 'Hash verified, not signed. The signature hook remains empty.',
+    };
+    state.summitExportStatus = 'verified';
+    state.summitExportProgress = 100;
+    state.summitExportStep = 'Receipt verified and teardown is now guarded';
+    scheduleRender();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      state.summitExportStatus = 'canceled';
+      state.summitExportProgress = 0;
+      state.summitExportStep = 'Export canceled before teardown was armed';
+      state.summitExportError = 'Export canceled. The live trail stayed intact.';
+    } else {
+      state.summitExportStatus = 'failed';
+      state.summitExportProgress = 0;
+      state.summitExportStep = 'Recovery needed before the next export can run';
+      state.summitExportError = error instanceof Error ? error.message : 'Export verification failed';
     }
     scheduleRender();
-  }, 420);
-  state.summitTimers.push(preflightTimer);
-  scheduleRender();
+  } finally {
+    if (state.summitAbortController === controller) {
+      state.summitAbortController = null;
+    }
+  }
 }
 
 function formatTime(iso) {

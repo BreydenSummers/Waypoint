@@ -455,6 +455,31 @@ html[data-theme='dark'] .skeleton-card {
   border: 1px solid rgba(186, 117, 23, 0.18);
 }
 
+.export-meter {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(139, 94, 52, 0.16);
+  overflow: hidden;
+}
+
+.export-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--lantern) 0%, var(--wheat) 100%);
+  transition: width 180ms ease;
+}
+
+.summit-step {
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--chrome-strong);
+}
+
+.summit-error {
+  color: #8b1d1d;
+}
+
 .status-chip {
   width: fit-content;
   border-radius: 999px;

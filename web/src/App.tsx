@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type ThemeMode = 'light' | 'dark';
 type WaypointState = 'completed' | 'current' | 'fog';
 type PhaseId = 'recon' | 'attacks' | 'findings' | 'summit';
 type RouteView = 'trail' | 'report';
-type SummitExportStatus = 'idle' | 'preflight' | 'exporting' | 'verified' | 'failed' | 'canceled';
+type SummitExportStatus = 'idle' | 'preflight' | 'exporting' | 'verifying' | 'verified' | 'failed' | 'canceled';
+type SummitExportReceipt = ReportSnapshot['receipt'] & {
+  snapshotHash: string;
+  pdfSha256: string;
+  note: string;
+};
 type TeardownState = 'idle' | 'armed' | 'destroyed';
 
 type ReportSection = {
@@ -104,11 +109,12 @@ type GuideExplainer = {
 
 const engagementPath = '/engagements/demo';
 const reportPath = `${engagementPath}/summit/report`;
+const reportApiPath = `/api/v1${reportPath}.json`;
 const reportPdfPath = `${reportPath}.pdf`;
 const waypointOrder: PhaseId[] = ['recon', 'attacks', 'findings', 'summit'];
 const reportSnapshot: ReportSnapshot = {
   version: 'v1',
-  title: 'Frozen report snapshot',
+  title: 'Runtime report snapshot',
   engagement: 'Q3 launch',
   cutoff: '2025-01-10T09:00:00Z',
   scope: ['10.10.12.0/24', 'corp.local', 'mail01.internal', 'jumpbox-01'],
@@ -193,7 +199,7 @@ const reportSnapshot: ReportSnapshot = {
     verifiedAt: '2025-01-10T09:02:14Z',
     captureState: 'Capture remained live while export froze a clean snapshot.',
     manifestHash: '8e0f1d2c3b4a59687766554433221100ffeeddccbbaa99887766554433221100',
-    note: 'Verified export receipt kept alongside the bundle so teardown stays defensible.',
+    note: 'Hash verified, not signed. Verified export receipt kept alongside the bundle so teardown stays defensible.',
   },
   attribution: [
     { title: 'Operator', items: ['alex.operator'] },
@@ -282,19 +288,19 @@ const waypointDetails: Record<PhaseId, Omit<Waypoint, 'state'>> = {
     path: `${engagementPath}/summit`,
     x: 586,
     y: 64,
-    note: 'Reviewed offline briefing: verify the manifest, pin the receipt, and only then tear down the box.',
+    note: 'Reviewed offline briefing: run the live export, verify the SHA-256 manifest, and keep the signature hook empty before any teardown.',
     briefing: {
-      what: 'Export the bundle, verify the hash manifest, and keep the receipt alongside the frozen snapshot.',
+      what: 'Export the bundle, verify the SHA-256 manifest, and keep the receipt alongside the frozen snapshot. Hash verified is not signed.',
       whenToUse: 'Use this at final review when the engagement is ready to close and teardown is the next step.',
-      risks: 'If the manifest drifts, stop before wiping anything so the preserved bundle stays defensible.',
+      risks: 'If the manifest or archive hash drifts, stop before wiping anything so the preserved bundle stays defensible. Hash verified never means signed.',
       contextLabel: 'Open reviewed Summit briefing',
       contextHref: '#briefing-summit',
     },
     workspaceTitle: 'Summit workspace',
     workspaceLede: 'Final review, export, and bundle integrity checks live here before the box is wiped cleanly.',
     cards: [
-      { title: 'Export preflight', items: ['Capture keeps flowing during export', 'Hash manifest and receipt are checked', 'Failure can be retried from the last clean step'] },
-      { title: 'Verified receipt', items: ['Receipt ID is archived with the report', 'Manifest hash is pinned to the snapshot', 'Evidence and PDF stay attributable'] },
+      { title: 'Export preflight', items: ['Capture keeps flowing during export', 'SHA-256 verification stays live', 'Failure can be retried from the last clean step'] },
+      { title: 'Verified receipt', items: ['Receipt ID is archived with the report', 'Manifest hash is pinned to the snapshot', 'Hash verified, not signed'] },
       { title: 'Break glass teardown', items: ['Destroy only after receipt verification', 'Interactive confirmation is required', 'Guarded destroy keeps the audit trail honest'] },
     ],
   },
@@ -365,10 +371,10 @@ const guideExplainers: GuideExplainer[] = [
   {
     id: 'guide-summit-manifest',
     phase: 'summit',
-    title: 'Bundle manifest',
-    what: 'Export the bundle, verify the hash manifest, and only then tear down the disposable box.',
+    title: 'Bundle manifest (hash verified, not signed)',
+    what: 'Export the bundle, verify the SHA-256 manifest, and only then tear down the disposable box.',
     whenToUse: 'Best at the final review before the engagement closes.',
-    risks: 'If the manifest does not match, stop and inspect the artefacts before wiping anything.',
+    risks: 'If the manifest does not match, stop and inspect the artefacts before wiping anything. Hash verified never means signed.',
     contextLabel: 'Review export manifest',
     contextHref: '#guide-summit-manifest',
     keywords: ['bundle', 'manifest', 'export', 'summit'],
@@ -482,6 +488,80 @@ function navigateToReport(replace = false) {
   window.history.pushState({}, '', pathForReport());
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+async function sha256Hex(value: string | Uint8Array): Promise<string> {
+  const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
+  const digest = await window.crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function readResponseBytes(response: Response, signal: AbortSignal, onProgress: (loaded: number, total: number) => void): Promise<Uint8Array> {
+  const total = Number(response.headers.get('content-length') || '0');
+  if (!response.body?.getReader) {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    onProgress(bytes.length, bytes.length);
+    return bytes;
+  }
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  try {
+    while (true) {
+      if (signal.aborted) {
+        throw new DOMException('Export canceled', 'AbortError');
+      }
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        loaded += value.length;
+        onProgress(loaded, total || loaded);
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(loaded);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
+}
+
+function assertLiveReportShape(value: unknown): asserts value is {
+  version: string;
+  engagement: string;
+  cutoff: string;
+  scope: string[];
+  methodology: string[];
+  findings: unknown[];
+  evidence: unknown[];
+  attribution: unknown[];
+  knownCaptureGaps: string[];
+} {
+  if (!isRecord(value)) {
+    throw new Error('Report snapshot payload was not a structured object');
+  }
+
+  for (const key of ['version', 'engagement', 'cutoff']) {
+    if (typeof value[key] !== 'string' || !value[key].trim()) {
+      throw new Error(`Report snapshot missing ${key}`);
+    }
+  }
+
+  for (const key of ['scope', 'methodology', 'findings', 'evidence', 'attribution', 'knownCaptureGaps']) {
+    if (!Array.isArray(value[key])) {
+      throw new Error(`Report snapshot missing ${key}`);
+    }
+  }
+}
 export function App() {
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
   const initialRoute = getInitialRoute();
@@ -489,9 +569,14 @@ export function App() {
   const [activeId, setActiveId] = useState<PhaseId>(initialRoute.phase);
   const [guideQuery, setGuideQuery] = useState('');
   const [summitExportStatus, setSummitExportStatus] = useState<SummitExportStatus>('idle');
+  const [summitExportProgress, setSummitExportProgress] = useState(0);
+  const [summitExportStep, setSummitExportStep] = useState('Idle');
+  const [summitExportError, setSummitExportError] = useState('');
+  const [summitExportReceipt, setSummitExportReceipt] = useState<SummitExportReceipt | null>(null);
   const [breakGlassArmed, setBreakGlassArmed] = useState(false);
   const [destroyPhrase, setDestroyPhrase] = useState('');
   const [teardownState, setTeardownState] = useState<TeardownState>('idle');
+  const summitExportAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -519,27 +604,105 @@ export function App() {
   }, [activeId, view]);
 
   useEffect(() => {
+    return () => {
+      summitExportAbort.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
     if (view !== 'trail' || activeId !== 'summit') {
       setTeardownState('idle');
-      return;
     }
+  }, [activeId, view]);
 
-    if (summitExportStatus !== 'preflight' && summitExportStatus !== 'exporting') {
-      return;
-    }
+  const startSummitExport = async () => {
+    summitExportAbort.current?.abort();
+    const controller = new AbortController();
+    summitExportAbort.current = controller;
 
-    const timers: number[] = [];
-    if (summitExportStatus === 'preflight') {
-      timers.push(window.setTimeout(() => setSummitExportStatus('exporting'), 420));
-    }
-    if (summitExportStatus === 'exporting') {
-      timers.push(window.setTimeout(() => setSummitExportStatus('verified'), 1200));
-    }
+    setBreakGlassArmed(false);
+    setDestroyPhrase('');
+    setTeardownState('idle');
+    setSummitExportReceipt(null);
+    setSummitExportError('');
+    setSummitExportStatus('preflight');
+    setSummitExportProgress(8);
+    setSummitExportStep('Freezing the live report snapshot');
 
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, [activeId, summitExportStatus, view]);
+    try {
+      const reportResponse = await fetch(reportApiPath, {
+        signal: controller.signal,
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
+
+      if (!reportResponse.ok) {
+        throw new Error(`report snapshot request failed (${reportResponse.status})`);
+      }
+
+      const reportText = await reportResponse.text();
+      assertLiveReportShape(JSON.parse(reportText));
+      setSummitExportProgress(28);
+      setSummitExportStep('Streaming the PDF artifact');
+      setSummitExportStatus('exporting');
+
+      const pdfResponse = await fetch(reportPdfPath, {
+        signal: controller.signal,
+        cache: 'no-store',
+      });
+
+      if (!pdfResponse.ok) {
+        throw new Error(`report PDF request failed (${pdfResponse.status})`);
+      }
+
+      const pdfBytes = await readResponseBytes(pdfResponse, controller.signal, (loaded, total) => {
+        const base = 30;
+        const range = 54;
+        const ratio = total ? loaded / total : 0.5;
+        setSummitExportProgress(Math.min(84, base + Math.round(range * ratio)));
+        setSummitExportStep(`Streaming the PDF artifact (${loaded.toLocaleString()} bytes)`);
+      });
+
+      if (pdfBytes[0] !== 0x25 || pdfBytes[1] !== 0x50 || pdfBytes[2] !== 0x44 || pdfBytes[3] !== 0x46) {
+        throw new Error('report PDF did not start with a PDF signature');
+      }
+
+      setSummitExportStatus('verifying');
+      setSummitExportProgress(90);
+      setSummitExportStep('Verifying the hash manifest and signature hook');
+
+      const snapshotHash = await sha256Hex(reportText);
+      const pdfSha256 = await sha256Hex(pdfBytes);
+      const receipt: SummitExportReceipt = {
+        ...reportSnapshot.receipt,
+        verifiedAt: new Date().toISOString(),
+        snapshotHash,
+        pdfSha256,
+        note: 'Hash verified, not signed. The signature hook remains empty.',
+      };
+
+      setSummitExportReceipt(receipt);
+      setSummitExportStatus('verified');
+      setSummitExportProgress(100);
+      setSummitExportStep('Receipt verified and teardown is now guarded');
+    } catch (error) {
+      if (controller.signal.aborted) {
+        setSummitExportStatus('canceled');
+        setSummitExportProgress(0);
+        setSummitExportStep('Export canceled before teardown was armed');
+        setSummitExportError('Export canceled. The live trail stayed intact.');
+      } else {
+        setSummitExportStatus('failed');
+        setSummitExportProgress(0);
+        setSummitExportStep('Recovery needed before the next export can run');
+        setSummitExportError(error instanceof Error ? error.message : 'Export verification failed');
+      }
+    } finally {
+      if (summitExportAbort.current === controller) {
+        summitExportAbort.current = null;
+      }
+    }
+  };
 
   if (view === 'report') {
     return (
@@ -711,7 +874,7 @@ export function App() {
     recon: 'Collect signals and keep the pack tidy.',
     attacks: 'Every observed attempt is captured, attributed, and searchable.',
     findings: 'Promotions stay defensible and linked to evidence.',
-    summit: 'Export, verify the manifest, then wipe the disposable box.',
+    summit: 'Export, verify the hash manifest, keep the receipt, then wipe the disposable box.',
   }[activeId];
 
   const visibleGuideExplainers = useMemo(() => {
@@ -736,16 +899,17 @@ export function App() {
     });
   }, [activeId, guideQuery]);
 
-  const summitReceipt = reportSnapshot.receipt;
+  const summitReceipt = summitExportReceipt;
   const summitExportMessage = {
     idle: 'Preflight the bundle before you freeze the snapshot.',
-    preflight: 'Preflight running. Capture stays live while the bundle is checked.',
-    exporting: 'Exporting now. The live audit trail keeps running while the snapshot is frozen.',
-    verified: 'Verified export receipt recorded. Teardown is now guarded by the receipt.',
-    failed: 'Checksum drift detected. Re-run the preflight after fixing the bundle.',
+    preflight: 'Freezing the live report snapshot from the API.',
+    exporting: 'Streaming the PDF artifact with live byte counts.',
+    verifying: 'Verifying the SHA-256 manifest and keeping the signature hook empty.',
+    verified: 'Hash verified, not signed. Teardown is now guarded by the receipt.',
+    failed: summitExportError || 'Export verification failed. Fix the bundle or route, then retry.',
     canceled: 'Export canceled. Nothing was torn down, and capture remained intact.',
   }[summitExportStatus];
-  const canDestroy = summitExportStatus === 'verified' && breakGlassArmed && destroyPhrase.trim().toUpperCase() === 'WIPE NOW';
+  const canDestroy = summitExportStatus === 'verified' && !!summitReceipt && breakGlassArmed && destroyPhrase.trim().toUpperCase() === 'WIPE NOW';
 
   return (
     <main className="app-shell">
@@ -875,40 +1039,38 @@ export function App() {
               <section className="summit-flow" aria-label="Summit export and teardown flow">
                 <div className="summit-status">
                   <span className={`status-chip ${summitExportStatus}`}>{summitExportStatus}</span>
+                  <div className="export-meter" role="progressbar" aria-label="Export progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summitExportProgress}>
+                    <span style={{ width: `${summitExportProgress}%` }} />
+                  </div>
+                  <p className="summit-step">{summitExportStep}</p>
                   <p>{summitExportMessage}</p>
+                  {summitExportError ? <p className="summit-error">{summitExportError}</p> : null}
                 </div>
 
                 <div className="summit-controls">
                   <button
                     type="button"
                     className="primary-button"
-                    onClick={() => setSummitExportStatus('preflight')}
-                    disabled={summitExportStatus === 'preflight' || summitExportStatus === 'exporting'}
+                    onClick={startSummitExport}
+                    disabled={summitExportStatus === 'preflight' || summitExportStatus === 'exporting' || summitExportStatus === 'verifying'}
                   >
-                    Run export preflight
+                    {summitExportStatus === 'verified' ? 'Re-run export verification' : summitExportStatus === 'failed' || summitExportStatus === 'canceled' ? 'Retry live export' : 'Run live export preflight'}
                   </button>
                   <button
                     type="button"
                     className="secondary-link"
-                    onClick={() => setSummitExportStatus('canceled')}
-                    disabled={summitExportStatus !== 'preflight' && summitExportStatus !== 'exporting'}
+                    onClick={() => summitExportAbort.current?.abort()}
+                    disabled={summitExportStatus !== 'preflight' && summitExportStatus !== 'exporting' && summitExportStatus !== 'verifying'}
                   >
                     Cancel export
                   </button>
-                  <button
-                    type="button"
-                    className="secondary-link"
-                    onClick={() => setSummitExportStatus('failed')}
-                  >
-                    Simulate checksum failure
-                  </button>
                 </div>
 
-                {summitExportStatus === 'verified' ? (
+                {summitExportStatus === 'verified' && summitReceipt ? (
                   <article className="receipt-card" aria-label="Verified export receipt">
                     <div className="panel-heading compact">
                       <h3>Receipt verified</h3>
-                      <p>Capture stayed live while the bundle froze.</p>
+                      <p>Capture stayed live while the bundle froze. Hash verified, not signed.</p>
                     </div>
                     <dl className="receipt-grid">
                       <div>
@@ -923,6 +1085,18 @@ export function App() {
                         <dt>Manifest</dt>
                         <dd className="report-snippet">{summitReceipt.manifestHash}</dd>
                       </div>
+                      <div>
+                        <dt>Snapshot hash</dt>
+                        <dd className="report-snippet">{summitReceipt.snapshotHash}</dd>
+                      </div>
+                      <div>
+                        <dt>PDF hash</dt>
+                        <dd className="report-snippet">{summitReceipt.pdfSha256}</dd>
+                      </div>
+                      <div>
+                        <dt>Note</dt>
+                        <dd>{summitReceipt.note}</dd>
+                      </div>
                     </dl>
                   </article>
                 ) : null}
@@ -931,10 +1105,10 @@ export function App() {
                   <article className="receipt-card is-failed" aria-label="Export failure recovery">
                     <div className="panel-heading compact">
                       <h3>Export needs recovery</h3>
-                      <p>Rerun the preflight after fixing the bundle or evidence mismatch.</p>
+                      <p>Fix the mismatch or reachability issue, then retry the live export.</p>
                     </div>
-                    <button type="button" className="primary-button" onClick={() => setSummitExportStatus('preflight')}>
-                      Retry export preflight
+                    <button type="button" className="primary-button" onClick={startSummitExport}>
+                      Retry export
                     </button>
                   </article>
                 ) : null}
@@ -942,7 +1116,7 @@ export function App() {
                 <article className="break-glass-panel" aria-label="Break-glass teardown guard">
                   <div className="panel-heading compact">
                     <h3>Break-glass teardown</h3>
-                    <p>Export receipt required before the live box can be destroyed.</p>
+                    <p>Export receipt required before the live box can be destroyed. The bundle is hash-verified, not signed.</p>
                   </div>
                   <label className="break-glass-toggle">
                     <input type="checkbox" checked={breakGlassArmed} onChange={(event) => setBreakGlassArmed(event.target.checked)} />
