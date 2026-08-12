@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -63,6 +64,43 @@ func TestApplyMigrationsOnRealPostgreSQL(t *testing.T) {
 		"result_action_unique",
 		"evidence_engagement_created_at_idx",
 	})
+}
+
+func TestApplyMigrationsSerializesConcurrentStarters(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	db.SetMaxOpenConns(4)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- ApplyMigrations(ctx, db)
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("concurrent apply migrations: %v", err)
+		}
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
+		t.Fatalf("count schema migrations: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("schema migration count = %d, want 2", count)
+	}
 }
 
 func TestDatabaseProtectionsRejectMutations(t *testing.T) {
