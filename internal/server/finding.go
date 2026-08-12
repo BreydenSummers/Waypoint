@@ -173,8 +173,8 @@ func handleFindingItem(w http.ResponseWriter, r *http.Request, db *sql.DB, actor
 		}
 		writeJSONWithHeaders(w, http.StatusOK, findingItemFromRow(row), reqID)
 	case http.MethodPatch:
-		if actor.Kind != "human" {
-			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusForbidden), Status: http.StatusForbidden, Code: "forbidden", RequestID: reqID, Retryable: false, Detail: "only a human operator can revise a finding."})
+		if !isFindingOperator(actor) {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusForbidden), Status: http.StatusForbidden, Code: "forbidden", RequestID: reqID, Retryable: false, Detail: "only an operator can revise a finding."})
 			return
 		}
 		body, err := ioReadAllLimited(r.Body, 1<<20)
@@ -250,8 +250,8 @@ func handleFindingPromotion(w http.ResponseWriter, r *http.Request, db *sql.DB, 
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
-	if actor.Kind != "human" {
-		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusForbidden), Status: http.StatusForbidden, Code: "forbidden", RequestID: reqID, Retryable: false, Detail: "only a human operator can promote an attack to a finding."})
+	if !isFindingOperator(actor) {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusForbidden), Status: http.StatusForbidden, Code: "forbidden", RequestID: reqID, Retryable: false, Detail: "only an operator can promote an attack to a finding."})
 		return
 	}
 	body, err := ioReadAllLimited(r.Body, 1<<20)
@@ -609,6 +609,10 @@ func normalizeUUIDs(values []string) []string {
 		out = append(out, v)
 	}
 	return out
+}
+
+func isFindingOperator(actor actorRecord) bool {
+	return actor.Kind == "human" && actor.Role == "operator"
 }
 
 func equalStringSlices(a, b []string) bool {
