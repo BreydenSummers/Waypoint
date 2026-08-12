@@ -43,6 +43,9 @@ if (app.includes('window.print') || distBundle.includes('window.print')) {
 if (!distBundle.includes("new Proxy(phaseDataFallback")) {
   throw new Error('Runtime phase proxy is missing from the embedded bundle');
 }
+if (!distBundle.includes('Imported records, host notes, and discovery output stay in your pack here.')) {
+  throw new Error('Recon workspace copy is still the static offline placeholder');
+}
 if (!distBundle.includes('buildRuntimeJourneyLog') || !distBundle.includes('buildRuntimeReport') || !distBundle.includes('runtimePhaseMeta') || !distBundle.includes('loadFindings')) {
   throw new Error('Runtime data helpers are missing from the embedded bundle');
 }
