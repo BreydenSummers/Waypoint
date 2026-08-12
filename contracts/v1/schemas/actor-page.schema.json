@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/actor-page.schema.json",
+  "title": "Keyset-paginated actor page",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "items", "page"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "items": { "type": "array", "maxItems": 500, "items": { "$ref": "actor-record.schema.json" } },
+    "page": { "$ref": "common.schema.json#/$defs/Page" }
+  }
+}

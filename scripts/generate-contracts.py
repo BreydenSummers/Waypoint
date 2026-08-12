@@ -23,13 +23,9 @@ def expected_outputs() -> dict[Path, dict]:
     components = openapi["components"]["schemas"]
     catalog_entries: list[dict] = []
     wire_refs: list[dict] = []
-    wire_components = {
-        "CaptureEnvelope",
-        "CaptureAck",
-        "AuditEvent",
-        "AuditPage",
-        "Problem",
-    }
+    # Components are the frozen cross-repository wire inventory. Common definitions and
+    # reusable embedded snapshots are not standalone messages; every other top-level schema is.
+    wire_components = set(components) - {"Common", "Actor", "StructuredResult"}
 
     for component, reference in components.items():
         source = reference.get("$ref")

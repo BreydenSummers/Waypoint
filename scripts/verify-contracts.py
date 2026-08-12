@@ -64,6 +64,21 @@ def pointer_parent(document: Any, pointer: str) -> tuple[Any, str]:
     return current, tokens[-1]
 
 
+def pointer_value(document: Any, pointer: str) -> Any:
+    if not pointer.startswith("/"):
+        raise VerificationFailure(f"fixture lookup is not a JSON Pointer: {pointer!r}")
+    current = document
+    for raw_token in pointer[1:].split("/"):
+        token = decode_pointer_token(raw_token)
+        if isinstance(current, list):
+            current = current[int(token)]
+        elif isinstance(current, dict) and token in current:
+            current = current[token]
+        else:
+            raise VerificationFailure(f"fixture lookup path does not exist: {pointer}")
+    return current
+
+
 def apply_mutations(document: dict, mutations: list[dict]) -> dict:
     result = copy.deepcopy(document)
     for mutation in mutations:
@@ -474,9 +489,166 @@ def verify_openapi() -> int:
             if not operation_id or operation_id in operation_ids:
                 raise VerificationFailure(f"missing or duplicate operationId at {method.upper()} {route}")
             operation_ids.add(operation_id)
-    if set(openapi["paths"]) != {"/captures", "/audit-events", "/events"}:
-        raise VerificationFailure("v1 contract route inventory changed without compatibility review")
+    required_routes = {
+        "/captures", "/actors", "/actors/{actorId}", "/actors/{actorId}/rotate",
+        "/actors/{actorId}/revoke", "/actions", "/actions/{actionId}", "/entities",
+        "/entities/{entityId}", "/evidence/{evidenceId}", "/evidence/{evidenceId}/content",
+        "/audit-events", "/events", "/out-of-band-claims", "/out-of-band-claims/{claimId}",
+        "/out-of-band-claims/{claimId}/resolve", "/mcp", "/exports", "/exports/{exportId}",
+        "/exports/{exportId}/cancel", "/exports/{exportId}/report-snapshot",
+        "/exports/{exportId}/report.pdf", "/exports/{exportId}/bundle",
+        "/export-receipts/{receiptId}", "/teardown-authorizations",
+        "/teardown-authorizations/{authorizationId}",
+        "/teardown-authorizations/{authorizationId}/consume",
+    }
+    if set(openapi["paths"]) != required_routes:
+        missing = sorted(required_routes - set(openapi["paths"]))
+        extra = sorted(set(openapi["paths"]) - required_routes)
+        raise VerificationFailure(f"frozen v1 route inventory drift: missing={missing}, extra={extra}")
+    if any(route.startswith("/mcp/") for route in openapi["paths"]):
+        raise VerificationFailure("custom REST-shaped MCP aliases are forbidden; use one standard /mcp endpoint")
+    mcp = openapi["paths"]["/mcp"]
+    if set(mcp) != {"post"} or "MCP Streamable HTTP" not in mcp["post"].get("summary", ""):
+        raise VerificationFailure("/mcp must be the standard Streamable HTTP JSON-RPC endpoint")
+    mcp_responses = mcp["post"].get("responses", {})
+    mcp_success_media = set(mcp_responses.get("200", {}).get("content", {}))
+    if "202" not in mcp_responses or mcp_success_media != {"application/json", "text/event-stream"}:
+        raise VerificationFailure("MCP Streamable HTTP must support notification 202 and JSON/SSE responses")
+    protocol_error_ref = mcp_responses.get("400", {}).get("content", {}).get("application/json", {}).get("schema", {}).get("$ref")
+    if protocol_error_ref != "#/components/schemas/McpMessage":
+        raise VerificationFailure("MCP protocol errors must use JSON-RPC rather than REST problem bodies")
+    for route in ("/actions", "/actors", "/entities", "/audit-events", "/out-of-band-claims", "/exports"):
+        parameters = openapi["paths"][route]["get"].get("parameters", [])
+        refs = {item.get("$ref") for item in parameters}
+        if "#/components/parameters/AfterCursor" not in refs or "#/components/parameters/PageLimit" not in refs:
+            raise VerificationFailure(f"authoritative collection {route} must be bounded and keyset-paginated")
     return ref_count
+
+
+def fragment_validator(schema: dict, fragment: str, store: dict[str, dict]) -> Draft202012Validator:
+    wrapper = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$ref": f"{schema['$id']}#{fragment}",
+    }
+    return validator(wrapper, store)
+
+
+def verify_remediation_contracts(schemas: dict[str, dict], store: dict[str, dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+
+    actions = load_json(FIXTURES / "actions.json")["cases"]
+    for case in actions:
+        errors = validation_errors(case["action"], schemas["action.schema.json"], store)
+        if bool(errors) == case["valid"]:
+            raise VerificationFailure(f"action fixture {case['name']} validity mismatch: {errors}")
+        if case["valid"]:
+            action = case["action"]
+            if action["capture"]["sourceAgent"].keys() != {"id", "kind", "name", "version", "platform"}:
+                raise VerificationFailure("authoritative action drops source-agent attribution")
+            required_network = {"execHost", "egress", "pivotChain"}
+            if set(action["capture"]["network"]) != required_network:
+                raise VerificationFailure("authoritative action drops network attribution")
+            for role in ("stdout", "stderr"):
+                descriptor = action["capture"]["evidence"][role]
+                reference = action["evidenceReferences"][role]
+                if any(reference[key] != descriptor[key] for key in ("mediaType", "byteLength", "sha256")):
+                    raise VerificationFailure(f"authoritative action {role} evidence reference drift")
+    counts["actions"] = len(actions)
+
+    lifecycle = load_json(FIXTURES / "actor-lifecycle.json")
+    for value in lifecycle["records"]:
+        errors = validation_errors(value, schemas["actor-record.schema.json"], store)
+        if errors:
+            raise VerificationFailure(f"actor record fixture is invalid: {errors}")
+    human_ids = {record["actor"]["id"] for record in lifecycle["records"] if record["actor"]["kind"] == "human" and record["status"] == "active"}
+    for value in lifecycle["provisionRequests"]:
+        errors = validation_errors(value, schemas["actor-provision-request.schema.json"], store)
+        if errors:
+            raise VerificationFailure(f"actor provision fixture is invalid: {errors}")
+        if value["kind"] == "ai_agent" and value.get("authorizedBy") not in human_ids:
+            raise VerificationFailure("AI provisioning fixture must reference an active human authorizer")
+    for value in lifecycle["oneTimeCredentials"]:
+        errors = validation_errors(value, schemas["actor-credential.schema.json"], store)
+        if errors:
+            raise VerificationFailure(f"one-time credential fixture is invalid: {errors}")
+    if "token" in lifecycle["records"][0] or "token" in lifecycle["records"][0]["actor"]:
+        raise VerificationFailure("actor reads must never expose credential material")
+    counts["actor lifecycle"] = sum(len(lifecycle[key]) for key in ("records", "provisionRequests", "oneTimeCredentials"))
+
+    claims = load_json(FIXTURES / "out-of-band-claims.json")
+    for key, schema_name in (("createRequests", "out-of-band-claim-create.schema.json"), ("claims", "out-of-band-claim.schema.json"), ("resolutionRequests", "out-of-band-resolution.schema.json")):
+        for value in claims[key]:
+            errors = validation_errors(value, schemas[schema_name], store)
+            if errors:
+                raise VerificationFailure(f"out-of-band {key} fixture is invalid: {errors}")
+    if "wholly unobserved" not in claims["boundary"]:
+        raise VerificationFailure("out-of-band fixture must state the residual detection boundary")
+    counts["claims"] = sum(len(claims[key]) for key in ("createRequests", "claims", "resolutionRequests"))
+
+    mcp = load_json(FIXTURES / "mcp.json")
+    for message in mcp["messages"]:
+        errors = validation_errors(message, schemas["mcp-message.schema.json"], store)
+        if errors:
+            raise VerificationFailure(f"MCP message fixture is invalid: {errors}")
+    expected_tools = ["waypoint_ingest_capture", "waypoint_capture_status"]
+    if [tool["name"] for tool in mcp["toolInventory"]] != expected_tools:
+        raise VerificationFailure("MCP tool inventory is not the closed v1 capture/status set")
+    mcp_schema = schemas["mcp-message.schema.json"]
+    errors = sorted(error.message for error in fragment_validator(mcp_schema, "/$defs/IngestCaptureArguments", store).iter_errors(mcp["ingestArguments"]))
+    if errors:
+        raise VerificationFailure(f"MCP ingest arguments are invalid: {errors}")
+    errors = sorted(error.message for error in fragment_validator(mcp_schema, "/$defs/ToolCallResult", store).iter_errors(mcp["toolCallResult"]))
+    if errors:
+        raise VerificationFailure(f"MCP tool result is invalid: {errors}")
+    if mcp["ingestArguments"]["idempotencyKey"] != mcp["ingestArguments"]["envelope"]["captureId"]:
+        raise VerificationFailure("MCP ingest does not preserve REST idempotency semantics")
+    counts["MCP"] = len(mcp["messages"])
+
+    export = load_json(FIXTURES / "export-lifecycle.json")
+    groups = {
+        "createRequests": "export-request.schema.json",
+        "jobs": "export-job.schema.json",
+        "manifests": "export-manifest.schema.json",
+        "receipts": "export-receipt.schema.json",
+        "reportSnapshots": "report-snapshot.schema.json",
+        "teardownRequests": "teardown-request.schema.json",
+        "teardownAuthorizations": "teardown-authorization.schema.json",
+    }
+    for key, schema_name in groups.items():
+        for value in export[key]:
+            errors = validation_errors(value, schemas[schema_name], store)
+            if errors:
+                raise VerificationFailure(f"export {key} fixture is invalid: {errors}")
+    manifest = export["manifests"][0]
+    paths = [entry["path"] for entry in manifest["payloads"]]
+    if len(paths) != len(set(paths)) or any("manifest" in path.lower() for path in paths):
+        raise VerificationFailure("manifest paths must be unique and exclude the manifest itself")
+    required_kinds = {"database_dump", "evidence", "report_snapshot", "report_pdf", "metadata", "verify_tool", "restore_tool", "regenerate_tool", "instructions"}
+    if {entry["kind"] for entry in manifest["payloads"]} != required_kinds or manifest["signatures"]["items"]:
+        raise VerificationFailure("bundle payload inventory/signature hook violates v1 export semantics")
+    job, receipt, teardown = export["jobs"][0], export["receipts"][0], export["teardownAuthorizations"][0]
+    binding = ("exportJobId", "engagementId", "archiveSha256", "manifestSha256")
+    if any(receipt[key] != (job["id"] if key == "exportJobId" else job["engagementId"] if key == "engagementId" else job["bundle"][key]) for key in binding):
+        raise VerificationFailure("persisted receipt is not bound to completed export bytes")
+    if any(teardown[key] != receipt[key] for key in ("exportJobId", "engagementId", "bundlePath", "archiveSha256", "manifestSha256")) or teardown["receiptId"] != receipt["id"]:
+        raise VerificationFailure("teardown authorization is not bound to the exact persisted receipt")
+    counts["export lifecycle"] = sum(len(export[key]) for key in groups)
+
+    invalid = load_json(FIXTURES / "remediation-invalid.json")["cases"]
+    for case in invalid:
+        base_path = (FIXTURES / case["base"]).resolve()
+        try:
+            base_path.relative_to(FIXTURES.resolve())
+        except ValueError as exc:
+            raise VerificationFailure(f"invalid remediation fixture escapes fixture tree: {case['base']}") from exc
+        base_document = load_json(base_path)
+        instance = copy.deepcopy(pointer_value(base_document, case["pointer"]))
+        candidate = apply_mutations(instance, case["mutations"])
+        errors = validation_errors(candidate, schemas[case["schema"]], store)
+        if not errors:
+            raise VerificationFailure(f"invalid remediation fixture {case['name']} unexpectedly passed")
+    counts["invalid remediation"] = len(invalid)
+    return counts
 
 
 def verify_generated(schemas: dict[str, dict], store: dict[str, dict]) -> int:
@@ -510,6 +682,7 @@ def main() -> int:
         idempotency = verify_idempotency()
         cursors = verify_cursors()
         problems = verify_problems(schemas, store)
+        remediation = verify_remediation_contracts(schemas, store)
     except (VerificationFailure, KeyError, TypeError, ValueError) as exc:
         print(f"contract verification failed: {exc}", file=sys.stderr)
         return 1
@@ -518,7 +691,9 @@ def main() -> int:
         "contract verification passed "
         f"({len(schemas)} schemas, {generated} generated artifacts, {refs} OpenAPI refs, "
         f"{captures} capture cases, {events} event cases, {idempotency} idempotency cases, "
-        f"{cursors} cursor cases, {problems} problem cases)"
+        f"{cursors} cursor cases, {problems} problem cases, "
+        + ", ".join(f"{count} {name} fixtures" for name, count in remediation.items())
+        + ")"
     )
     return 0
 

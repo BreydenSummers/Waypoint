@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/out-of-band-claim.schema.json",
+  "title": "Observed provenance claim review record",
+  "description": "Best-effort review state for an entity/result observation that could not prove a captured source action.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "engagementId", "claimKind", "claimedSubjectId", "sourceActionId", "detectionBoundary", "reason", "status", "observedAt", "observedBy", "revision"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "claimKind": { "enum": ["entity", "result"] },
+    "claimedSubjectId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "sourceActionId": { "oneOf": [{ "$ref": "common.schema.json#/$defs/Uuid" }, { "type": "null" }] },
+    "detectionBoundary": { "const": "best_effort" },
+    "reason": { "const": "missing_captured_source_action" },
+    "status": { "enum": ["pending", "linked", "dismissed"] },
+    "observedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "observedBy": { "$ref": "actor.schema.json" },
+    "resolvedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "resolvedBy": { "$ref": "actor.schema.json" },
+    "notes": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "revision": { "type": "integer", "minimum": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "pending" } }, "required": ["status"] },
+      "then": { "properties": { "sourceActionId": { "type": "null" } }, "not": { "anyOf": [{ "required": ["resolvedAt"] }, { "required": ["resolvedBy"] }] } },
+      "else": { "required": ["resolvedAt", "resolvedBy"] }
+    },
+    {
+      "if": { "properties": { "status": { "const": "linked" } }, "required": ["status"] },
+      "then": { "properties": { "sourceActionId": { "$ref": "common.schema.json#/$defs/Uuid" } } },
+      "else": {
+        "if": { "properties": { "status": { "const": "dismissed" } }, "required": ["status"] },
+        "then": { "properties": { "sourceActionId": { "type": "null" } } }
+      }
+    }
+  ]
+}

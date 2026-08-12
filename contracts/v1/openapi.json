@@ -3,30 +3,73 @@
   "info": {
     "title": "Waypoint Core API",
     "version": "1.0.0",
-    "summary": "Versioned capture ingestion and append-only audit read contracts",
-    "description": "REST is the authoritative write protocol. This API records completed command outcomes; it never executes assessment commands. Actor and engagement scope are derived from the credential, not request content."
+    "summary": "Frozen v1 contracts for attributable capture, authoritative reads, standard MCP, and defensible export",
+    "description": "REST resources and standard MCP delegate to one authoritative application service. Core records completed outcomes and lifecycle mutations; it never executes assessment commands. Actor and engagement scope are credential-derived."
   },
   "servers": [
-    { "url": "/api/v1" }
+    {
+      "url": "/api/v1"
+    }
   ],
   "tags": [
-    { "name": "Capture" },
-    { "name": "Audit" }
+    {
+      "name": "Capture"
+    },
+    {
+      "name": "Actors"
+    },
+    {
+      "name": "Actions"
+    },
+    {
+      "name": "Recon"
+    },
+    {
+      "name": "Evidence"
+    },
+    {
+      "name": "Audit"
+    },
+    {
+      "name": "Claims"
+    },
+    {
+      "name": "MCP"
+    },
+    {
+      "name": "Reports"
+    },
+    {
+      "name": "Exports"
+    },
+    {
+      "name": "Teardown"
+    }
   ],
   "security": [
-    { "actorBearer": [] }
+    {
+      "actorBearer": []
+    }
   ],
   "paths": {
     "/captures": {
       "post": {
         "operationId": "createCapture",
-        "tags": ["Capture"],
+        "tags": [
+          "Capture"
+        ],
         "summary": "Durably ingest one completed raw-first command capture",
         "description": "The envelope and both raw streams form one idempotent request. The server acknowledges only after immutable action metadata, distinct stdout/stderr evidence references, and the capture.accepted audit event commit. A replay does not create another event.",
         "parameters": [
-          { "$ref": "#/components/parameters/ContractVersion" },
-          { "$ref": "#/components/parameters/IdempotencyKey" },
-          { "$ref": "#/components/parameters/RequestId" }
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -35,17 +78,37 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["envelope", "stdout", "stderr"],
+                "required": [
+                  "envelope",
+                  "stdout",
+                  "stderr"
+                ],
                 "properties": {
-                  "envelope": { "$ref": "#/components/schemas/CaptureEnvelope" },
-                  "stdout": { "type": "string", "format": "binary", "contentMediaType": "application/octet-stream" },
-                  "stderr": { "type": "string", "format": "binary", "contentMediaType": "application/octet-stream" }
+                  "envelope": {
+                    "$ref": "#/components/schemas/CaptureEnvelope"
+                  },
+                  "stdout": {
+                    "type": "string",
+                    "format": "binary",
+                    "contentMediaType": "application/octet-stream"
+                  },
+                  "stderr": {
+                    "type": "string",
+                    "format": "binary",
+                    "contentMediaType": "application/octet-stream"
+                  }
                 }
               },
               "encoding": {
-                "envelope": { "contentType": "application/json" },
-                "stdout": { "contentType": "application/octet-stream" },
-                "stderr": { "contentType": "application/octet-stream" }
+                "envelope": {
+                  "contentType": "application/json"
+                },
+                "stdout": {
+                  "contentType": "application/octet-stream"
+                },
+                "stderr": {
+                  "contentType": "application/octet-stream"
+                }
               }
             }
           }
@@ -53,89 +116,2542 @@
         "responses": {
           "201": {
             "description": "New capture durably created",
-            "headers": { "Waypoint-Contract-Version": { "$ref": "#/components/headers/ContractVersion" }, "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CaptureAck" } } }
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureAck"
+                }
+              }
+            }
           },
           "200": {
             "description": "Byte-equivalent validated capture replayed; original durable acknowledgement returned",
-            "headers": { "Waypoint-Contract-Version": { "$ref": "#/components/headers/ContractVersion" }, "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CaptureAck" } } }
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaptureAck"
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "409": { "$ref": "#/components/responses/Problem" },
-          "413": { "$ref": "#/components/responses/Problem" },
-          "422": { "$ref": "#/components/responses/Problem" },
-          "426": { "$ref": "#/components/responses/Problem" },
-          "429": { "$ref": "#/components/responses/Problem" },
-          "500": { "$ref": "#/components/responses/Problem" },
-          "503": { "$ref": "#/components/responses/Problem" }
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/actors": {
+      "get": {
+        "operationId": "listActors",
+        "tags": [
+          "Actors"
+        ],
+        "summary": "List current non-secret actor lifecycle records",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/AfterCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActorPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "post": {
+        "operationId": "provisionActor",
+        "tags": [
+          "Actors"
+        ],
+        "summary": "Provision a named human or human-authorized AI actor and return its token once",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActorProvisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActorCredential"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/actors/{actorId}": {
+      "get": {
+        "operationId": "getActor",
+        "tags": [
+          "Actors"
+        ],
+        "summary": "Read current non-secret actor lifecycle state",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ActorId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActorRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/actors/{actorId}/rotate": {
+      "post": {
+        "operationId": "rotateActorCredential",
+        "tags": [
+          "Actors"
+        ],
+        "summary": "Rotate an active actor credential and return the replacement once",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ActorId"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedRevision"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActorCredential"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/actors/{actorId}/revoke": {
+      "post": {
+        "operationId": "revokeActor",
+        "tags": [
+          "Actors"
+        ],
+        "summary": "Durably revoke an actor across REST, MCP, and reconnecting SSE",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ActorId"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedRevision"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActorRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/actions": {
+      "get": {
+        "operationId": "listActions",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Read immutable actions in bounded keyset order",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/AfterCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "description": "Every item retains the complete accepted capture envelope and event-time actor attribution. Filters may only narrow the bounded authoritative projection."
+      }
+    },
+    "/actions/{actionId}": {
+      "get": {
+        "operationId": "getAction",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Read one lossless immutable action",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ActionId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Action"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/entities": {
+      "get": {
+        "operationId": "listEntities",
+        "tags": [
+          "Recon"
+        ],
+        "summary": "Read entities with captured or flagged observation provenance",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/AfterCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntityPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/entities/{entityId}": {
+      "get": {
+        "operationId": "getEntity",
+        "tags": [
+          "Recon"
+        ],
+        "summary": "Read one entity and immutable observation provenance",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/EntityId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Entity"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/evidence/{evidenceId}": {
+      "get": {
+        "operationId": "getEvidenceMetadata",
+        "tags": [
+          "Evidence"
+        ],
+        "summary": "Read engagement-scoped immutable evidence metadata",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/EvidenceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Evidence"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/evidence/{evidenceId}/content": {
+      "get": {
+        "operationId": "downloadEvidence",
+        "tags": [
+          "Evidence"
+        ],
+        "summary": "Stream verified immutable evidence bytes",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/EvidenceId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
         }
       }
     },
     "/audit-events": {
       "get": {
         "operationId": "listAuditEvents",
-        "tags": ["Audit"],
+        "tags": [
+          "Audit"
+        ],
         "summary": "Read persisted audit events in ascending keyset order",
         "parameters": [
-          { "$ref": "#/components/parameters/ContractVersion" },
-          { "$ref": "#/components/parameters/RequestId" },
-          { "$ref": "#/components/parameters/AfterCursor" },
-          { "$ref": "#/components/parameters/PageLimit" }
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/AfterCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
         ],
         "responses": {
           "200": {
             "description": "A bounded page. nextCursor is exclusive on the next request.",
-            "headers": { "Waypoint-Contract-Version": { "$ref": "#/components/headers/ContractVersion" }, "X-Request-ID": { "$ref": "#/components/headers/RequestId" } },
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuditPage" } } }
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditPage"
+                }
+              }
+            }
           },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "426": { "$ref": "#/components/responses/Problem" },
-          "429": { "$ref": "#/components/responses/Problem" },
-          "500": { "$ref": "#/components/responses/Problem" },
-          "503": { "$ref": "#/components/responses/Problem" }
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
         }
       }
     },
     "/events": {
       "get": {
         "operationId": "streamAuditEvents",
-        "tags": ["Audit"],
+        "tags": [
+          "Audit"
+        ],
         "summary": "Resume the authorized audit stream using persisted event IDs",
         "description": "SSE id equals AuditEvent.id, SSE event equals AuditEvent.type, and SSE data is the complete AuditEvent JSON. after and Last-Event-ID are exclusive and must agree when both are sent. An absent cursor starts after the connection high-water mark. Heartbeats are comments and do not advance the cursor. Slow readers are disconnected and resume by cursor.",
         "parameters": [
-          { "$ref": "#/components/parameters/ContractVersion" },
-          { "$ref": "#/components/parameters/RequestId" },
-          { "$ref": "#/components/parameters/AfterCursor" },
-          { "$ref": "#/components/parameters/LastEventId" }
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/AfterCursor"
+          },
+          {
+            "$ref": "#/components/parameters/LastEventId"
+          }
         ],
         "responses": {
           "200": {
             "description": "Authorized resumable server-sent event stream",
             "headers": {
-              "Cache-Control": { "schema": { "type": "string", "const": "no-cache" } },
-              "Waypoint-Contract-Version": { "$ref": "#/components/headers/ContractVersion" },
-              "X-Request-ID": { "$ref": "#/components/headers/RequestId" }
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              },
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
             },
             "content": {
               "text/event-stream": {
-                "schema": { "type": "string" },
-                "x-waypoint-sse-data-schema": { "$ref": "#/components/schemas/AuditEvent" }
+                "schema": {
+                  "type": "string"
+                },
+                "x-waypoint-sse-data-schema": {
+                  "$ref": "#/components/schemas/AuditEvent"
+                }
               }
             }
           },
-          "400": { "$ref": "#/components/responses/Problem" },
-          "401": { "$ref": "#/components/responses/Problem" },
-          "403": { "$ref": "#/components/responses/Problem" },
-          "410": { "$ref": "#/components/responses/Problem" },
-          "426": { "$ref": "#/components/responses/Problem" },
-          "429": { "$ref": "#/components/responses/Problem" },
-          "500": { "$ref": "#/components/responses/Problem" },
-          "503": { "$ref": "#/components/responses/Problem" }
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "410": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/out-of-band-claims": {
+      "get": {
+        "operationId": "listOutOfBandClaims",
+        "tags": [
+          "Claims"
+        ],
+        "summary": "List pending and resolved provenance claims",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/AfterCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutOfBandClaimPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "post": {
+        "operationId": "observeOutOfBandClaim",
+        "tags": [
+          "Claims"
+        ],
+        "summary": "Observe an entity/result claim and let the server assign and assess provenance",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutOfBandClaimCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutOfBandClaim"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "description": "A missing or foreign asserted action yields a pending best-effort claim; it is never silently treated as captured provenance."
+      }
+    },
+    "/out-of-band-claims/{claimId}": {
+      "get": {
+        "operationId": "getOutOfBandClaim",
+        "tags": [
+          "Claims"
+        ],
+        "summary": "Read one provenance claim",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClaimId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutOfBandClaim"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/out-of-band-claims/{claimId}/resolve": {
+      "post": {
+        "operationId": "resolveOutOfBandClaim",
+        "tags": [
+          "Claims"
+        ],
+        "summary": "Link a pending claim to a valid action or dismiss it visibly",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ClaimId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutOfBandResolution"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutOfBandClaim"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "operationId": "handleMcpMessage",
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Standard MCP Streamable HTTP JSON-RPC endpoint",
+        "description": "Implements initialize, notifications/initialized, tools/list, and tools/call for only waypoint_ingest_capture and waypoint_capture_status. Application failures use the same Problem in an MCP tool error; protocol failures use standard JSON-RPC errors.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/McpProtocolVersion"
+          },
+          {
+            "$ref": "#/components/parameters/McpSessionId"
+          },
+          {
+            "$ref": "#/components/parameters/McpAccept"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpMessage"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC response or Streamable HTTP event stream.",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Mcp-Session-Id": {
+                "description": "Opaque optional MCP transport session ID; never authorization scope.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpMessage"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "x-waypoint-sse-data-schema": {
+                  "$ref": "#/components/schemas/McpMessage"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted MCP notification with no response body.",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Mcp-Session-Id": {
+                "description": "Opaque optional MCP transport session ID; never authorization scope.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "MCP/JSON-RPC protocol error.",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              },
+              "Mcp-Session-Id": {
+                "description": "Opaque optional MCP transport session ID; never authorization scope.",
+                "schema": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpMessage"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/exports": {
+      "get": {
+        "operationId": "listExportJobs",
+        "tags": [
+          "Exports"
+        ],
+        "summary": "List persisted reconnectable export jobs",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/AfterCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJobPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createExportJob",
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Create a persisted, audited export job",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "description": "The server owns preflight, consistent snapshot, PDF/bundle generation, verification, and receipt creation. Capture remains live outside the cutoff."
+      }
+    },
+    "/exports/{exportId}": {
+      "get": {
+        "operationId": "getExportJob",
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Read durable export state and progress",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ExportId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/exports/{exportId}/cancel": {
+      "post": {
+        "operationId": "cancelExportJob",
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Request cancellation before final verification",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ExportId"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedRevision"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportJob"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/exports/{exportId}/report-snapshot": {
+      "get": {
+        "operationId": "getFrozenReportSnapshot",
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Read the authoritative frozen report input for a completed export",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ExportId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/exports/{exportId}/report.pdf": {
+      "get": {
+        "operationId": "downloadFrozenReportPdf",
+        "tags": [
+          "Reports"
+        ],
+        "summary": "Download the PDF rendered from the same frozen report input",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ExportId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/exports/{exportId}/bundle": {
+      "get": {
+        "operationId": "downloadExportBundle",
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Stream the completed self-contained bundle",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ExportId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/export-receipts/{receiptId}": {
+      "get": {
+        "operationId": "getExportReceipt",
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Read a server-generated immutable verification receipt",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/ReceiptId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportReceipt"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/teardown-authorizations": {
+      "post": {
+        "operationId": "authorizeTeardown",
+        "tags": [
+          "Teardown"
+        ],
+        "summary": "Re-verify exact bundle bytes and issue a short-lived single-use teardown authorization",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeardownRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeardownAuthorization"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "description": "A caller-authored receipt is never accepted. The server loads the persisted receipt and binds the authorization to its exact path and digests."
+      }
+    },
+    "/teardown-authorizations/{authorizationId}": {
+      "get": {
+        "operationId": "getTeardownAuthorization",
+        "tags": [
+          "Teardown"
+        ],
+        "summary": "Read teardown authorization state",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/AuthorizationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeardownAuthorization"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        }
+      }
+    },
+    "/teardown-authorizations/{authorizationId}/consume": {
+      "post": {
+        "operationId": "consumeTeardownAuthorization",
+        "tags": [
+          "Teardown"
+        ],
+        "summary": "Atomically consume authorization immediately before external volume removal",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/AuthorizationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeardownAuthorization"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
         }
       }
     }
@@ -155,74 +2671,297 @@
         "in": "header",
         "required": true,
         "description": "Exact negotiated contract version for this request.",
-        "schema": { "type": "string", "const": "1.0.0" }
+        "schema": {
+          "type": "string",
+          "const": "1.0.0"
+        }
       },
       "IdempotencyKey": {
         "name": "Idempotency-Key",
         "in": "header",
         "required": true,
         "description": "Must exactly equal envelope.captureId. Scope is the credential-derived engagement and actor plus sourceAgent.id and captureId.",
-        "schema": { "type": "string", "format": "uuid" }
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
       },
       "RequestId": {
         "name": "X-Request-ID",
         "in": "header",
         "required": false,
         "description": "Optional caller correlation value. Invalid values are replaced, never trusted for authorization.",
-        "schema": { "$ref": "schemas/common.schema.json#/$defs/RequestId" }
+        "schema": {
+          "$ref": "schemas/common.schema.json#/$defs/RequestId"
+        }
       },
       "AfterCursor": {
         "name": "after",
         "in": "query",
         "required": false,
         "description": "Exclusive persisted audit event cursor. Omit for initial REST page or a live-only stream.",
-        "schema": { "$ref": "#/components/schemas/Common/$defs/Cursor" }
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Cursor"
+        }
       },
       "LastEventId": {
         "name": "Last-Event-ID",
         "in": "header",
         "required": false,
         "description": "Exclusive SSE resume cursor. If after is also present, values must be identical.",
-        "schema": { "$ref": "#/components/schemas/Common/$defs/Cursor" }
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Cursor"
+        }
       },
       "PageLimit": {
         "name": "limit",
         "in": "query",
         "required": false,
         "description": "Bounded page size.",
-        "schema": { "type": "integer", "minimum": 1, "maximum": 500, "default": 100 }
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 100
+        }
+      },
+      "ActorId": {
+        "name": "actorId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Uuid"
+        }
+      },
+      "ActionId": {
+        "name": "actionId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Uuid"
+        }
+      },
+      "EntityId": {
+        "name": "entityId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Uuid"
+        }
+      },
+      "EvidenceId": {
+        "name": "evidenceId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Uuid"
+        }
+      },
+      "ClaimId": {
+        "name": "claimId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Uuid"
+        }
+      },
+      "ExportId": {
+        "name": "exportId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Uuid"
+        }
+      },
+      "ReceiptId": {
+        "name": "receiptId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Uuid"
+        }
+      },
+      "AuthorizationId": {
+        "name": "authorizationId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/Common/$defs/Uuid"
+        }
+      },
+      "McpProtocolVersion": {
+        "name": "MCP-Protocol-Version",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "const": "2025-03-26"
+        }
+      },
+      "McpSessionId": {
+        "name": "Mcp-Session-Id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        }
+      },
+      "ExpectedRevision": {
+        "name": "If-Match",
+        "in": "header",
+        "required": true,
+        "description": "Quoted current positive integer revision.",
+        "schema": {
+          "type": "string",
+          "pattern": "^\\\"[1-9][0-9]*\\\"$"
+        }
+      },
+      "McpAccept": {
+        "name": "Accept",
+        "in": "header",
+        "required": true,
+        "description": "MCP Streamable HTTP clients advertise both response forms.",
+        "schema": {
+          "type": "string",
+          "pattern": "^(?=.*application/json)(?=.*text/event-stream).+$"
+        }
       }
     },
     "headers": {
       "ContractVersion": {
         "description": "Contract version used for the response.",
-        "schema": { "type": "string", "const": "1.0.0" }
+        "schema": {
+          "type": "string",
+          "const": "1.0.0"
+        }
       },
       "RequestId": {
         "description": "Server-accepted or generated request correlation ID.",
-        "schema": { "$ref": "schemas/common.schema.json#/$defs/RequestId" }
+        "schema": {
+          "$ref": "schemas/common.schema.json#/$defs/RequestId"
+        }
       }
     },
     "responses": {
       "Problem": {
         "description": "A stable machine-readable problem detail. The HTTP status and body status agree.",
         "headers": {
-          "Waypoint-Contract-Version": { "$ref": "#/components/headers/ContractVersion" },
-          "X-Request-ID": { "$ref": "#/components/headers/RequestId" },
-          "Retry-After": { "description": "Present for rate or temporary capacity failures when known.", "schema": { "type": "integer", "minimum": 1 } }
+          "Waypoint-Contract-Version": {
+            "$ref": "#/components/headers/ContractVersion"
+          },
+          "X-Request-ID": {
+            "$ref": "#/components/headers/RequestId"
+          },
+          "Retry-After": {
+            "description": "Present for rate or temporary capacity failures when known.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         },
-        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
       }
     },
     "schemas": {
-      "Common": { "$ref": "schemas/common.schema.json" },
-      "Actor": { "$ref": "schemas/actor.schema.json" },
-      "StructuredResult": { "$ref": "schemas/structured-result.schema.json" },
-      "CaptureEnvelope": { "$ref": "schemas/capture-envelope.schema.json" },
-      "CaptureAck": { "$ref": "schemas/capture-ack.schema.json" },
-      "AuditEvent": { "$ref": "schemas/audit-event.schema.json" },
-      "AuditPage": { "$ref": "schemas/audit-page.schema.json" },
-      "Problem": { "$ref": "schemas/problem.schema.json" }
+      "Common": {
+        "$ref": "schemas/common.schema.json"
+      },
+      "Actor": {
+        "$ref": "schemas/actor.schema.json"
+      },
+      "ActorRecord": {
+        "$ref": "schemas/actor-record.schema.json"
+      },
+      "ActorProvisionRequest": {
+        "$ref": "schemas/actor-provision-request.schema.json"
+      },
+      "ActorCredential": {
+        "$ref": "schemas/actor-credential.schema.json"
+      },
+      "ActorPage": {
+        "$ref": "schemas/actor-page.schema.json"
+      },
+      "StructuredResult": {
+        "$ref": "schemas/structured-result.schema.json"
+      },
+      "CaptureEnvelope": {
+        "$ref": "schemas/capture-envelope.schema.json"
+      },
+      "CaptureAck": {
+        "$ref": "schemas/capture-ack.schema.json"
+      },
+      "Action": {
+        "$ref": "schemas/action.schema.json"
+      },
+      "ActionPage": {
+        "$ref": "schemas/action-page.schema.json"
+      },
+      "Entity": {
+        "$ref": "schemas/entity.schema.json"
+      },
+      "EntityPage": {
+        "$ref": "schemas/entity-page.schema.json"
+      },
+      "Evidence": {
+        "$ref": "schemas/evidence.schema.json"
+      },
+      "AuditEvent": {
+        "$ref": "schemas/audit-event.schema.json"
+      },
+      "AuditPage": {
+        "$ref": "schemas/audit-page.schema.json"
+      },
+      "OutOfBandClaim": {
+        "$ref": "schemas/out-of-band-claim.schema.json"
+      },
+      "OutOfBandClaimCreate": {
+        "$ref": "schemas/out-of-band-claim-create.schema.json"
+      },
+      "OutOfBandResolution": {
+        "$ref": "schemas/out-of-band-resolution.schema.json"
+      },
+      "OutOfBandClaimPage": {
+        "$ref": "schemas/out-of-band-claim-page.schema.json"
+      },
+      "McpMessage": {
+        "$ref": "schemas/mcp-message.schema.json"
+      },
+      "ReportSnapshot": {
+        "$ref": "schemas/report-snapshot.schema.json"
+      },
+      "ExportRequest": {
+        "$ref": "schemas/export-request.schema.json"
+      },
+      "ExportJob": {
+        "$ref": "schemas/export-job.schema.json"
+      },
+      "ExportJobPage": {
+        "$ref": "schemas/export-job-page.schema.json"
+      },
+      "ExportManifest": {
+        "$ref": "schemas/export-manifest.schema.json"
+      },
+      "ExportReceipt": {
+        "$ref": "schemas/export-receipt.schema.json"
+      },
+      "TeardownRequest": {
+        "$ref": "schemas/teardown-request.schema.json"
+      },
+      "TeardownAuthorization": {
+        "$ref": "schemas/teardown-authorization.schema.json"
+      },
+      "Problem": {
+        "$ref": "schemas/problem.schema.json"
+      }
     }
   }
 }

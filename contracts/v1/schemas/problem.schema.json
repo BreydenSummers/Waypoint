@@ -5,13 +5,41 @@
   "description": "RFC 9457 problem detail with stable machine fields. detail and field messages are safe summaries and never echo tokens or raw evidence.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["type", "title", "status", "code", "requestId", "retryable"],
+  "required": [
+    "type",
+    "title",
+    "status",
+    "code",
+    "requestId",
+    "retryable"
+  ],
   "properties": {
-    "type": { "type": "string", "format": "uri-reference", "minLength": 1, "maxLength": 512 },
-    "title": { "type": "string", "minLength": 1, "maxLength": 256 },
-    "status": { "type": "integer", "minimum": 400, "maximum": 599 },
-    "detail": { "type": "string", "minLength": 1, "maxLength": 4096 },
-    "instance": { "type": "string", "format": "uri-reference", "maxLength": 512 },
+    "type": {
+      "type": "string",
+      "format": "uri-reference",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "status": {
+      "type": "integer",
+      "minimum": 400,
+      "maximum": 599
+    },
+    "detail": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "instance": {
+      "type": "string",
+      "format": "uri-reference",
+      "maxLength": 512
+    },
     "code": {
       "enum": [
         "invalid_request",
@@ -26,85 +54,488 @@
         "cursor_mismatch",
         "cursor_expired",
         "service_unavailable",
-        "internal_error"
+        "internal_error",
+        "resource_not_found",
+        "state_conflict",
+        "precondition_failed",
+        "precondition_required",
+        "receipt_verification_failed",
+        "capacity_insufficient"
       ]
     },
-    "requestId": { "$ref": "common.schema.json#/$defs/RequestId" },
-    "retryable": { "type": "boolean" },
-    "retryAfterSeconds": { "type": "integer", "minimum": 1, "maximum": 86400 },
+    "requestId": {
+      "$ref": "common.schema.json#/$defs/RequestId"
+    },
+    "retryable": {
+      "type": "boolean"
+    },
+    "retryAfterSeconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400
+    },
     "fieldErrors": {
       "type": "array",
       "maxItems": 100,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["pointer", "code", "message"],
+        "required": [
+          "pointer",
+          "code",
+          "message"
+        ],
         "properties": {
-          "pointer": { "type": "string", "pattern": "^(?:/(?:[^~/]|~0|~1)*)*$", "maxLength": 2048 },
-          "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "maxLength": 128 },
-          "message": { "type": "string", "minLength": 1, "maxLength": 1024 }
+          "pointer": {
+            "type": "string",
+            "pattern": "^(?:/(?:[^~/]|~0|~1)*)*$",
+            "maxLength": 2048
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$",
+            "maxLength": 128
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
         }
       }
     },
-    "existingActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "existingActionId": {
+      "$ref": "common.schema.json#/$defs/Uuid"
+    },
     "minimumAvailableCursor": {
       "oneOf": [
-        { "$ref": "common.schema.json#/$defs/Cursor" },
-        { "type": "null" }
+        {
+          "$ref": "common.schema.json#/$defs/Cursor"
+        },
+        {
+          "type": "null"
+        }
       ]
     },
-    "resync": { "type": "string", "format": "uri-reference", "maxLength": 512 },
+    "resync": {
+      "type": "string",
+      "format": "uri-reference",
+      "maxLength": 512
+    },
     "supportedVersions": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+      }
+    },
+    "currentRevision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "exportJobId": {
+      "$ref": "common.schema.json#/$defs/Uuid"
     }
   },
   "allOf": [
     {
-      "if": { "properties": { "code": { "enum": ["invalid_request", "cursor_invalid", "cursor_mismatch"] } }, "required": ["code"] },
-      "then": { "properties": { "status": { "const": 400 }, "retryable": { "const": false } } }
+      "if": {
+        "properties": {
+          "code": {
+            "enum": [
+              "invalid_request",
+              "cursor_invalid",
+              "cursor_mismatch"
+            ]
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 400
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "unauthenticated" } }, "required": ["code"] },
-      "then": { "properties": { "status": { "const": 401 }, "retryable": { "const": false } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "unauthenticated"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 401
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "forbidden" } }, "required": ["code"] },
-      "then": { "properties": { "status": { "const": 403 }, "retryable": { "const": false } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "forbidden"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 403
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "idempotency_conflict" } }, "required": ["code"] },
-      "then": { "required": ["existingActionId"], "properties": { "status": { "const": 409 }, "retryable": { "const": false } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "idempotency_conflict"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "required": [
+          "existingActionId"
+        ],
+        "properties": {
+          "status": {
+            "const": 409
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "cursor_expired" } }, "required": ["code"] },
-      "then": { "required": ["minimumAvailableCursor", "resync"], "properties": { "status": { "const": 410 }, "retryable": { "const": false } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "cursor_expired"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "required": [
+          "minimumAvailableCursor",
+          "resync"
+        ],
+        "properties": {
+          "status": {
+            "const": 410
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "payload_too_large" } }, "required": ["code"] },
-      "then": { "properties": { "status": { "const": 413 }, "retryable": { "const": false } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "payload_too_large"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 413
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "evidence_integrity_mismatch" } }, "required": ["code"] },
-      "then": { "properties": { "status": { "const": 422 }, "retryable": { "const": false } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "evidence_integrity_mismatch"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 422
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "unsupported_contract_version" } }, "required": ["code"] },
-      "then": { "required": ["supportedVersions"], "properties": { "status": { "const": 426 }, "retryable": { "const": false } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "unsupported_contract_version"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "required": [
+          "supportedVersions"
+        ],
+        "properties": {
+          "status": {
+            "const": 426
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "rate_limited" } }, "required": ["code"] },
-      "then": { "required": ["retryAfterSeconds"], "properties": { "status": { "const": 429 }, "retryable": { "const": true } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "rate_limited"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "required": [
+          "retryAfterSeconds"
+        ],
+        "properties": {
+          "status": {
+            "const": 429
+          },
+          "retryable": {
+            "const": true
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "internal_error" } }, "required": ["code"] },
-      "then": { "properties": { "status": { "const": 500 }, "retryable": { "const": true } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "internal_error"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 500
+          },
+          "retryable": {
+            "const": true
+          }
+        }
+      }
     },
     {
-      "if": { "properties": { "code": { "const": "service_unavailable" } }, "required": ["code"] },
-      "then": { "properties": { "status": { "const": 503 }, "retryable": { "const": true } } }
+      "if": {
+        "properties": {
+          "code": {
+            "const": "service_unavailable"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 503
+          },
+          "retryable": {
+            "const": true
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "resource_not_found"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 404
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "state_conflict"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 409
+          },
+          "retryable": {
+            "const": false
+          }
+        },
+        "required": [
+          "currentRevision"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "precondition_failed"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 412
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "precondition_required"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 428
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "receipt_verification_failed"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 422
+          },
+          "retryable": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "code": {
+            "const": "capacity_insufficient"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "then": {
+        "properties": {
+          "status": {
+            "const": 507
+          },
+          "retryable": {
+            "const": false
+          }
+        },
+        "required": [
+          "exportJobId"
+        ]
+      }
     }
   ]
 }

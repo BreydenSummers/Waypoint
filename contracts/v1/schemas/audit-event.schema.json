@@ -19,51 +19,121 @@
     "data"
   ],
   "properties": {
-    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
-    "id": { "$ref": "common.schema.json#/$defs/Cursor" },
+    "contractVersion": {
+      "$ref": "common.schema.json#/$defs/ContractVersion"
+    },
+    "id": {
+      "$ref": "common.schema.json#/$defs/Cursor"
+    },
     "type": {
       "type": "string",
       "minLength": 3,
       "maxLength": 128,
       "pattern": "^[a-z][a-z0-9-]*(?:\\.[a-z][a-z0-9-]*)+$"
     },
-    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
-    "actor": { "$ref": "actor.schema.json" },
-    "occurredAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "engagementId": {
+      "$ref": "common.schema.json#/$defs/Uuid"
+    },
+    "actor": {
+      "$ref": "actor.schema.json"
+    },
+    "occurredAt": {
+      "$ref": "common.schema.json#/$defs/Timestamp"
+    },
     "origin": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
-        "kind": { "enum": ["rest", "mcp", "service", "bootstrap"] },
-        "service": { "type": "string", "minLength": 1, "maxLength": 128 }
+        "kind": {
+          "enum": [
+            "rest",
+            "mcp",
+            "service",
+            "bootstrap"
+          ]
+        },
+        "service": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
       },
       "allOf": [
         {
-          "if": { "properties": { "kind": { "const": "service" } }, "required": ["kind"] },
-          "then": { "required": ["service"] },
-          "else": { "not": { "required": ["service"] } }
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "service"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "service"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "service"
+              ]
+            }
+          }
         }
       ]
     },
     "subject": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "id"],
+      "required": [
+        "type",
+        "id"
+      ],
       "properties": {
-        "type": { "enum": ["engagement", "actor", "action", "structured_result", "entity", "finding", "export", "teardown", "out_of_band_claim"] },
-        "id": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "revision": { "type": "integer", "minimum": 1 }
+        "type": {
+          "enum": [
+            "engagement",
+            "actor",
+            "action",
+            "structured_result",
+            "entity",
+            "finding",
+            "export",
+            "teardown",
+            "out_of_band_claim"
+          ]
+        },
+        "id": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
-    "requestId": { "$ref": "common.schema.json#/$defs/RequestId" },
-    "correlationId": { "$ref": "common.schema.json#/$defs/RequestId" },
+    "requestId": {
+      "$ref": "common.schema.json#/$defs/RequestId"
+    },
+    "correlationId": {
+      "$ref": "common.schema.json#/$defs/RequestId"
+    },
     "causation": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "actionId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "eventId": { "$ref": "common.schema.json#/$defs/Cursor" }
+        "actionId": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "eventId": {
+          "$ref": "common.schema.json#/$defs/Cursor"
+        }
       },
       "minProperties": 1
     },
@@ -75,8 +145,14 @@
   "allOf": [
     {
       "if": {
-        "properties": { "type": { "const": "capture.accepted" } },
-        "required": ["type"]
+        "properties": {
+          "type": {
+            "const": "capture.accepted"
+          }
+        },
+        "required": [
+          "type"
+        ]
       },
       "then": {
         "properties": {
@@ -98,34 +174,103 @@
               "clockSkewStatus"
             ],
             "properties": {
-              "actionId": { "$ref": "common.schema.json#/$defs/Uuid" },
-              "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
-              "sourceAgentId": { "$ref": "common.schema.json#/$defs/Uuid" },
-              "phase": { "enum": ["recon", "attacks"] },
-              "initiatedBy": { "enum": ["manual", "ai"] },
-              "command": { "type": "string", "minLength": 1, "maxLength": 32768 },
+              "actionId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "captureId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "sourceAgentId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "phase": {
+                "enum": [
+                  "recon",
+                  "attacks"
+                ]
+              },
+              "initiatedBy": {
+                "enum": [
+                  "manual",
+                  "ai"
+                ]
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32768
+              },
               "target": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["kind", "value"],
+                "required": [
+                  "kind",
+                  "value"
+                ],
                 "properties": {
-                  "kind": { "enum": ["ip", "host", "network", "url", "service", "other"] },
-                  "value": { "type": "string", "minLength": 1, "maxLength": 4096 }
+                  "kind": {
+                    "enum": [
+                      "ip",
+                      "host",
+                      "network",
+                      "url",
+                      "service",
+                      "other"
+                    ]
+                  },
+                  "value": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  }
                 }
               },
               "execution": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["status"],
+                "required": [
+                  "status"
+                ],
                 "properties": {
-                  "status": { "enum": ["exited", "signaled", "failed_to_start"] },
-                  "exitCode": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+                  "status": {
+                    "enum": [
+                      "exited",
+                      "signaled",
+                      "failed_to_start"
+                    ]
+                  },
+                  "exitCode": {
+                    "type": "integer",
+                    "minimum": -2147483648,
+                    "maximum": 2147483647
+                  }
                 }
               },
-              "parseStatus": { "enum": ["parsed", "needs-plugin", "raw", "parse-failed"] },
-              "egressStatus": { "enum": ["observed", "declared", "disabled", "resolution_failed"] },
-              "receivedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
-              "clockSkewStatus": { "enum": ["within_tolerance", "outside_tolerance"] }
+              "parseStatus": {
+                "enum": [
+                  "parsed",
+                  "needs-plugin",
+                  "raw",
+                  "parse-failed"
+                ]
+              },
+              "egressStatus": {
+                "enum": [
+                  "observed",
+                  "declared",
+                  "disabled",
+                  "resolution_failed"
+                ]
+              },
+              "receivedAt": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              },
+              "clockSkewStatus": {
+                "enum": [
+                  "within_tolerance",
+                  "outside_tolerance"
+                ]
+              }
             }
           }
         }
@@ -133,20 +278,39 @@
     },
     {
       "if": {
-        "properties": { "type": { "const": "capture.conflict" } },
-        "required": ["type"]
+        "properties": {
+          "type": {
+            "const": "capture.conflict"
+          }
+        },
+        "required": [
+          "type"
+        ]
       },
       "then": {
         "properties": {
           "data": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["captureId", "sourceAgentId", "existingActionId", "reason"],
+            "required": [
+              "captureId",
+              "sourceAgentId",
+              "existingActionId",
+              "reason"
+            ],
             "properties": {
-              "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
-              "sourceAgentId": { "$ref": "common.schema.json#/$defs/Uuid" },
-              "existingActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
-              "reason": { "const": "payload_mismatch" }
+              "captureId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "sourceAgentId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "existingActionId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "reason": {
+                "const": "payload_mismatch"
+              }
             }
           }
         }
@@ -154,22 +318,57 @@
     },
     {
       "if": {
-        "properties": { "type": { "const": "out-of-band.flagged" } },
-        "required": ["type"]
+        "properties": {
+          "type": {
+            "const": "out-of-band.flagged"
+          }
+        },
+        "required": [
+          "type"
+        ]
       },
       "then": {
         "properties": {
           "data": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["claimId", "claimKind", "sourceActionId", "detectionBoundary", "reason", "observedAt"],
+            "required": [
+              "claimId",
+              "claimKind",
+              "sourceActionId",
+              "detectionBoundary",
+              "reason",
+              "observedAt"
+            ],
             "properties": {
-              "claimId": { "$ref": "common.schema.json#/$defs/Uuid" },
-              "claimKind": { "enum": ["entity", "result"] },
-              "sourceActionId": { "anyOf": [{ "$ref": "common.schema.json#/$defs/Uuid" }, { "type": "null" }] },
-              "detectionBoundary": { "const": "best_effort" },
-              "reason": { "const": "missing_captured_source_action" },
-              "observedAt": { "$ref": "common.schema.json#/$defs/Timestamp" }
+              "claimId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "claimKind": {
+                "enum": [
+                  "entity",
+                  "result"
+                ]
+              },
+              "sourceActionId": {
+                "anyOf": [
+                  {
+                    "$ref": "common.schema.json#/$defs/Uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "detectionBoundary": {
+                "const": "best_effort"
+              },
+              "reason": {
+                "const": "missing_captured_source_action"
+              },
+              "observedAt": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              }
             }
           }
         }
@@ -177,22 +376,477 @@
     },
     {
       "if": {
-        "properties": { "type": { "const": "out-of-band.resolved" } },
-        "required": ["type"]
+        "properties": {
+          "type": {
+            "const": "out-of-band.resolved"
+          }
+        },
+        "required": [
+          "type"
+        ]
       },
       "then": {
         "properties": {
           "data": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["claimId", "claimKind", "sourceActionId", "resolution", "resolvedAt"],
+            "required": [
+              "claimId",
+              "claimKind",
+              "sourceActionId",
+              "resolution",
+              "resolvedAt"
+            ],
             "properties": {
-              "claimId": { "$ref": "common.schema.json#/$defs/Uuid" },
-              "claimKind": { "enum": ["entity", "result"] },
-              "sourceActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
-              "resolution": { "enum": ["linked", "dismissed"] },
-              "resolvedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
-              "notes": { "type": "string", "minLength": 1, "maxLength": 4096 }
+              "claimId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "claimKind": {
+                "enum": [
+                  "entity",
+                  "result"
+                ]
+              },
+              "sourceActionId": {
+                "oneOf": [
+                  {
+                    "$ref": "common.schema.json#/$defs/Uuid"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "resolution": {
+                "enum": [
+                  "linked",
+                  "dismissed"
+                ]
+              },
+              "resolvedAt": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              },
+              "notes": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4096
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "resolution": {
+                      "const": "linked"
+                    }
+                  },
+                  "required": [
+                    "resolution"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "sourceActionId": {
+                      "$ref": "common.schema.json#/$defs/Uuid"
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "sourceActionId": {
+                      "type": "null"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "actor.provisioned"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actorId",
+              "kind",
+              "role",
+              "credentialVersion"
+            ],
+            "properties": {
+              "actorId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "kind": {
+                "enum": [
+                  "human",
+                  "ai_agent"
+                ]
+              },
+              "role": {
+                "enum": [
+                  "owner",
+                  "operator",
+                  "viewer"
+                ]
+              },
+              "authorizedBy": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "credentialVersion": {
+                "const": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "actor.revoked"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actorId",
+              "credentialVersion",
+              "revokedAt"
+            ],
+            "properties": {
+              "actorId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "credentialVersion": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "revokedAt": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "export.state-changed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "exportJobId",
+              "from",
+              "to",
+              "progress"
+            ],
+            "properties": {
+              "exportJobId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "from": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "enum": [
+                      "queued",
+                      "preflighting",
+                      "running",
+                      "verifying",
+                      "cancel_requested",
+                      "cancelled",
+                      "failed",
+                      "completed"
+                    ]
+                  }
+                ]
+              },
+              "to": {
+                "enum": [
+                  "queued",
+                  "preflighting",
+                  "running",
+                  "verifying",
+                  "cancel_requested",
+                  "cancelled",
+                  "failed",
+                  "completed"
+                ]
+              },
+              "progress": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "receiptId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "cutoff": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              },
+              "failureCode": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_]*$",
+                "maxLength": 128
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "teardown.authorized"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "authorizationId",
+              "receiptId",
+              "exportJobId",
+              "bundlePath",
+              "archiveSha256",
+              "manifestSha256",
+              "expiresAt"
+            ],
+            "properties": {
+              "authorizationId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "receiptId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "exportJobId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "bundlePath": {
+                "$ref": "common.schema.json#/$defs/SafeRelativePath"
+              },
+              "archiveSha256": {
+                "$ref": "common.schema.json#/$defs/Sha256"
+              },
+              "manifestSha256": {
+                "$ref": "common.schema.json#/$defs/Sha256"
+              },
+              "expiresAt": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "actor.credential-rotated"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "actorId",
+              "previousCredentialVersion",
+              "credentialVersion",
+              "rotatedAt"
+            ],
+            "properties": {
+              "actorId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "previousCredentialVersion": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "credentialVersion": {
+                "type": "integer",
+                "minimum": 2
+              },
+              "rotatedAt": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "export.receipt-verified"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "receiptId",
+              "exportJobId",
+              "bundlePath",
+              "archiveSha256",
+              "manifestSha256",
+              "verifiedAt"
+            ],
+            "properties": {
+              "receiptId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "exportJobId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "bundlePath": {
+                "$ref": "common.schema.json#/$defs/SafeRelativePath"
+              },
+              "archiveSha256": {
+                "$ref": "common.schema.json#/$defs/Sha256"
+              },
+              "manifestSha256": {
+                "$ref": "common.schema.json#/$defs/Sha256"
+              },
+              "verifiedAt": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "export.receipt-invalidated"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "receiptId",
+              "exportJobId",
+              "reason",
+              "invalidatedAt"
+            ],
+            "properties": {
+              "receiptId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "exportJobId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "reason": {
+                "enum": [
+                  "archive_missing",
+                  "archive_digest_mismatch",
+                  "manifest_invalid",
+                  "payload_invalid"
+                ]
+              },
+              "invalidatedAt": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "teardown.consumed"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "data": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "authorizationId",
+              "receiptId",
+              "consumedAt"
+            ],
+            "properties": {
+              "authorizationId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "receiptId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              },
+              "consumedAt": {
+                "$ref": "common.schema.json#/$defs/Timestamp"
+              }
             }
           }
         }
@@ -218,72 +872,244 @@
         "clockSkewStatus"
       ],
       "properties": {
-        "actionId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "sourceAgentId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "phase": { "enum": ["recon", "attacks"] },
-        "initiatedBy": { "enum": ["manual", "ai"] },
-        "command": { "type": "string", "minLength": 1, "maxLength": 32768 },
+        "actionId": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "captureId": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "sourceAgentId": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "phase": {
+          "enum": [
+            "recon",
+            "attacks"
+          ]
+        },
+        "initiatedBy": {
+          "enum": [
+            "manual",
+            "ai"
+          ]
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32768
+        },
         "target": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["kind", "value"],
+          "required": [
+            "kind",
+            "value"
+          ],
           "properties": {
-            "kind": { "enum": ["ip", "host", "network", "url", "service", "other"] },
-            "value": { "type": "string", "minLength": 1, "maxLength": 4096 }
+            "kind": {
+              "enum": [
+                "ip",
+                "host",
+                "network",
+                "url",
+                "service",
+                "other"
+              ]
+            },
+            "value": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4096
+            }
           }
         },
         "execution": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["status"],
+          "required": [
+            "status"
+          ],
           "properties": {
-            "status": { "enum": ["exited", "signaled", "failed_to_start"] },
-            "exitCode": { "type": "integer", "minimum": -2147483648, "maximum": 2147483647 }
+            "status": {
+              "enum": [
+                "exited",
+                "signaled",
+                "failed_to_start"
+              ]
+            },
+            "exitCode": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            }
           }
         },
-        "parseStatus": { "enum": ["parsed", "needs-plugin", "raw", "parse-failed"] },
-        "egressStatus": { "enum": ["observed", "declared", "disabled", "resolution_failed"] },
-        "receivedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
-        "clockSkewStatus": { "enum": ["within_tolerance", "outside_tolerance"] }
+        "parseStatus": {
+          "enum": [
+            "parsed",
+            "needs-plugin",
+            "raw",
+            "parse-failed"
+          ]
+        },
+        "egressStatus": {
+          "enum": [
+            "observed",
+            "declared",
+            "disabled",
+            "resolution_failed"
+          ]
+        },
+        "receivedAt": {
+          "$ref": "common.schema.json#/$defs/Timestamp"
+        },
+        "clockSkewStatus": {
+          "enum": [
+            "within_tolerance",
+            "outside_tolerance"
+          ]
+        }
       }
     },
     "CaptureConflictData": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["captureId", "sourceAgentId", "existingActionId", "reason"],
+      "required": [
+        "captureId",
+        "sourceAgentId",
+        "existingActionId",
+        "reason"
+      ],
       "properties": {
-        "captureId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "sourceAgentId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "existingActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "reason": { "const": "payload_mismatch" }
+        "captureId": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "sourceAgentId": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "existingActionId": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "reason": {
+          "const": "payload_mismatch"
+        }
       }
     },
     "OutOfBandClaimFlaggedData": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["claimId", "claimKind", "sourceActionId", "detectionBoundary", "reason", "observedAt"],
+      "required": [
+        "claimId",
+        "claimKind",
+        "sourceActionId",
+        "detectionBoundary",
+        "reason",
+        "observedAt"
+      ],
       "properties": {
-        "claimId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "claimKind": { "enum": ["entity", "result"] },
-        "sourceActionId": { "anyOf": [{ "$ref": "common.schema.json#/$defs/Uuid" }, { "type": "null" }] },
-        "detectionBoundary": { "const": "best_effort" },
-        "reason": { "const": "missing_captured_source_action" },
-        "observedAt": { "$ref": "common.schema.json#/$defs/Timestamp" }
+        "claimId": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "claimKind": {
+          "enum": [
+            "entity",
+            "result"
+          ]
+        },
+        "sourceActionId": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/Uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detectionBoundary": {
+          "const": "best_effort"
+        },
+        "reason": {
+          "const": "missing_captured_source_action"
+        },
+        "observedAt": {
+          "$ref": "common.schema.json#/$defs/Timestamp"
+        }
       }
     },
     "OutOfBandClaimResolvedData": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["claimId", "claimKind", "sourceActionId", "resolution", "resolvedAt"],
+      "required": [
+        "claimId",
+        "claimKind",
+        "sourceActionId",
+        "resolution",
+        "resolvedAt"
+      ],
       "properties": {
-        "claimId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "claimKind": { "enum": ["entity", "result"] },
-        "sourceActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
-        "resolution": { "enum": ["linked", "dismissed"] },
-        "resolvedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
-        "notes": { "type": "string", "minLength": 1, "maxLength": 4096 }
-      }
+        "claimId": {
+          "$ref": "common.schema.json#/$defs/Uuid"
+        },
+        "claimKind": {
+          "enum": [
+            "entity",
+            "result"
+          ]
+        },
+        "sourceActionId": {
+          "oneOf": [
+            {
+              "$ref": "common.schema.json#/$defs/Uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resolution": {
+          "enum": [
+            "linked",
+            "dismissed"
+          ]
+        },
+        "resolvedAt": {
+          "$ref": "common.schema.json#/$defs/Timestamp"
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "resolution": {
+                "const": "linked"
+              }
+            },
+            "required": [
+              "resolution"
+            ]
+          },
+          "then": {
+            "properties": {
+              "sourceActionId": {
+                "$ref": "common.schema.json#/$defs/Uuid"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "sourceActionId": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

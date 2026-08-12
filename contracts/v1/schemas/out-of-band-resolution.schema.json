@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/out-of-band-resolution.schema.json",
+  "title": "Out-of-band claim resolution request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["resolution", "expectedRevision"],
+  "properties": {
+    "resolution": { "enum": ["linked", "dismissed"] },
+    "sourceActionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "notes": { "type": "string", "minLength": 1, "maxLength": 4096 },
+    "expectedRevision": { "type": "integer", "minimum": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "resolution": { "const": "linked" } }, "required": ["resolution"] },
+      "then": { "required": ["sourceActionId"] },
+      "else": { "not": { "required": ["sourceActionId"] } }
+    }
+  ]
+}

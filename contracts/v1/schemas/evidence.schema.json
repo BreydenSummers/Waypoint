@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/evidence.schema.json",
+  "title": "Engagement-scoped evidence metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "engagementId", "actionId", "role", "mediaType", "byteLength", "sha256", "createdAt", "contentPath"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "actionId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "role": { "enum": ["stdout", "stderr", "screenshot", "attachment"] },
+    "mediaType": { "type": "string", "minLength": 1, "maxLength": 255 },
+    "byteLength": { "type": "integer", "minimum": 0, "maximum": 10737418240 },
+    "sha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+    "createdAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "contentPath": { "type": "string", "pattern": "^/api/v1/evidence/[0-9a-f-]{36}/content$", "maxLength": 128 }
+  }
+}

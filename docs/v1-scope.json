@@ -6,7 +6,10 @@
     "docs/adr/0003-content-addressed-evidence.md",
     "docs/adr/0004-parser-isolation.md",
     "docs/adr/0005-export-semantics.md",
-    "docs/adr/0006-v1-vocabulary-and-deferrals.md"
+    "docs/adr/0006-v1-vocabulary-and-deferrals.md",
+    "docs/adr/0007-attribution-lifecycle-and-read-model.md",
+    "docs/adr/0008-standard-mcp-transport.md",
+    "docs/adr/0009-export-jobs-receipts-and-teardown.md"
   ],
   "textExtensions": [
     ".go",

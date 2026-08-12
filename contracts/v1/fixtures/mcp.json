@@ -1,0 +1,346 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "2025-03-26",
+  "messages": [
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "method": "initialize",
+      "params": {
+        "protocolVersion": "2025-03-26",
+        "capabilities": {},
+        "clientInfo": {
+          "name": "synthetic-agent",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "method": "notifications/initialized",
+      "params": {}
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "method": "tools/list",
+      "params": {}
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "tools": [
+          {
+            "name": "waypoint_ingest_capture",
+            "description": "Durably ingest an attributed completed capture through the same service as REST.",
+            "inputSchema": {
+              "$ref": "https://schemas.waypoint.security/contracts/v1/mcp-message.schema.json#/$defs/IngestCaptureArguments"
+            }
+          },
+          {
+            "name": "waypoint_capture_status",
+            "description": "Look up durable status in the current actor/source scope.",
+            "inputSchema": {
+              "$ref": "https://schemas.waypoint.security/contracts/v1/mcp-message.schema.json#/$defs/CaptureStatusArguments"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "method": "tools/call",
+      "params": {
+        "name": "waypoint_ingest_capture",
+        "arguments": {
+          "idempotencyKey": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+          "envelope": {
+            "contractVersion": "1.0.0",
+            "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+            "sourceAgent": {
+              "id": "44444444-4444-4444-8444-444444444444",
+              "kind": "operator_wrapper",
+              "name": "waypoint-wrapper",
+              "version": "1.0.0",
+              "platform": {
+                "os": "linux",
+                "arch": "amd64"
+              }
+            },
+            "phase": "recon",
+            "initiatedBy": "manual",
+            "command": "/usr/bin/nmap",
+            "argv": [
+              "nmap",
+              "-sV",
+              "192.0.2.10"
+            ],
+            "cwd": "/home/operator/engagement",
+            "target": {
+              "kind": "ip",
+              "value": "192.0.2.10"
+            },
+            "timing": {
+              "startedAt": "2025-01-15T10:00:00.000Z",
+              "endedAt": "2025-01-15T10:00:01.250Z",
+              "durationMs": 1250
+            },
+            "execution": {
+              "status": "exited",
+              "exitCode": 0
+            },
+            "network": {
+              "execHost": {
+                "address": "10.10.0.12",
+                "method": "route_selection",
+                "confidence": "confirmed",
+                "interface": "eth0"
+              },
+              "egress": {
+                "mode": "manual",
+                "status": "declared",
+                "address": "198.51.100.24",
+                "observedAt": "2025-01-15T09:59:55.000Z"
+              },
+              "pivotChain": []
+            },
+            "evidence": {
+              "stdout": {
+                "mediaType": "text/plain; charset=utf-8",
+                "byteLength": 3,
+                "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              },
+              "stderr": {
+                "mediaType": "text/plain; charset=utf-8",
+                "byteLength": 0,
+                "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              }
+            },
+            "parsing": {
+              "status": "parsed",
+              "plugin": {
+                "id": "waypoint.nmap",
+                "version": "1.0.0",
+                "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "contractVersion": "1.0.0",
+                "match": {
+                  "binary": "nmap",
+                  "reason": "binary name and service-version arguments matched",
+                  "specificity": 20
+                }
+              },
+              "result": {
+                "schemaId": "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+                "schemaVersion": "1.0.0",
+                "extracted": {
+                  "hostsUp": 1,
+                  "services": [
+                    {
+                      "port": 443,
+                      "transport": "tcp",
+                      "name": "https"
+                    }
+                  ]
+                },
+                "entities": [
+                  {
+                    "kind": "host",
+                    "identifiers": [
+                      {
+                        "type": "ip",
+                        "value": "192.0.2.10"
+                      }
+                    ],
+                    "attributes": {
+                      "state": "up"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "stdoutBase64": "YWJj",
+          "stderrBase64": ""
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 3,
+      "result": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Capture durably accepted."
+          }
+        ],
+        "isError": false,
+        "structuredContent": {
+          "ack": {
+            "contractVersion": "1.0.0",
+            "actionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+            "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+            "auditEventCursor": "101",
+            "receivedAt": "2025-01-15T10:00:02.000Z",
+            "idempotency": "created",
+            "clockSkew": {
+              "status": "within_tolerance",
+              "offsetMs": 750
+            }
+          }
+        }
+      }
+    }
+  ],
+  "toolInventory": [
+    {
+      "name": "waypoint_ingest_capture",
+      "description": "Durably ingest an attributed completed capture through the same service as REST.",
+      "inputSchema": {
+        "$ref": "https://schemas.waypoint.security/contracts/v1/mcp-message.schema.json#/$defs/IngestCaptureArguments"
+      }
+    },
+    {
+      "name": "waypoint_capture_status",
+      "description": "Look up durable status in the current actor/source scope.",
+      "inputSchema": {
+        "$ref": "https://schemas.waypoint.security/contracts/v1/mcp-message.schema.json#/$defs/CaptureStatusArguments"
+      }
+    }
+  ],
+  "ingestArguments": {
+    "idempotencyKey": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+    "envelope": {
+      "contractVersion": "1.0.0",
+      "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+      "sourceAgent": {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "kind": "operator_wrapper",
+        "name": "waypoint-wrapper",
+        "version": "1.0.0",
+        "platform": {
+          "os": "linux",
+          "arch": "amd64"
+        }
+      },
+      "phase": "recon",
+      "initiatedBy": "manual",
+      "command": "/usr/bin/nmap",
+      "argv": [
+        "nmap",
+        "-sV",
+        "192.0.2.10"
+      ],
+      "cwd": "/home/operator/engagement",
+      "target": {
+        "kind": "ip",
+        "value": "192.0.2.10"
+      },
+      "timing": {
+        "startedAt": "2025-01-15T10:00:00.000Z",
+        "endedAt": "2025-01-15T10:00:01.250Z",
+        "durationMs": 1250
+      },
+      "execution": {
+        "status": "exited",
+        "exitCode": 0
+      },
+      "network": {
+        "execHost": {
+          "address": "10.10.0.12",
+          "method": "route_selection",
+          "confidence": "confirmed",
+          "interface": "eth0"
+        },
+        "egress": {
+          "mode": "manual",
+          "status": "declared",
+          "address": "198.51.100.24",
+          "observedAt": "2025-01-15T09:59:55.000Z"
+        },
+        "pivotChain": []
+      },
+      "evidence": {
+        "stdout": {
+          "mediaType": "text/plain; charset=utf-8",
+          "byteLength": 3,
+          "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        },
+        "stderr": {
+          "mediaType": "text/plain; charset=utf-8",
+          "byteLength": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      },
+      "parsing": {
+        "status": "parsed",
+        "plugin": {
+          "id": "waypoint.nmap",
+          "version": "1.0.0",
+          "artifactSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "contractVersion": "1.0.0",
+          "match": {
+            "binary": "nmap",
+            "reason": "binary name and service-version arguments matched",
+            "specificity": 20
+          }
+        },
+        "result": {
+          "schemaId": "https://schemas.waypoint.security/plugins/nmap/1.0.0/result.schema.json",
+          "schemaVersion": "1.0.0",
+          "extracted": {
+            "hostsUp": 1,
+            "services": [
+              {
+                "port": 443,
+                "transport": "tcp",
+                "name": "https"
+              }
+            ]
+          },
+          "entities": [
+            {
+              "kind": "host",
+              "identifiers": [
+                {
+                  "type": "ip",
+                  "value": "192.0.2.10"
+                }
+              ],
+              "attributes": {
+                "state": "up"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "stdoutBase64": "YWJj",
+    "stderrBase64": ""
+  },
+  "toolCallResult": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Capture durably accepted."
+      }
+    ],
+    "isError": false,
+    "structuredContent": {
+      "ack": {
+        "contractVersion": "1.0.0",
+        "actionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1",
+        "captureId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1",
+        "auditEventCursor": "101",
+        "receivedAt": "2025-01-15T10:00:02.000Z",
+        "idempotency": "created",
+        "clockSkew": {
+          "status": "within_tolerance",
+          "offsetMs": 750
+        }
+      }
+    }
+  }
+}

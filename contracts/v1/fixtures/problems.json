@@ -13,7 +13,11 @@
         "requestId": "req-validation-001",
         "retryable": false,
         "fieldErrors": [
-          { "pointer": "/timing/durationMs", "code": "duration_mismatch", "message": "Measured duration does not agree with the supplied timestamps." }
+          {
+            "pointer": "/timing/durationMs",
+            "code": "duration_mismatch",
+            "message": "Measured duration does not agree with the supplied timestamps."
+          }
         ]
       }
     },
@@ -69,6 +73,60 @@
         "requestId": "req-invalid-extension",
         "retryable": false,
         "token": "must-never-be-accepted"
+      }
+    },
+    {
+      "name": "foreign-or-missing-resource",
+      "valid": true,
+      "problem": {
+        "type": "https://docs.waypoint.security/problems/resource-not-found",
+        "title": "That trail record is not available",
+        "status": 404,
+        "detail": "The resource does not exist in this engagement or is not available to this actor.",
+        "code": "resource_not_found",
+        "requestId": "req-not-found-001",
+        "retryable": false
+      }
+    },
+    {
+      "name": "optimistic-state-conflict",
+      "valid": true,
+      "problem": {
+        "type": "https://docs.waypoint.security/problems/state-conflict",
+        "title": "This record changed while you were reviewing it",
+        "status": 409,
+        "detail": "Reload the current revision before trying the transition again.",
+        "code": "state_conflict",
+        "requestId": "req-state-001",
+        "retryable": false,
+        "currentRevision": 4
+      }
+    },
+    {
+      "name": "receipt-verification-failed",
+      "valid": true,
+      "problem": {
+        "type": "https://docs.waypoint.security/problems/receipt-verification-failed",
+        "title": "The exported bundle no longer matches its receipt",
+        "status": 422,
+        "detail": "Teardown remains blocked until the exact completed bundle verifies again.",
+        "code": "receipt_verification_failed",
+        "requestId": "req-receipt-001",
+        "retryable": false
+      }
+    },
+    {
+      "name": "export-capacity-insufficient",
+      "valid": true,
+      "problem": {
+        "type": "https://docs.waypoint.security/problems/capacity-insufficient",
+        "title": "There is not enough space to pack this engagement safely",
+        "status": 507,
+        "detail": "Free space or select a larger export destination, then create a new job.",
+        "code": "capacity_insufficient",
+        "requestId": "req-capacity-001",
+        "retryable": false,
+        "exportJobId": "77777777-7777-4777-8777-777777777777"
       }
     }
   ]

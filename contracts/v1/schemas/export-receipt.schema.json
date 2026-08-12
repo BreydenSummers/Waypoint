@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/export-receipt.schema.json",
+  "title": "Persisted verified export receipt",
+  "description": "Server-generated authority for guarded teardown; callers cannot create or edit receipts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "exportJobId", "engagementId", "status", "bundlePath", "archiveByteLength", "archiveSha256", "manifestSha256", "cutoff", "verifiedAt", "verifiedBy", "verifierVersion", "revision"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "exportJobId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "status": { "enum": ["verified", "invalidated"] },
+    "bundlePath": { "$ref": "common.schema.json#/$defs/SafeRelativePath" },
+    "archiveByteLength": { "type": "integer", "minimum": 1 },
+    "archiveSha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+    "manifestSha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+    "cutoff": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "verifiedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "verifiedBy": { "$ref": "actor.schema.json" },
+    "verifierVersion": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "invalidatedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "invalidationReason": { "enum": ["archive_missing", "archive_digest_mismatch", "manifest_invalid", "payload_invalid"] },
+    "revision": { "type": "integer", "minimum": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "invalidated" } }, "required": ["status"] },
+      "then": { "required": ["invalidatedAt", "invalidationReason"] },
+      "else": { "not": { "anyOf": [{ "required": ["invalidatedAt"] }, { "required": ["invalidationReason"] }] } }
+    }
+  ]
+}

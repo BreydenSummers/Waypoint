@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/actor-provision-request.schema.json",
+  "title": "Actor provisioning request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind", "handle", "role"],
+  "properties": {
+    "kind": { "enum": ["human", "ai_agent"] },
+    "handle": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\x00-\\x1F\\x7F]+$" },
+    "role": { "enum": ["owner", "operator", "viewer"] },
+    "agentName": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "model": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "authorizedBy": { "$ref": "common.schema.json#/$defs/Uuid" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "ai_agent" } }, "required": ["kind"] },
+      "then": { "required": ["agentName", "model", "version", "authorizedBy"] },
+      "else": { "not": { "anyOf": [{ "required": ["agentName"] }, { "required": ["model"] }, { "required": ["version"] }, { "required": ["authorizedBy"] }] } }
+    }
+  ]
+}

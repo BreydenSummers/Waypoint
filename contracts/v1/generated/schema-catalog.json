@@ -14,6 +14,26 @@
       "source": "../schemas/actor.schema.json"
     },
     {
+      "component": "ActorRecord",
+      "id": "https://schemas.waypoint.security/contracts/v1/actor-record.schema.json",
+      "source": "../schemas/actor-record.schema.json"
+    },
+    {
+      "component": "ActorProvisionRequest",
+      "id": "https://schemas.waypoint.security/contracts/v1/actor-provision-request.schema.json",
+      "source": "../schemas/actor-provision-request.schema.json"
+    },
+    {
+      "component": "ActorCredential",
+      "id": "https://schemas.waypoint.security/contracts/v1/actor-credential.schema.json",
+      "source": "../schemas/actor-credential.schema.json"
+    },
+    {
+      "component": "ActorPage",
+      "id": "https://schemas.waypoint.security/contracts/v1/actor-page.schema.json",
+      "source": "../schemas/actor-page.schema.json"
+    },
+    {
       "component": "StructuredResult",
       "id": "https://schemas.waypoint.security/contracts/v1/structured-result.schema.json",
       "source": "../schemas/structured-result.schema.json"
@@ -29,6 +49,31 @@
       "source": "../schemas/capture-ack.schema.json"
     },
     {
+      "component": "Action",
+      "id": "https://schemas.waypoint.security/contracts/v1/action.schema.json",
+      "source": "../schemas/action.schema.json"
+    },
+    {
+      "component": "ActionPage",
+      "id": "https://schemas.waypoint.security/contracts/v1/action-page.schema.json",
+      "source": "../schemas/action-page.schema.json"
+    },
+    {
+      "component": "Entity",
+      "id": "https://schemas.waypoint.security/contracts/v1/entity.schema.json",
+      "source": "../schemas/entity.schema.json"
+    },
+    {
+      "component": "EntityPage",
+      "id": "https://schemas.waypoint.security/contracts/v1/entity-page.schema.json",
+      "source": "../schemas/entity-page.schema.json"
+    },
+    {
+      "component": "Evidence",
+      "id": "https://schemas.waypoint.security/contracts/v1/evidence.schema.json",
+      "source": "../schemas/evidence.schema.json"
+    },
+    {
       "component": "AuditEvent",
       "id": "https://schemas.waypoint.security/contracts/v1/audit-event.schema.json",
       "source": "../schemas/audit-event.schema.json"
@@ -37,6 +82,71 @@
       "component": "AuditPage",
       "id": "https://schemas.waypoint.security/contracts/v1/audit-page.schema.json",
       "source": "../schemas/audit-page.schema.json"
+    },
+    {
+      "component": "OutOfBandClaim",
+      "id": "https://schemas.waypoint.security/contracts/v1/out-of-band-claim.schema.json",
+      "source": "../schemas/out-of-band-claim.schema.json"
+    },
+    {
+      "component": "OutOfBandClaimCreate",
+      "id": "https://schemas.waypoint.security/contracts/v1/out-of-band-claim-create.schema.json",
+      "source": "../schemas/out-of-band-claim-create.schema.json"
+    },
+    {
+      "component": "OutOfBandResolution",
+      "id": "https://schemas.waypoint.security/contracts/v1/out-of-band-resolution.schema.json",
+      "source": "../schemas/out-of-band-resolution.schema.json"
+    },
+    {
+      "component": "OutOfBandClaimPage",
+      "id": "https://schemas.waypoint.security/contracts/v1/out-of-band-claim-page.schema.json",
+      "source": "../schemas/out-of-band-claim-page.schema.json"
+    },
+    {
+      "component": "McpMessage",
+      "id": "https://schemas.waypoint.security/contracts/v1/mcp-message.schema.json",
+      "source": "../schemas/mcp-message.schema.json"
+    },
+    {
+      "component": "ReportSnapshot",
+      "id": "https://schemas.waypoint.security/contracts/v1/report-snapshot.schema.json",
+      "source": "../schemas/report-snapshot.schema.json"
+    },
+    {
+      "component": "ExportRequest",
+      "id": "https://schemas.waypoint.security/contracts/v1/export-request.schema.json",
+      "source": "../schemas/export-request.schema.json"
+    },
+    {
+      "component": "ExportJob",
+      "id": "https://schemas.waypoint.security/contracts/v1/export-job.schema.json",
+      "source": "../schemas/export-job.schema.json"
+    },
+    {
+      "component": "ExportJobPage",
+      "id": "https://schemas.waypoint.security/contracts/v1/export-job-page.schema.json",
+      "source": "../schemas/export-job-page.schema.json"
+    },
+    {
+      "component": "ExportManifest",
+      "id": "https://schemas.waypoint.security/contracts/v1/export-manifest.schema.json",
+      "source": "../schemas/export-manifest.schema.json"
+    },
+    {
+      "component": "ExportReceipt",
+      "id": "https://schemas.waypoint.security/contracts/v1/export-receipt.schema.json",
+      "source": "../schemas/export-receipt.schema.json"
+    },
+    {
+      "component": "TeardownRequest",
+      "id": "https://schemas.waypoint.security/contracts/v1/teardown-request.schema.json",
+      "source": "../schemas/teardown-request.schema.json"
+    },
+    {
+      "component": "TeardownAuthorization",
+      "id": "https://schemas.waypoint.security/contracts/v1/teardown-authorization.schema.json",
+      "source": "../schemas/teardown-authorization.schema.json"
     },
     {
       "component": "Problem",

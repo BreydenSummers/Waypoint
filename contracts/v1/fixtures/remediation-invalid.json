@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "name": "action-drops-egress-attribution",
+      "schema": "action.schema.json",
+      "base": "actions.json",
+      "pointer": "/cases/0/action",
+      "mutations": [{ "op": "remove", "path": "/capture/network/egress" }]
+    },
+    {
+      "name": "ai-actor-has-no-human-authorizer",
+      "schema": "actor-provision-request.schema.json",
+      "base": "actor-lifecycle.json",
+      "pointer": "/provisionRequests/0",
+      "mutations": [{ "op": "remove", "path": "/authorizedBy" }]
+    },
+    {
+      "name": "custom-http-alias-pretends-to-be-mcp",
+      "schema": "mcp-message.schema.json",
+      "base": "mcp.json",
+      "pointer": "/messages/2",
+      "mutations": [{ "op": "replace", "path": "/method", "value": "mcp/capture" }]
+    },
+    {
+      "name": "pending-claim-pretends-to-have-captured-source",
+      "schema": "out-of-band-claim.schema.json",
+      "base": "out-of-band-claims.json",
+      "pointer": "/claims/0",
+      "mutations": [{ "op": "replace", "path": "/sourceActionId", "value": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1" }]
+    },
+    {
+      "name": "completed-export-has-no-verified-bundle",
+      "schema": "export-job.schema.json",
+      "base": "export-lifecycle.json",
+      "pointer": "/jobs/0",
+      "mutations": [{ "op": "remove", "path": "/bundle" }]
+    },
+    {
+      "name": "manifest-attempts-path-traversal",
+      "schema": "export-manifest.schema.json",
+      "base": "export-lifecycle.json",
+      "pointer": "/manifests/0",
+      "mutations": [{ "op": "replace", "path": "/payloads/0/path", "value": "../escape.dump" }]
+    },
+    {
+      "name": "manifest-claims-a-signature",
+      "schema": "export-manifest.schema.json",
+      "base": "export-lifecycle.json",
+      "pointer": "/manifests/0",
+      "mutations": [{ "op": "add", "path": "/signatures/items/0", "value": { "algorithm": "not-available-in-v1" } }]
+    },
+    {
+      "name": "teardown-has-no-persisted-receipt",
+      "schema": "teardown-request.schema.json",
+      "base": "export-lifecycle.json",
+      "pointer": "/teardownRequests/0",
+      "mutations": [{ "op": "remove", "path": "/receiptId" }]
+    }
+  ]
+}

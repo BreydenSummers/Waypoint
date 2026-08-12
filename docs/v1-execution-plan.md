@@ -37,7 +37,7 @@ These decisions refine, but do not replace, the PRD. A change to a locked PRD de
 
 The PRD's `action` remains the command-execution spine. Add an append-only `audit_event` table for every meaningful state mutation (provision, capture receipt, merge/split, finding edit/promotion, export, teardown authorization). Each event has engagement, actor, timestamp, event type, subject, request/correlation ID, and redacted before/after metadata. The initiating actor is mandatory; server-derived events inherit the actor/source action rather than becoming anonymous.
 
-Captured metadata and evidence are immutable. Corrections are explicit superseding records/events, not in-place history erasure. Finding drafts may be edited optimistically, but each revision is recorded. Audit/event and evidence deletion is forbidden through the normal API.
+Captured metadata and evidence are immutable. Corrections are explicit superseding records/events, not in-place history erasure. Finding drafts may be edited optimistically, but each revision is recorded. Audit/event and evidence deletion is forbidden through the normal API. The authoritative action projection losslessly retains the complete accepted capture envelope plus credential-derived engagement/actor, server receipt/skew, evidence references, and audit cursor; event/list summaries never replace it. Actor lifecycle and authoritative reads follow [ADR-0007](adr/0007-attribution-lifecycle-and-read-model.md).
 
 Add `entity_identifier`, `entity_observation`, and merge lineage around the proposed `entity` table. Deduplication operates on normalized, engagement-scoped identifiers in this order: AD SID, MAC, FQDN, then normalized `(hostname, IP)`. Every merge retains observation provenance; split reassigns selected observations and is reversible/audited. Conflicting stable identifiers never auto-merge.
 
@@ -49,7 +49,7 @@ Add `entity_identifier`, `entity_observation`, and merge lineage around the prop
 - Timestamps preserve collector wall-clock plus server receipt time and measured duration. Clock skew is surfaced, not silently rewritten.
 - Metadata and output limits are explicit and return retryable/non-retryable errors. Collectors retain data until a durable acknowledgement, including after process or host restart.
 - SSE uses persisted monotonic `audit_event.id` values as event IDs and honors `Last-Event-ID`; clients resync through paginated REST when history is outside the retention window.
-- MCP exposes only narrow, authenticated ingestion/status tools and delegates to the same application service and authorization checks as REST. It is not a second write path.
+- MCP uses one standard Streamable HTTP JSON-RPC endpoint with initialize, initialized notification, tools/list, and only capture/status tools. It delegates to the same application service and authorization checks as REST; custom REST-shaped MCP aliases are not a protocol implementation. See [ADR-0008](adr/0008-standard-mcp-transport.md).
 
 ### 2.4 Attribution and egress
 
@@ -67,7 +67,7 @@ The PRD phrases “attacker IP always known” but also permits `off`. The execu
 
 Export first freezes a consistent PostgreSQL snapshot and report-input JSON, then creates the PDF, evidence tree, versioned custom-format DB dump, restore/verify tools, and metadata. The manifest hashes every payload file with path, byte length, and SHA-256. A manifest cannot hash itself without recursion, so “every artifact” is defined as every bundle payload **except the manifest itself**; an outer archive SHA-256 is emitted separately. Manifest schema includes an empty `signatures` extension point, but v1 does not claim a signature.
 
-A clean-room acceptance test restores the dump and regenerates/verifies the report without the live instance. The supported `waypoint destroy` flow requires the path and successful local verification of a completed export, then removes application/database/evidence volumes. `--force` is an explicit, interactive break-glass path and is itself documented as bypassing preservation; direct Docker volume deletion cannot technically be prevented and is part of the documented boundary.
+A clean-room acceptance test restores the dump and regenerates/verifies the report without the live instance. Export runs as a persisted server-owned job with preflight, reconnectable progress/cancel/failure state, exact cutoff, and a server-generated receipt only after local verification. The supported `waypoint destroy` flow re-verifies exact bytes, consumes a short-lived receipt-bound authorization through external orchestration, then removes application/database/evidence volumes. `--force` is an explicit, interactive break-glass path and is itself documented as bypassing preservation; direct Docker volume deletion cannot technically be prevented and is part of the documented boundary. See [ADR-0009](adr/0009-export-jobs-receipts-and-teardown.md).
 
 ### 2.6 Supported environments
 
@@ -179,7 +179,7 @@ Priorities: P0 blocks the release spine; P1 is required v1 capability; P2 is rel
 | ID | Title | Description and independent verification | Role | Repo | Priority | Depends on |
 |---|---|---|---|---|---|---|
 | V1-001 | [Architecture and vocabulary records](adr/README.md) | Add ADRs for system shape, audit immutability, evidence storage, parser isolation, export semantics, and v1/deferred vocabulary; enforce ADR links and product scope with architecture lint. | architecture | Waypoint | P0 | — |
-| V1-002 | Versioned API and event contracts | Define OpenAPI, capture/event schemas, error model, cursor/idempotency rules, and valid/invalid fixtures. Verify generated schema and compatibility tests. | API | Waypoint | P0 | V1-001 |
+| V1-002 | Versioned API and event contracts | Freeze OpenAPI/JSON Schema/errors/fixtures for lossless attribution, actor lifecycle, bounded authoritative reads, standard MCP, out-of-band claims, frozen reports, persisted export jobs/receipts, and guarded teardown; retain capture/event/cursor/idempotency and all v2 exclusions. Verify generated drift and architecture lint. | API | Waypoint | P0 | V1-001 |
 | V1-003 | Plugin interoperability contract | Consume core fixtures; define match/parse/schema/version behavior and known/unknown plugin fixture tests. | collection | Waypoint-Plugins | P0 | V1-002 |
 | V1-004 | Core and web skeleton | Scaffold Go service, React/TS client, lint/test/build commands, embedded assets, health/readiness, and CI. Verify production build boots. | platform | Waypoint | P0 | V1-001 |
 | V1-005 | Compose/config/egress modes | Add app + single PostgreSQL Compose stack, validated startup config, auto/manual/off resolver abstraction, and no-egress tests. | platform-security | Waypoint | P0 | V1-004 |

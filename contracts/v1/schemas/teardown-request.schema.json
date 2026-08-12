@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/teardown-request.schema.json",
+  "title": "Guarded teardown authorization request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["receiptId", "bundlePath", "archiveSha256", "manifestSha256", "confirmation"],
+  "properties": {
+    "receiptId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "bundlePath": { "$ref": "common.schema.json#/$defs/SafeRelativePath" },
+    "archiveSha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+    "manifestSha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+    "confirmation": { "const": "destroy verified engagement data" }
+  }
+}

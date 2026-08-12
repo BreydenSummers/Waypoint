@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/export-manifest.schema.json",
+  "title": "Waypoint self-contained bundle manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "formatVersion",
+    "exportJobId",
+    "engagementId",
+    "cutoff",
+    "payloads",
+    "signatures"
+  ],
+  "properties": {
+    "formatVersion": {
+      "const": "1.0.0"
+    },
+    "exportJobId": {
+      "$ref": "common.schema.json#/$defs/Uuid"
+    },
+    "engagementId": {
+      "$ref": "common.schema.json#/$defs/Uuid"
+    },
+    "cutoff": {
+      "$ref": "common.schema.json#/$defs/Timestamp"
+    },
+    "payloads": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 1000000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "byteLength",
+          "sha256",
+          "kind"
+        ],
+        "properties": {
+          "path": {
+            "$ref": "common.schema.json#/$defs/SafeRelativePath"
+          },
+          "byteLength": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "$ref": "common.schema.json#/$defs/Sha256"
+          },
+          "kind": {
+            "enum": [
+              "database_dump",
+              "evidence",
+              "report_snapshot",
+              "report_pdf",
+              "metadata",
+              "verify_tool",
+              "restore_tool",
+              "regenerate_tool",
+              "instructions"
+            ]
+          }
+        }
+      },
+      "x-waypoint-uniqueBy": "path",
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "database_dump"
+              }
+            }
+          },
+          "minContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "evidence"
+              }
+            }
+          },
+          "minContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "report_snapshot"
+              }
+            }
+          },
+          "minContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "report_pdf"
+              }
+            }
+          },
+          "minContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "metadata"
+              }
+            }
+          },
+          "minContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "verify_tool"
+              }
+            }
+          },
+          "minContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "restore_tool"
+              }
+            }
+          },
+          "minContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "regenerate_tool"
+              }
+            }
+          },
+          "minContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "const": "instructions"
+              }
+            }
+          },
+          "minContains": 1
+        }
+      ]
+    },
+    "signatures": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "items"
+      ],
+      "properties": {
+        "version": {
+          "const": "v1"
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.waypoint.security/contracts/v1/action.schema.json",
+  "title": "Immutable authoritative action",
+  "description": "Lossless persisted projection of an accepted capture. The nested capture is the exact validated envelope; server scope and receipt facts cannot be supplied by the collector.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "id", "engagementId", "actor", "capture", "receivedAt", "clockSkew", "evidenceReferences", "auditEventCursor"],
+  "properties": {
+    "contractVersion": { "$ref": "common.schema.json#/$defs/ContractVersion" },
+    "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "engagementId": { "$ref": "common.schema.json#/$defs/Uuid" },
+    "actor": { "$ref": "actor.schema.json" },
+    "capture": { "$ref": "capture-envelope.schema.json" },
+    "receivedAt": { "$ref": "common.schema.json#/$defs/Timestamp" },
+    "clockSkew": { "$ref": "capture-ack.schema.json#/$defs/ClockSkew" },
+    "evidenceReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stdout", "stderr"],
+      "properties": {
+        "stdout": { "$ref": "https://schemas.waypoint.security/contracts/v1/action.schema.json#/$defs/EvidenceReference" },
+        "stderr": { "$ref": "https://schemas.waypoint.security/contracts/v1/action.schema.json#/$defs/EvidenceReference" }
+      }
+    },
+    "auditEventCursor": { "$ref": "common.schema.json#/$defs/Cursor" }
+  },
+  "$defs": {
+    "EvidenceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "mediaType", "byteLength", "sha256", "downloadPath"],
+      "properties": {
+        "id": { "$ref": "common.schema.json#/$defs/Uuid" },
+        "role": { "enum": ["stdout", "stderr"] },
+        "mediaType": { "type": "string", "minLength": 1, "maxLength": 255 },
+        "byteLength": { "type": "integer", "minimum": 0, "maximum": 10737418240 },
+        "sha256": { "$ref": "common.schema.json#/$defs/Sha256" },
+        "downloadPath": { "type": "string", "pattern": "^/api/v1/evidence/[0-9a-f-]{36}/content$", "maxLength": 128 }
+      }
+    }
+  }
+}

@@ -15,6 +15,17 @@ A PRD change must update its rows, execution tasks, contracts, and affected acce
 
 Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundation, G2 capture, G3 workspaces, G4 report/export, G5 release.
 
+### G0 remediation contract freeze
+
+The corrected integration boundary is frozen in [`../contracts/v1/openapi.json`](../contracts/v1/openapi.json)
+and its generated catalog. It now normatively covers lossless action persistence, actor
+provision/rotate/revoke/read, bounded authoritative actions/entities/evidence reads, standard MCP
+Streamable HTTP capture/status, server-assigned out-of-band claims, frozen reports, persisted export
+jobs, manifest/receipt binding, and guarded teardown authorization. Synthetic fixtures are verified
+by `scripts/verify-contracts.py`. This closes **contract design/drift only**; rows below remain `Fail`
+until runtime, PostgreSQL, clean-room, security, and operator evidence satisfy their gates. All v2
+deferrals remain unchanged.
+
 ## 1. Product, data, and audit requirements
 
 | ID | PRD source / requirement | Executable interpretation | Tasks | Verification / gate | Status |
@@ -29,7 +40,7 @@ Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundatio
 | PRD-DATA-004 | Stable-key entity dedup | Engagement-scoped SID, MAC, FQDN precedence; `(hostname, IP)` fallback only; conflicts do not auto-merge. | V1-017 | table-driven and concurrent property tests; G3 | Unverified |
 | PRD-DATA-005 | Manual merge/split | Operators can preview, merge, and split ambiguity while retaining/reversing observation provenance and actor history. | V1-018, V1-023 | merge/split/undo/concurrency E2E; G3 | Unverified |
 | PRD-DATA-006 | Multiple concurrent operators | Writes are transaction/concurrency safe; edits use versions; live feeds do not require polling or lose reconnect state. | V1-008, V1-010, V1-011, V1-026 | race/idempotency/optimistic-conflict and two-browser tests; G2/G4 | Unverified |
-| PRD-AUD-001 | Source attribution per action | Store actor, collector/source agent, exec-host IP, egress value/status, pivot chain, target, command/argv/cwd, start/end, exit, and result. | V1-002, V1-010, V1-013 | contract field assertions on local/remote captures; G2 | Fail |
+| PRD-AUD-001 | Source attribution per action | Store actor, collector/source agent identity/version/platform, exec-host value/method/interface/confidence, egress mode/value/status/observation, pivot chain, target, command/argv/cwd, start/end/duration, execution status/exit/signal/failure, parse/result, receipt/skew, and evidence references without lossy projection. | V1-002, V1-006, V1-010, V1-013 | frozen action schema/fixture; field-for-field collector → PostgreSQL → authoritative action/report assertions; G0/G2 | Fail |
 | PRD-AUD-002 | Human and AI actions auditable | Human and AI captures use identical fidelity and collection path; no first-party exemption. | V1-007, V1-010, V1-012, V1-013 | side-by-side human/AI contract assertions; G2 | Unverified |
 | PRD-AUD-003 | AI decision context | AI actor has human authorizer/name/model/version; command has `initiated_by=ai` and decision context. | V1-002, V1-007, V1-010 | reject incomplete AI provisioning/capture; acceptance AI journey; G2 | Unverified |
 | PRD-AUD-004 | “What happened where” survives corrections | Immutable capture plus superseding/audit revisions; ordinary APIs cannot erase command/evidence history. | V1-008, V1-009, V1-026 | attempted delete/update and revision reconstruction tests; G4 | Unverified |
@@ -45,8 +56,8 @@ Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundatio
 | PRD-CAP-005 | Linux/macOS offline agent | Small agent durably buffers locally through network/process restart and syncs original timestamps exactly once. | V1-014, V1-034 | disconnect/capture/restart/reconnect on Linux/macOS; G2/G5 | Unverified |
 | PRD-CAP-006 | Windows agent deferred | No v1 claim or release gate for offline Windows agent; wrapper remains required on Windows. | V1-001, V1-034, V1-036 | scope/docs/UI claim scan; G5 | Unverified |
 | PRD-CAP-007 | Official REST ingestion | Authenticated, versioned, idempotent REST capture is the common application service used by collectors. | V1-002, V1-010 | OpenAPI conformance and retry/conflict tests; G2 | Unverified |
-| PRD-CAP-008 | Official MCP ingestion | Narrow MCP capture/status tools use the same auth, validation, idempotency, and audit path as REST. | V1-012 | REST/MCP parity suite and tool inventory; G2 | Fail |
-| PRD-CAP-009 | Best-effort out-of-band detection | Claims/results without valid source capture are flagged for review, never silently presented as fully captured. | V1-019 | orphan claim fixture, resolution audit, boundary docs; G3/G5 | Fail |
+| PRD-CAP-008 | Official MCP ingestion | One standard MCP Streamable HTTP endpoint implements initialize/discovery/tools-call; only capture/status tools exist and use the same auth, validation, idempotency, problem, action, evidence, and audit service as REST. | V1-002, V1-012 | protocol conformance plus REST/MCP parity fixture/suite and closed tool inventory; G0/G2 | Fail |
+| PRD-CAP-009 | Best-effort out-of-band detection | Server-assigned entity/result claims without a valid engagement-scoped captured action remain pending review; link/dismiss is authoritative and audited, and no claim is silently presented as captured. | V1-002, V1-019 | pending/link/dismiss fixtures, queue/API tests, resolution audit, boundary docs; G0/G3/G5 | Fail |
 | PRD-CAP-010 | Honest external-AI boundary | Docs state that wholly out-of-band AI or human execution cannot be guaranteed captured. | V1-019, V1-036 | doc assertion/release review; G5 | Fail |
 | PRD-CAP-011 | At-least durable, exactly-once materialization | Collector persists an actor/source capture ID until ack; server idempotency maps retries to one action and rejects mismatched duplicates. | V1-010, V1-013, V1-014 | retry/race/payload-conflict/failure injection; G2 | Unverified |
 
@@ -68,12 +79,12 @@ Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundatio
 |---|---|---|---|---|---|
 | PRD-FIND-001 | Manual attack promotion | Only an operator explicitly promotes; evidence action(s) auto-link and required report fields are human completed. No AI autopublish/prefill. | V1-026, V1-027 | promotion permissions/validation/evidence E2E and v2 claim scan; G4 | Unverified |
 | PRD-FIND-002 | Finding fields and attribution | Title, severity, affected entities, evidence, remediation, status, promoter/time, and revision actor/time are persisted/reportable. | V1-006, V1-026 | schema and edit-history reconstruction tests; G4 | Unverified |
-| PRD-REP-001 | PDF from audit trail | Versioned frozen snapshot generated from authoritative records renders a human PDF with findings, evidence, methodology, source attribution, and known capture gaps. | V1-028 | golden semantic report assertions and malicious-content escaping; G4 | Fail |
-| PRD-REP-002 | Self-contained raw bundle | Bundle contains custom-format DB dump, all referenced evidence, PDF, report snapshot, metadata, and offline verify/restore tooling. | V1-029 | clean-room verify/restore/report regeneration after source wipe; G4/G5 | Fail |
-| PRD-REP-003 | SHA-256 every artifact | Manifest lists path/size/hash for every payload file; manifest excluded from self-reference; outer archive hash emitted separately. | V1-001, V1-029 | mutate/add/remove/path attack tests and all-entry verification; G4 | Fail |
-| PRD-REP-004 | Signing deferred with hook | Manifest schema has versioned empty signature extension; UI/report says hash-verified, never cryptographically signed. | V1-001, V1-029, V1-036 | schema and claim/content scan; G4/G5 | Fail |
-| PRD-REP-005 | Export remains live-safe | Consistent snapshot, capacity preflight, streaming progress/cancel/recovery; capture continues during export. | V1-029, V1-030, V1-032 | concurrent capture/export and disk-full/interruption tests; G4/G5 | Fail |
-| PRD-LIFE-001 | Disposable after export | Supported destroy command requires a verified completed bundle receipt, removes app/DB/evidence volumes, and documents break-glass/direct-admin limits. | V1-030, V1-036 | blocked-before-export, successful teardown, forced warning tests; G4/G5 | Fail |
+| PRD-REP-001 | PDF from audit trail | Versioned frozen snapshot generated from authoritative actions/findings renders a human PDF with methodology, full source attribution, evidence links, and known pending/dismissed capture gaps. | V1-002, V1-028 | frozen report/action schemas; golden semantic report assertions and malicious-content escaping; G0/G4 | Fail |
+| PRD-REP-002 | Self-contained raw bundle | Completed server job inventories custom-format DB dump, all referenced evidence, PDF, report snapshot, metadata, instructions, and offline verify/restore/regenerate tooling. | V1-002, V1-029 | manifest fixture; clean-room verify/restore/report regeneration after source wipe; G0/G4/G5 | Fail |
+| PRD-REP-003 | SHA-256 every artifact | Manifest lists unique safe path/size/hash for every payload file; manifest is excluded from self-reference and a receipt binds the separate outer archive hash. | V1-001, V1-002, V1-029 | manifest/receipt schema; mutate/add/remove/path attack tests and all-entry verification; G0/G4 | Fail |
+| PRD-REP-004 | Signing deferred with hook | Manifest schema requires a versioned empty signature extension; UI/report says hash-verified and makes no signer-identity claim. | V1-001, V1-002, V1-029, V1-036 | schema fixture and claim/content scan; G0/G4/G5 | Fail |
+| PRD-REP-005 | Export remains live-safe | Server-owned persisted job records consistent cutoff, capacity preflight, progress/cancel/failure/recovery, completion, and immutable verified receipt while capture continues outside the snapshot. | V1-002, V1-029, V1-030, V1-032 | job state fixture; reconnect, concurrent capture/export, disk-full/interruption tests; G0/G4/G5 | Fail |
+| PRD-LIFE-001 | Disposable after export | Supported destroy command re-verifies exact bundle bytes against a persisted completed receipt, consumes a short-lived bound authorization, removes app/DB/evidence volumes, and documents break-glass/direct-admin limits. | V1-002, V1-030, V1-036 | receipt/authorization fixture; blocked-before-export, mutation/replay, successful teardown, forced warning tests; G0/G4/G5 | Fail |
 | PRD-DEP-001 | One-step Compose setup | Clean `docker compose up` starts app + one PostgreSQL container with fresh reachable empty engagement path. | V1-005, V1-031 | clean Linux/macOS/Windows host smoke tests; G1/G5 | Unverified |
 | PRD-DEP-002 | Install script supported hosts | Idempotent Ubuntu 22.04/24.04 x86_64 install validates config, provisions stack/accounts, and exposes rollback/diagnostics. | V1-031 | clean/repeated VM install tests; G5 | Fail |
 | PRD-DEP-003 | Account provisioning | Operational path creates named actors/accounts and one-time credentials without database hand-editing. | V1-007, V1-031 | clean-host provision/revoke/rotate journey; G1/G5 | Fail |
@@ -117,8 +128,10 @@ Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundatio
 These are the implementation interpretations used by the matrix. V1-001 records its architecture
 scope in the [ADR index](adr/README.md): system shape in ADR-0001, audit breadth/corrections in
 ADR-0002, evidence isolation in ADR-0003, parser trust in ADR-0004, manifest/reconstruction semantics
-in ADR-0005, and phase/scope vocabulary in ADR-0006. Remaining rows stay executable planning
-decisions until their owning task requires a dedicated ADR.
+in ADR-0005, phase/scope vocabulary in ADR-0006, lossless attribution/actor lifecycle/authoritative
+reads in ADR-0007, standard MCP in ADR-0008, and persisted export/receipt/teardown lifecycle in
+ADR-0009. Remaining rows stay executable planning decisions until their owning task requires a
+dedicated ADR.
 
 | Decision | Gap or tension in source text | Resolution / observable rule |
 |---|---|---|
@@ -140,6 +153,9 @@ decisions until their owning task requires a dedicated ADR.
 | TR-D16 AI authorization type | Schema text permits actor authorizer in one place, locked decision requires human. | v1 enforces `authorized_by` references a human actor. |
 | TR-D17 Raw sensitive data | Capture-everything can include credentials; encryption at rest is not specified. | TLS, restrictive storage permissions, sensitive export warning, and documented host/disk encryption responsibility; do not silently redact immutable raw evidence. UI/logs minimize accidental disclosure. |
 | TR-D18 Phase gating | Design spec's generic mockup has locked waypoints, PRD expressly rejects a wizard. | All Waypoint destinations are navigable; visual fog is empty-state only and must never set disabled/permission behavior. |
+| TR-D19 Accepted-vs-persisted attribution | The capture envelope validates complete attribution, while a summary action/event projection can silently drop required semantics. | The immutable authoritative action nests the complete accepted envelope plus credential-derived actor/engagement, receipt/skew, evidence references, and audit cursor; summaries never replace it. |
+| TR-D20 Official MCP meaning | A custom HTTP route named MCP is not interoperable with MCP clients. | One standard Streamable HTTP JSON-RPC endpoint supports initialize, initialized notification, tools/list, and only capture/status tools; application behavior delegates to REST's service. |
+| TR-D21 Export authority | Browser-local progress/receipt cannot prove a live-safe self-contained export or safely guard teardown. | Persist server-owned export state and server-generated verified receipt; teardown re-verifies exact bytes and consumes a short-lived receipt-bound authorization through external orchestration. |
 
 ## 8. Release evidence index
 
