@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"net/netip"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -427,7 +428,7 @@ func captureHandler(db *sql.DB, store *evidenceStore, originKind string) http.Ha
 		var notableAlerts []notableAlertCandidate
 		if req.Envelope.Parsing.Status == "parsed" {
 			var err error
-			_, notableAlerts, err = ingestStructuredResult(r.Context(), tx, actor.EngagementID, actionID, req.Envelope.Parsing.Plugin.ID, req.Envelope.Parsing.Result)
+			_, notableAlerts, err = ingestStructuredResult(r.Context(), tx, actor.EngagementID, actionID, *req.Envelope.Parsing.Plugin, req.Envelope.Parsing.Result)
 			if err != nil {
 				if errors.Is(err, errEntityKindConflict) {
 					writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "entity_conflict", RequestID: reqID, Retryable: false, Detail: "conflicting entity identifiers cannot be auto-merged."})
@@ -887,15 +888,18 @@ type notableAlertCandidate struct {
 	Data      map[string]any
 }
 
-func ingestStructuredResult(ctx context.Context, tx *sql.Tx, engagementID, actionID, pluginID string, result *captureParseResult) (string, []notableAlertCandidate, error) {
+func ingestStructuredResult(ctx context.Context, tx *sql.Tx, engagementID, actionID string, plugin capturePluginSelection, result *captureParseResult) (string, []notableAlertCandidate, error) {
 	if result == nil {
 		return "", nil, fmt.Errorf("missing structured result")
+	}
+	if pb := validateStructuredResult(plugin, *result); pb != nil {
+		return "", nil, fmt.Errorf("structured result validation failed: %s", pb.Detail)
 	}
 	resultID := newUUID()
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO result (id, engagement_id, action_id, plugin_id, schema_id, schema_version, extracted)
 		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
-	`, resultID, engagementID, actionID, pluginID, result.SchemaID, result.SchemaVersion, jsonArg(result.Extracted)); err != nil {
+	`, resultID, engagementID, actionID, plugin.ID, result.SchemaID, result.SchemaVersion, jsonArg(result.Extracted)); err != nil {
 		return "", nil, err
 	}
 
@@ -1054,8 +1058,13 @@ func findNotableMap(v any, match func(map[string]any) bool) (map[string]any, boo
 		if match(x) {
 			return x, true
 		}
-		for _, child := range x {
-			if found, ok := findNotableMap(child, match); ok {
+		keys := make([]string, 0, len(x))
+		for key := range x {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			if found, ok := findNotableMap(x[key], match); ok {
 				return found, true
 			}
 		}
