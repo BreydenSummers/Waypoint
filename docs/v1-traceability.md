@@ -1,7 +1,7 @@
 # Waypoint v1 PRD traceability
 
-Status: complete release acceptance revalidated — **Fail; not v1-ready**  
-Latest evidence: [`release-evidence/final-release-revalidation.md`](release-evidence/final-release-revalidation.md)  
+Status: hostile post-host re-audit complete — **Fail; not v1-ready (7 Pass, 25 Fail, 35 Unverified)**  
+Latest evidence: [`release-evidence/restart-gap-audit.md`](release-evidence/restart-gap-audit.md)  
 Canonical requirements: [`../PRD.md`](../PRD.md)  
 Execution and task definitions: [`v1-execution-plan.md`](v1-execution-plan.md)  
 Design references: [`design-spec.md`](design-spec.md), [`waypoint-mockup.html`](waypoint-mockup.html)  
@@ -24,12 +24,12 @@ Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundatio
 | PRD-CORE-003 | Three phases | Recon, Attacks, and Findings are explicit stored classifications/views; every surfaced item traces to source, actor, time, target, and result. | V1-006, V1-017, V1-023, V1-024, V1-026, V1-027 | Seeded provenance journey and UI drill-through; G3/G4 | Fail |
 | PRD-CORE-004 | Central question | UI shows what was tried, result/worked state, and unworked/empty state without losing failed attempts. | V1-022, V1-023, V1-024, V1-027 | Operator dogfood with success/failure/unknown/empty data; G3/G5 | Fail |
 | PRD-DATA-001 | PostgreSQL single instance/container | PostgreSQL is the sole database and exactly one PostgreSQL container is in default Compose; no graph database/object-store service. | V1-005, V1-006 | Compose topology and clean-host startup inspection; G1/G5 | Unverified |
-| PRD-DATA-002 | Proposed engagement/actor/action schema | Migrations preserve all PRD fields, add constraints/status metadata and append-only audit/provenance tables, with no loss of semantics. | V1-006 | Schema review and migration tests against field checklist; G1 | Unverified |
+| PRD-DATA-002 | Proposed engagement/actor/action schema | Migrations preserve all PRD fields, add constraints/status metadata and append-only audit/provenance tables, with no loss of semantics. | V1-006 | Schema review and migration tests against field checklist; G1 | Fail |
 | PRD-DATA-003 | Evidence blobs outside hot rows, content addressed | stdout/stderr/screenshots stream into hash-addressed volume objects; DB stores metadata and references. | V1-009 | hash/dedup/atomicity/quota/orphan/restart tests; G1 | Unverified |
 | PRD-DATA-004 | Stable-key entity dedup | Engagement-scoped SID, MAC, FQDN precedence; `(hostname, IP)` fallback only; conflicts do not auto-merge. | V1-017 | table-driven and concurrent property tests; G3 | Unverified |
 | PRD-DATA-005 | Manual merge/split | Operators can preview, merge, and split ambiguity while retaining/reversing observation provenance and actor history. | V1-018, V1-023 | merge/split/undo/concurrency E2E; G3 | Unverified |
 | PRD-DATA-006 | Multiple concurrent operators | Writes are transaction/concurrency safe; edits use versions; live feeds do not require polling or lose reconnect state. | V1-008, V1-010, V1-011, V1-026 | race/idempotency/optimistic-conflict and two-browser tests; G2/G4 | Unverified |
-| PRD-AUD-001 | Source attribution per action | Store actor, collector/source agent, exec-host IP, egress value/status, pivot chain, target, command/argv/cwd, start/end, exit, and result. | V1-002, V1-010, V1-013 | contract field assertions on local/remote captures; G2 | Unverified |
+| PRD-AUD-001 | Source attribution per action | Store actor, collector/source agent, exec-host IP, egress value/status, pivot chain, target, command/argv/cwd, start/end, exit, and result. | V1-002, V1-010, V1-013 | contract field assertions on local/remote captures; G2 | Fail |
 | PRD-AUD-002 | Human and AI actions auditable | Human and AI captures use identical fidelity and collection path; no first-party exemption. | V1-007, V1-010, V1-012, V1-013 | side-by-side human/AI contract assertions; G2 | Unverified |
 | PRD-AUD-003 | AI decision context | AI actor has human authorizer/name/model/version; command has `initiated_by=ai` and decision context. | V1-002, V1-007, V1-010 | reject incomplete AI provisioning/capture; acceptance AI journey; G2 | Unverified |
 | PRD-AUD-004 | “What happened where” survives corrections | Immutable capture plus superseding/audit revisions; ordinary APIs cannot erase command/evidence history. | V1-008, V1-009, V1-026 | attempted delete/update and revision reconstruction tests; G4 | Unverified |
@@ -45,8 +45,8 @@ Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundatio
 | PRD-CAP-005 | Linux/macOS offline agent | Small agent durably buffers locally through network/process restart and syncs original timestamps exactly once. | V1-014, V1-034 | disconnect/capture/restart/reconnect on Linux/macOS; G2/G5 | Unverified |
 | PRD-CAP-006 | Windows agent deferred | No v1 claim or release gate for offline Windows agent; wrapper remains required on Windows. | V1-001, V1-034, V1-036 | scope/docs/UI claim scan; G5 | Unverified |
 | PRD-CAP-007 | Official REST ingestion | Authenticated, versioned, idempotent REST capture is the common application service used by collectors. | V1-002, V1-010 | OpenAPI conformance and retry/conflict tests; G2 | Unverified |
-| PRD-CAP-008 | Official MCP ingestion | Narrow MCP capture/status tools use the same auth, validation, idempotency, and audit path as REST. | V1-012 | REST/MCP parity suite and tool inventory; G2 | Unverified |
-| PRD-CAP-009 | Best-effort out-of-band detection | Claims/results without valid source capture are flagged for review, never silently presented as fully captured. | V1-019 | orphan claim fixture, resolution audit, boundary docs; G3/G5 | Unverified |
+| PRD-CAP-008 | Official MCP ingestion | Narrow MCP capture/status tools use the same auth, validation, idempotency, and audit path as REST. | V1-012 | REST/MCP parity suite and tool inventory; G2 | Fail |
+| PRD-CAP-009 | Best-effort out-of-band detection | Claims/results without valid source capture are flagged for review, never silently presented as fully captured. | V1-019 | orphan claim fixture, resolution audit, boundary docs; G3/G5 | Fail |
 | PRD-CAP-010 | Honest external-AI boundary | Docs state that wholly out-of-band AI or human execution cannot be guaranteed captured. | V1-019, V1-036 | doc assertion/release review; G5 | Fail |
 | PRD-CAP-011 | At-least durable, exactly-once materialization | Collector persists an actor/source capture ID until ack; server idempotency maps retries to one action and rejects mismatched duplicates. | V1-010, V1-013, V1-014 | retry/race/payload-conflict/failure injection; G2 | Unverified |
 
@@ -54,10 +54,10 @@ Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundatio
 
 | ID | PRD source / requirement | Executable interpretation | Tasks | Verification / gate | Status |
 |---|---|---|---|---|---|
-| PRD-ID-001 | No shared token; named operators/accounts | Bootstrap provisions actor-specific high-entropy credentials; no anonymous/default/shared credential; tokens are shown once, digest-stored, role/engagement scoped, revocable. | V1-007, V1-031 | auth matrix, DB/log secret checks, two-operator journey; G1/G5 | Unverified |
+| PRD-ID-001 | No shared token; named operators/accounts | Bootstrap provisions actor-specific high-entropy credentials; no anonymous/default/shared credential; tokens are shown once, digest-stored, role/engagement scoped, revocable. | V1-007, V1-031 | auth matrix, DB/log secret checks, two-operator journey; G1/G5 | Fail |
 | PRD-ID-002 | AI actor first class | `actor.kind=ai_agent`, own token, mandatory human authorization metadata, same role isolation. | V1-007 | provisioning rejection/authorization/revocation tests; G1 | Unverified |
-| PRD-NET-001 | Per-action exec host IP | Collector sends selected local source address and collection method/uncertainty; server does not substitute HTTP peer. | V1-002, V1-010, V1-013 | multi-interface fixture and field round trip; G2 | Unverified |
-| PRD-NET-002 | Per-action egress and pivot chain | Capture stores public/NAT egress value/status/observation and ordered validated optional pivots. | V1-002, V1-005, V1-010 | mode and malformed pivot tests; G2 | Unverified |
+| PRD-NET-001 | Per-action exec host IP | Collector sends selected local source address and collection method/uncertainty; server does not substitute HTTP peer. | V1-002, V1-010, V1-013 | multi-interface fixture and field round trip; G2 | Fail |
+| PRD-NET-002 | Per-action egress and pivot chain | Capture stores public/NAT egress value/status/observation and ordered validated optional pivots. | V1-002, V1-005, V1-010 | mode and malformed pivot tests; G2 | Fail |
 | PRD-NET-003 | Egress auto/manual/off | Startup-valid mode: auto calls only configured resolver; manual/off issue zero discovery traffic; off stores disabled/null and failures are visible. | V1-005 | packet/network-mock assertions and UI/report gap; G1/G4 | Fail |
 | PRD-RT-001 | SSE for live updates, REST writes | Writes remain REST; authorized SSE emits persisted cursor IDs, reconnects via `Last-Event-ID`, and resyncs without data loss. | V1-011, V1-022 | disconnect/gap/slow-client/revocation tests; G2/G3 | Unverified |
 | PRD-RT-002 | v1-lite alerts | Deterministic successful-auth and first-new-segment alerts arrive live, deduplicate, and link to source captures. | V1-020, V1-023 | rule fixtures and SSE E2E; G3 | Unverified |
@@ -75,8 +75,8 @@ Gate abbreviations are defined in the execution plan: G0 contracts, G1 foundatio
 | PRD-REP-005 | Export remains live-safe | Consistent snapshot, capacity preflight, streaming progress/cancel/recovery; capture continues during export. | V1-029, V1-030, V1-032 | concurrent capture/export and disk-full/interruption tests; G4/G5 | Fail |
 | PRD-LIFE-001 | Disposable after export | Supported destroy command requires a verified completed bundle receipt, removes app/DB/evidence volumes, and documents break-glass/direct-admin limits. | V1-030, V1-036 | blocked-before-export, successful teardown, forced warning tests; G4/G5 | Fail |
 | PRD-DEP-001 | One-step Compose setup | Clean `docker compose up` starts app + one PostgreSQL container with fresh reachable empty engagement path. | V1-005, V1-031 | clean Linux/macOS/Windows host smoke tests; G1/G5 | Unverified |
-| PRD-DEP-002 | Install script supported hosts | Idempotent Ubuntu 22.04/24.04 x86_64 install validates config, provisions stack/accounts, and exposes rollback/diagnostics. | V1-031 | clean/repeated VM install tests; G5 | Unverified |
-| PRD-DEP-003 | Account provisioning | Operational path creates named actors/accounts and one-time credentials without database hand-editing. | V1-007, V1-031 | clean-host provision/revoke/rotate journey; G1/G5 | Unverified |
+| PRD-DEP-002 | Install script supported hosts | Idempotent Ubuntu 22.04/24.04 x86_64 install validates config, provisions stack/accounts, and exposes rollback/diagnostics. | V1-031 | clean/repeated VM install tests; G5 | Fail |
+| PRD-DEP-003 | Account provisioning | Operational path creates named actors/accounts and one-time credentials without database hand-editing. | V1-007, V1-031 | clean-host provision/revoke/rotate journey; G1/G5 | Fail |
 | PRD-DEP-004 | Sensitive local deployment | TLS outside loopback, restrictive secret/data permissions, redacted logs, and explicit host/disk encryption responsibility. | V1-005, V1-007, V1-033, V1-036 | config rejection, permission/log checks, docs; G5 | Fail |
 
 ## 5. UX, guide, accessibility, and performance requirements
@@ -143,26 +143,26 @@ decisions until their owning task requires a dedicated ADR.
 
 ## 8. Release evidence index
 
-Reconciled during the final release revalidation; do not mark the release complete if any applicable row lacks a durable artifact.
+Reconciled during the restart-003 hostile gap audit; do not mark the release complete if any applicable row lacks a durable artifact.
 
 | Evidence ID | Required artifact | Covers | State / location |
 |---|---|---|---|
-| EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Unverified · core verifier passed; no retained plugins-repository report; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Unverified · production wiring exists, but all real-PostgreSQL checks skipped; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Unverified · live DB test skipped and no collector transcript retained; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-04 | Offline replay + platform matrix | PRD-CAP-004/005/011 | Unverified · no plugins-repository runtime artifacts retained; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-05 | Egress mode packet assertions | PRD-NET-001/002/003 | Fail · startup resolver/config and packet evidence absent; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-06 | Entity dedup/merge/split provenance report | PRD-DATA-004/005 | Unverified · DB tests skipped and no operator journey retained; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-07 | Two-browser SSE/concurrency recording | PRD-DATA-006, PRD-RT-001/002 | Unverified · DB tests skipped and no browser recording retained; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-08 | Finding-to-evidence-to-report trace report | PRD-FIND-001/002, PRD-REP-001 | Fail · no authoritative generated report/PDF artifact; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-09 | Bundle manifest, outer hash, clean-room restore log | PRD-REP-002/003/004/005 | Fail · verifier helpers exist but production export/restore evidence does not; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-10 | Guarded teardown and post-wipe bundle verification | PRD-LIFE-001 | Fail · destroy trusts receipt text and no post-wipe reconstruction ran; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Unverified · definitions exist; no daemon/clean-VM run retained; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Fail · no measured benchmark/fault artifact; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Fail · no runtime security report and operator boundary docs absent; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Unverified · no running-browser screenshot set retained; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-15 | Accessibility tree/keyboard/axe/reduced-motion report | PRD-A11Y-001/002 | Unverified · no browser accessibility artifact retained; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
-| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pass · core inventory and architecture lint show no functioning v2 surface; [final revalidation](release-evidence/final-release-revalidation.md#evidence-index-disposition) |
+| EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Unverified · core verifier passed, but no retained plugins report exists and the core “MCP” routes are ordinary HTTP rather than an MCP protocol server; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Fail · 31 real-PostgreSQL tests failed closed without a DSN; schema omits required source/egress status semantics and digest text is accepted as a bearer credential; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Fail · no collector transcript exists and core drops source-agent platform plus exec-host/egress observation semantics from the action row; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-04 | Offline replay + platform matrix | PRD-CAP-004/005/011 | Unverified · no retained plugins runtime or supported-platform artifacts are present; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-05 | Egress mode packet assertions | PRD-NET-001/002/003 | Fail · startup resolver/config and packet evidence are absent; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-06 | Entity dedup/merge/split provenance report | PRD-DATA-004/005 | Unverified · PostgreSQL tests failed closed and no operator journey is retained; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-07 | Two-browser SSE/concurrency recording | PRD-DATA-006, PRD-RT-001/002 | Unverified · PostgreSQL tests failed closed and no browser recording exists; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-08 | Finding-to-evidence-to-report trace report | PRD-FIND-001/002, PRD-REP-001 | Fail · a production snapshot/PDF route exists but is unauthenticated, its Chromium test is fake, and no authoritative PDF artifact is retained; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-09 | Bundle manifest, outer hash, clean-room restore log | PRD-REP-002/003/004/005 | Fail · Node helpers stage fake dump/evidence/PDF bytes; no production exporter or clean-room DB restore exists; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-10 | Guarded teardown and post-wipe bundle verification | PRD-LIFE-001 | Fail · browser teardown only changes local state and installer destroy trusts receipt JSON without hashing the bundle; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Fail · Compose runtime is unavailable and the installer never creates its local PostgreSQL role/database before waiting on that DSN; all host tests stub systemctl/psql; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Fail · fixture constants/source checks remain the only performance evidence; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Fail · no runtime security report/operator docs; TLS, secure headers/origin controls, report authorization, and real out-of-band detection are absent; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Unverified · no browser binary or retained screenshot set exists; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-15 | Accessibility tree/keyboard/axe/reduced-motion report | PRD-A11Y-001/002 | Unverified · no browser accessibility artifact exists; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
+| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pass · narrow core inventory and architecture lint show no functioning v2 surface; [restart audit](release-evidence/restart-gap-audit.md#evidence-index-disposition) |
 
 ## 9. Planning coverage check
 
