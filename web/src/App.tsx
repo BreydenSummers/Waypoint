@@ -661,7 +661,7 @@ export function App() {
 
   const phaseSummary = {
     recon: 'Collect signals and keep the pack tidy.',
-    attacks: 'Every attempt is captured, attributed, and searchable.',
+    attacks: 'Every observed attempt is captured, attributed, and searchable.',
     findings: 'Promotions stay defensible and linked to evidence.',
     summit: 'Export, verify the manifest, then wipe the disposable box.',
   }[activeId];

@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -158,6 +159,27 @@ func TestMCPCaptureStatusAndReviewReuseRESTServices(t *testing.T) {
 	}
 	if reviewCount != 1 {
 		t.Fatalf("review count = %d, want 1", reviewCount)
+	}
+
+	missingSourceClaimID := "66666666-6666-4666-8666-666666666666"
+	missingSourceReview := doReviewRequest(t, HandlerWithDB(db), "/api/v1/out-of-band/review", reviewToken, "req-review-missing-source", missingSourceClaimID, map[string]any{
+		"claimId":        missingSourceClaimID,
+		"claimKind":      "result",
+		"sourceActionId": "77777777-7777-4777-8777-777777777777",
+		"resolution":     "linked",
+		"resolvedAt":     "2025-01-15T10:35:00.000Z",
+	})
+	if missingSourceReview.Code != http.StatusConflict {
+		t.Fatalf("missing source review status = %d, body=%s", missingSourceReview.Code, missingSourceReview.Body.String())
+	}
+	if !strings.Contains(missingSourceReview.Body.String(), "invalid_source_capture") {
+		t.Fatalf("missing source review body = %s", missingSourceReview.Body.String())
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_event WHERE subject_id = $1 AND type = 'out-of-band.resolved'`, missingSourceClaimID).Scan(&reviewCount); err != nil {
+		t.Fatalf("count missing-source review events: %v", err)
+	}
+	if reviewCount != 0 {
+		t.Fatalf("missing-source review count = %d, want 0", reviewCount)
 	}
 }
 
