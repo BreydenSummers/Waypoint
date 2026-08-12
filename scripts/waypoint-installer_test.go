@@ -296,15 +296,16 @@ func readToken(t *testing.T, path string) string {
 }
 
 type destroyFixture struct {
-	scriptPath  string
-	workDir     string
-	configPath  string
-	bundlePath  string
-	receiptPath string
-	installRoot string
-	stateRoot   string
-	logRoot     string
-	env         []string
+	scriptPath    string
+	workDir       string
+	configPath    string
+	provisionPath string
+	bundlePath    string
+	receiptPath   string
+	installRoot   string
+	stateRoot     string
+	logRoot       string
+	env           []string
 }
 
 func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing.T) {
@@ -353,7 +354,110 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 	}
 }
 
+func TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		osVer   string
+		machine string
+	}{
+		{name: "ubuntu-22.04-x86_64", osVer: "22.04", machine: "x86_64"},
+		{name: "ubuntu-24.04-x86_64", osVer: "24.04", machine: "x86_64"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := setupDestroyFixtureForHost(t, tc.osVer, tc.machine)
+			statePath := filepath.Join(fixture.stateRoot, "install.state")
+			firstHumanToken := readToken(t, filepath.Join(fixture.stateRoot, "tokens", "00000000-0000-0000-0000-000000000010.token"))
+			firstAIToken := readToken(t, filepath.Join(fixture.stateRoot, "tokens", "00000000-0000-0000-0000-000000000011.token"))
+			if firstHumanToken == firstAIToken || firstHumanToken == "" || firstAIToken == "" {
+				t.Fatalf("unexpected provision tokens: human=%q ai=%q", firstHumanToken, firstAIToken)
+			}
+
+			diagnostics := runInstaller(t, fixture.scriptPath, fixture.env, fixture.workDir, "diagnostics", "--config", fixture.configPath, "--provision", fixture.provisionPath)
+			for _, want := range []string{"waypoint_service=active", "database_ready=ready", "installed_version=1.0.0"} {
+				if !strings.Contains(diagnostics, want) {
+					t.Fatalf("diagnostics missing %q:\n%s", want, diagnostics)
+				}
+			}
+
+			runInstaller(t, fixture.scriptPath, fixture.env, fixture.workDir, "destroy", "--config", fixture.configPath, "--bundle", fixture.bundlePath, "--receipt", fixture.receiptPath)
+			for _, path := range []string{fixture.installRoot, fixture.stateRoot, fixture.logRoot} {
+				if _, err := os.Stat(path); !os.IsNotExist(err) {
+					t.Fatalf("expected %s to be removed after teardown, got err=%v", path, err)
+				}
+			}
+
+			runInstaller(t, fixture.scriptPath, fixture.env, fixture.workDir, "install", "--config", fixture.configPath, "--provision", fixture.provisionPath)
+			reinstalledState, err := os.ReadFile(statePath)
+			if err != nil {
+				t.Fatalf("read reinstated state: %v", err)
+			}
+			if !strings.Contains(string(reinstalledState), "WAYPOINT_INSTALLED_VERSION=1.0.0") {
+				t.Fatalf("reinstalled state missing version marker: %s", reinstalledState)
+			}
+			secondHumanToken := readToken(t, filepath.Join(fixture.stateRoot, "tokens", "00000000-0000-0000-0000-000000000010.token"))
+			secondAIToken := readToken(t, filepath.Join(fixture.stateRoot, "tokens", "00000000-0000-0000-0000-000000000011.token"))
+			if secondHumanToken == firstHumanToken || secondAIToken == firstAIToken {
+				t.Fatalf("fresh restart reused prior tokens: human=%q->%q ai=%q->%q", firstHumanToken, secondHumanToken, firstAIToken, secondAIToken)
+			}
+			if _, err := os.Stat(filepath.Join(fixture.stateRoot, "rollback")); !os.IsNotExist(err) {
+				t.Fatalf("fresh restart should not leave rollback state behind: %v", err)
+			}
+		})
+	}
+}
+
+func TestInstallerRejectsUnsupportedHostMatrix(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		osVersion   string
+		machine     string
+		wantErrPart string
+	}{
+		{name: "unsupported-os", osVersion: "20.04", machine: "x86_64", wantErrPart: "unsupported Ubuntu version"},
+		{name: "unsupported-arch", osVersion: "24.04", machine: "arm64", wantErrPart: "unsupported architecture"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			workDir := filepath.Join(root, "work")
+			mustMkdirAll(t, workDir)
+
+			osRelease := filepath.Join(root, "os-release")
+			mustWriteFile(t, osRelease, "ID=ubuntu\nVERSION_ID=\""+tc.osVersion+"\"\n")
+
+			packagePath := filepath.Join(root, "waypoint-bin")
+			mustWriteFile(t, packagePath, "#!/bin/sh\necho waypoint\n")
+			if err := os.Chmod(packagePath, 0o755); err != nil {
+				t.Fatalf("chmod package: %v", err)
+			}
+
+			configPath := filepath.Join(root, "installer.env")
+			mustWriteFile(t, configPath, strings.Join([]string{
+				"WAYPOINT_VERSION=1.0.0",
+				"WAYPOINT_PUBLIC_URL=http://127.0.0.1:8080",
+				"WAYPOINT_DB_DSN=postgres://waypoint:waypoint@localhost:5432/waypoint?sslmode=disable",
+				"WAYPOINT_PACKAGE_PATH=" + packagePath,
+				"WAYPOINT_INSTALL_ROOT=" + filepath.Join(root, "opt", "waypoint"),
+				"WAYPOINT_STATE_ROOT=" + filepath.Join(root, "var", "lib", "waypoint"),
+				"WAYPOINT_LOG_ROOT=" + filepath.Join(root, "var", "log", "waypoint"),
+				"",
+			}, "\n"))
+
+			scriptPath := installerScriptPath(t)
+			env := baseInstallerEnv(osRelease)
+			env = append(env, "WAYPOINT_INSTALLER_UNAME_MACHINE="+tc.machine)
+			failed := runInstallerExpectFailure(t, scriptPath, env, workDir, "validate", "--config", configPath)
+			if !strings.Contains(failed, tc.wantErrPart) {
+				t.Fatalf("validate failed with %q, want %q", failed, tc.wantErrPart)
+			}
+		})
+	}
+}
+
 func setupDestroyFixture(t *testing.T) destroyFixture {
+	return setupDestroyFixtureForHost(t, "24.04", "x86_64")
+}
+
+func setupDestroyFixtureForHost(t *testing.T, osVersion, machine string) destroyFixture {
 	t.Helper()
 
 	root := t.TempDir()
@@ -364,7 +468,7 @@ func setupDestroyFixture(t *testing.T) destroyFixture {
 	mustMkdirAll(t, workDir)
 
 	osRelease := filepath.Join(root, "os-release")
-	mustWriteFile(t, osRelease, "ID=ubuntu\nVERSION_ID=\"24.04\"\n")
+	mustWriteFile(t, osRelease, "ID=ubuntu\nVERSION_ID=\""+osVersion+"\"\n")
 
 	packagePath := filepath.Join(root, "waypoint-bin")
 	mustWriteFile(t, packagePath, "#!/bin/sh\necho waypoint\n")
@@ -401,6 +505,35 @@ func setupDestroyFixture(t *testing.T) destroyFixture {
 		"",
 	}, "\n"))
 
+	provisionPath := filepath.Join(root, "provision.json")
+	mustWriteJSON(t, provisionPath, map[string]any{
+		"engagement": map[string]any{
+			"id":     "00000000-0000-0000-0000-000000000001",
+			"name":   "Demo",
+			"client": "Client",
+			"scope":  "Campus",
+			"status": "active",
+		},
+		"actors": []any{
+			map[string]any{
+				"id":     "00000000-0000-0000-0000-000000000010",
+				"kind":   "human",
+				"handle": "alice",
+				"role":   "owner",
+			},
+			map[string]any{
+				"id":            "00000000-0000-0000-0000-000000000011",
+				"kind":          "ai_agent",
+				"handle":        "waypoint-bot",
+				"role":          "operator",
+				"agent_name":    "Waypoint",
+				"model":         "gpt-4.1",
+				"version":       "1.0",
+				"authorized_by": "00000000-0000-0000-0000-000000000010",
+			},
+		},
+	})
+
 	bundlePath := filepath.Join(root, "bundle", "verified-export.tar")
 	mustWriteFile(t, bundlePath, "bundle")
 	receiptPath := filepath.Join(root, "receipt.json")
@@ -414,23 +547,24 @@ func setupDestroyFixture(t *testing.T) destroyFixture {
 
 	env := baseInstallerEnv(osRelease)
 	env = append(env,
-		"WAYPOINT_INSTALLER_UNAME_MACHINE=x86_64",
+		"WAYPOINT_INSTALLER_UNAME_MACHINE="+machine,
 		"PATH="+stubDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"INSTALLER_STUB_LOG="+stubLog,
 	)
 
 	scriptPath := installerScriptPath(t)
-	runInstaller(t, scriptPath, env, workDir, "install", "--config", configPath)
+	runInstaller(t, scriptPath, env, workDir, "install", "--config", configPath, "--provision", provisionPath)
 
 	return destroyFixture{
-		scriptPath:  scriptPath,
-		workDir:     workDir,
-		configPath:  configPath,
-		bundlePath:  bundlePath,
-		receiptPath: receiptPath,
-		installRoot: installRoot,
-		stateRoot:   stateRoot,
-		logRoot:     logRoot,
-		env:         env,
+		scriptPath:    scriptPath,
+		workDir:       workDir,
+		configPath:    configPath,
+		provisionPath: provisionPath,
+		bundlePath:    bundlePath,
+		receiptPath:   receiptPath,
+		installRoot:   installRoot,
+		stateRoot:     stateRoot,
+		logRoot:       logRoot,
+		env:           env,
 	}
 }

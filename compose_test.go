@@ -12,6 +12,8 @@ func TestComposeDeploymentFilesCoverOneStepDeployment(t *testing.T) {
 	for _, want := range []string{
 		"postgres:",
 		"waypoint:",
+		"image: waypoint:compose",
+		"restart: unless-stopped",
 		"waypoint-postgres:",
 		"waypoint-evidence:",
 		"WAYPOINT_DB_DSN: postgres://waypoint:waypoint@postgres:5432/waypoint?sslmode=disable",
