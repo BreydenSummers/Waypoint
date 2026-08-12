@@ -52,7 +52,7 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 		_, _ = composeOutput(cleanupCtx, project, overridePath, "down", "-v", "--remove-orphans")
 	})
 
-	runCompose("up", "-d", "--build")
+	runCompose("up", "-d", "--wait", "--build")
 	port := waitForComposePort(t, ctx, project, overridePath)
 	baseURL := "http://127.0.0.1:" + port
 

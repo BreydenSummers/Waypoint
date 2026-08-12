@@ -2,6 +2,7 @@ FROM node:22-bookworm AS web
 WORKDIR /src
 COPY web ./web
 COPY internal ./internal
+COPY contracts ./contracts
 RUN cd web && npm run build
 
 FROM golang:1.22-bookworm AS build
