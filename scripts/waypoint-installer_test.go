@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,10 +31,27 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 		t.Fatalf("chmod package: %v", err)
 	}
 
+	stubDir := filepath.Join(root, "stubs")
+	mustMkdirAll(t, stubDir)
+	stubLog := filepath.Join(root, "installer-calls.log")
+	mustWriteExecutable(t, filepath.Join(stubDir, "systemctl"), "#!/bin/sh\necho systemctl \"$*\" >> \"$INSTALLER_STUB_LOG\"\ncase \"$1\" in\n  is-active) echo active ;;\nesac\nexit 0\n")
+	mustWriteExecutable(t, filepath.Join(stubDir, "psql"), "#!/bin/sh\necho psql \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
+	mustWriteExecutable(t, filepath.Join(stubDir, "pg_isready"), "#!/bin/sh\necho pg_isready \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
+
+	readyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/readyz" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	}))
+	defer readyServer.Close()
+
 	configPath := filepath.Join(root, "installer.env")
 	mustWriteFile(t, configPath, strings.Join([]string{
 		"WAYPOINT_VERSION=1.0.0",
-		"WAYPOINT_PUBLIC_URL=https://waypoint.example.test",
+		"WAYPOINT_PUBLIC_URL=" + readyServer.URL,
 		"WAYPOINT_DB_DSN=postgres://waypoint:waypoint@localhost:5432/waypoint?sslmode=disable",
 		"WAYPOINT_PACKAGE_PATH=" + packagePath,
 		"WAYPOINT_INSTALL_ROOT=" + installRoot,
@@ -73,8 +92,9 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 
 	env := baseInstallerEnv(osRelease)
 	env = append(env,
-		"WAYPOINT_INSTALLER_SKIP_DB=1",
 		"WAYPOINT_INSTALLER_UNAME_MACHINE=x86_64",
+		"PATH="+stubDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"INSTALLER_STUB_LOG="+stubLog,
 	)
 
 	scriptPath := installerScriptPath(t)
@@ -123,9 +143,26 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 		t.Fatalf("human token rotated on repeated install: %q -> %q", humanToken, got)
 	}
 
+	installedLog, err := os.ReadFile(stubLog)
+	if err != nil {
+		t.Fatalf("read installer log: %v", err)
+	}
+	for _, want := range []string{"systemctl enable --now postgresql", "systemctl enable waypoint", "systemctl restart waypoint", "psql postgres://waypoint:waypoint@localhost:5432/waypoint?sslmode=disable -X -v ON_ERROR_STOP=1 -f", "pg_isready -d"} {
+		if !strings.Contains(string(installedLog), want) {
+			t.Fatalf("installer log missing %q:\n%s", want, installedLog)
+		}
+	}
+
+	diagnostics := runInstaller(t, scriptPath, env, workDir, "diagnostics", "--config", configPath, "--provision", provisionPath)
+	for _, want := range []string{"waypoint_service=active", "database_ready=ready", "installed_version=1.0.0"} {
+		if !strings.Contains(diagnostics, want) {
+			t.Fatalf("diagnostics missing %q:\n%s", want, diagnostics)
+		}
+	}
+
 	mustWriteFile(t, configPath, strings.Join([]string{
 		"WAYPOINT_VERSION=1.0.1",
-		"WAYPOINT_PUBLIC_URL=https://waypoint.example.test",
+		"WAYPOINT_PUBLIC_URL=" + readyServer.URL,
 		"WAYPOINT_DB_DSN=postgres://waypoint:waypoint@localhost:5432/waypoint?sslmode=disable",
 		"WAYPOINT_PACKAGE_PATH=" + packagePath,
 		"WAYPOINT_INSTALL_ROOT=" + installRoot,
@@ -147,7 +184,7 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 
 	mustWriteFile(t, configPath, strings.Join([]string{
 		"WAYPOINT_VERSION=1.0.2",
-		"WAYPOINT_PUBLIC_URL=https://waypoint.example.test",
+		"WAYPOINT_PUBLIC_URL=" + readyServer.URL,
 		"WAYPOINT_DB_DSN=postgres://waypoint:waypoint@localhost:5432/waypoint?sslmode=disable",
 		"WAYPOINT_PACKAGE_PATH=" + packagePath,
 		"WAYPOINT_INSTALL_ROOT=" + installRoot,
@@ -239,6 +276,14 @@ func mustWriteJSON(t *testing.T, path string, value any) {
 		t.Fatalf("marshal %s: %v", path, err)
 	}
 	mustWriteFile(t, path, string(b)+"\n")
+}
+
+func mustWriteExecutable(t *testing.T, path, content string) {
+	t.Helper()
+	mustWriteFile(t, path, content)
+	if err := os.Chmod(path, 0o755); err != nil {
+		t.Fatalf("chmod %s: %v", path, err)
+	}
 }
 
 func readToken(t *testing.T, path string) string {
