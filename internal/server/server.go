@@ -54,7 +54,14 @@ func handler(db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/v1/findings/", findingsHandler(db))
 	mux.HandleFunc("/api/v1/audit-events", auditEventsHandler(db))
 	mux.HandleFunc("/events", auditEventsStreamHandler(db))
-	mux.Handle("/", spa(assets))
+	report := reportHandler(db, store)
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if reportJSONRoute.MatchString(r.URL.Path) || reportPDFRoute.MatchString(r.URL.Path) {
+			report.ServeHTTP(w, r)
+			return
+		}
+		spa(assets).ServeHTTP(w, r)
+	}))
 	return mux
 }
 
