@@ -241,7 +241,7 @@ type captureRequestProblem struct{ problem captureProblem }
 
 func (e captureRequestProblem) Error() string { return e.problem.Detail }
 
-func captureHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
+func captureHandler(db *sql.DB, store *evidenceStore, originKind string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if store != nil {
 			if err := store.ensureReady(r.Context(), db); err != nil {
@@ -353,7 +353,7 @@ func captureHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 				EngagementID:    actor.EngagementID,
 				Type:            "capture.conflict",
 				Actor:           auditActorSnapshot(actor),
-				Origin:          dbutil.AuditOrigin{Kind: "rest"},
+				Origin:          dbutil.AuditOrigin{Kind: originKind},
 				Subject:         dbutil.AuditSubject{Type: "action", ID: existing.actionID, Revision: 1},
 				RequestID:       reqID,
 				CorrelationID:   req.Envelope.CaptureID,
@@ -443,7 +443,7 @@ func captureHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 			EngagementID:  actor.EngagementID,
 			Type:          "capture.accepted",
 			Actor:         auditActorSnapshot(actor),
-			Origin:        dbutil.AuditOrigin{Kind: "rest"},
+			Origin:        dbutil.AuditOrigin{Kind: originKind},
 			Subject:       dbutil.AuditSubject{Type: "action", ID: actionID, Revision: 1},
 			RequestID:     reqID,
 			CorrelationID: req.Envelope.CaptureID,
