@@ -668,6 +668,14 @@ async function loadFindings() {
   const headers = new Headers({ 'Waypoint-Contract-Version': '1.0.0', 'X-Request-ID': `waypoint-findings-${Date.now()}`, Authorization: `Bearer ${token}` });
   try {
     const resp = await fetch(new URL('/api/v1/findings', window.location.origin), { headers });
+    if (resp.status === 401) {
+      state.mode = 'revoked';
+      state.banner = 'This browser session was revoked while loading findings.';
+      state.findings = [];
+      safeStorageSet('waypoint-audit-token', '');
+      scheduleRender();
+      return;
+    }
     if (!resp.ok) {
       state.findings = [];
       return;
@@ -788,6 +796,12 @@ function statusToLabel(status) {
       return 'Queued';
     case 'raw':
       return 'Raw';
+    case 'alert':
+      return 'Alert';
+    case 'conflict':
+      return 'Conflict';
+    case 'revoked':
+      return 'Session revoked';
     default:
       return String(status || 'Unknown')
         .replace(/[-_]+/g, ' ')
@@ -798,11 +812,14 @@ function statusToLabel(status) {
 function statusClass(status) {
   switch (String(status || '').toLowerCase()) {
     case 'success':
+    case 'alert':
       return 'success';
     case 'blocked':
+    case 'revoked':
       return 'blocked';
     case 'needs-review':
     case 'review':
+    case 'conflict':
       return 'review';
     case 'queued':
       return 'queued';
@@ -813,6 +830,17 @@ function statusClass(status) {
   }
 }
 
+function isNotableAlertRow(row) {
+  return String(row?.type || '').toLowerCase() === 'alert.notable';
+}
+
+function isOptimisticConflictRow(row) {
+  const data = row?.data || {};
+  return String(row?.type || '').toLowerCase() === 'capture.conflict'
+    || String(row?.status || '').toLowerCase() === 'conflict'
+    || String(data.reason || '').toLowerCase() === 'payload_mismatch';
+}
+
 function normalizeAttempt(row) {
   const data = parseData(row.data);
   const evidence = parseData(data.evidence);
@@ -820,9 +848,18 @@ function normalizeAttempt(row) {
   const target = String(data.target || row.subject?.id || 'unknown target');
   const host = String(data.host || data.execHost || row.origin?.service || row.actor?.handle || 'unknown host');
   const technique = String(data.technique || data.tactic || data.command || row.type || 'Unspecified technique');
-  const status = String(data.status || data.result?.kind || 'success').toLowerCase();
+  let status = String(data.status || data.result?.kind || 'success').toLowerCase();
+  if (isNotableAlertRow(row) && status === 'success') {
+    status = 'alert';
+  }
+  if (isOptimisticConflictRow(row)) {
+    status = 'conflict';
+  }
+  if (String(row.type || '').toLowerCase() === 'actor.revoked' || String(data.reason || '').toLowerCase() === 'revoked') {
+    status = 'revoked';
+  }
   const rawOutput = String(data.rawOutput || evidence.safePreview || data.summary || 'No raw output captured.');
-  const summary = String(data.summary || data.result?.detail || `${technique} against ${target}`);
+  const summary = String(data.summary || data.result?.detail || data.reason || `${technique} against ${target}`);
   const result = data.result && typeof data.result === 'object'
     ? data.result
     : { kind: status, label: statusToLabel(status), detail: summary };
@@ -950,17 +987,22 @@ function feedStatusLabel() {
   if (state.mode === 'live') return `Live SSE · ${state.highWaterCursor || 'cursor pending'}`;
   if (state.mode === 'reconnecting') return `Reconnecting · cursor ${state.highWaterCursor || 'pending'}`;
   if (state.mode === 'resync') return 'Resync required';
+  if (state.mode === 'revoked') return 'Session revoked';
   if (state.mode === 'error') return 'Live feed unavailable';
   if (state.mode === 'demo-live') return `Demo feed · live updates`;
+  if (state.rows.some(isOptimisticConflictRow)) return 'Live SSE · conflict review';
+  if (state.rows.some(isNotableAlertRow)) return 'Live SSE · notable alert';
   return `Demo feed · ${state.rows.length} attempts`;
 }
 
 function feedStatusTone() {
-  if (state.mode === 'live') return 'success';
+  if (state.mode === 'live') return state.rows.some(isOptimisticConflictRow) ? 'review' : 'success';
   if (state.mode === 'reconnecting') return 'queued';
   if (state.mode === 'resync') return 'review';
-  if (state.mode === 'error') return 'blocked';
+  if (state.mode === 'revoked' || state.mode === 'error') return 'blocked';
   if (state.mode === 'demo-live') return 'success';
+  if (state.rows.some(isOptimisticConflictRow)) return 'review';
+  if (state.rows.some(isNotableAlertRow)) return 'success';
   return 'neutral';
 }
 
@@ -1079,6 +1121,15 @@ async function loadAuditPage(after, append, liveMode = false) {
     }
     const resp = await fetch(url, { headers });
     if (!resp.ok) {
+      if (resp.status === 401) {
+        state.mode = 'revoked';
+        state.resyncLink = '';
+        state.banner = 'This browser session was revoked; reconnect with a fresh bearer token.';
+        state.loading = false;
+        safeStorageSet('waypoint-audit-token', '');
+        scheduleRender();
+        return;
+      }
       if (resp.status === 410) {
         const problem = await resp.json();
         state.mode = 'resync';
@@ -1127,6 +1178,15 @@ function startSse(after) {
 
   fetch(url, { headers, signal: controller.signal })
     .then(async (resp) => {
+      if (resp.status === 401) {
+        state.mode = 'revoked';
+        state.resyncLink = '';
+        state.loading = false;
+        state.banner = 'This browser session was revoked while the stream was open.';
+        safeStorageSet('waypoint-audit-token', '');
+        scheduleRender();
+        return;
+      }
       if (resp.status === 410) {
         const problem = await resp.json();
         state.mode = 'resync';
@@ -1208,10 +1268,11 @@ function parseSseFrame(frame) {
 
 function scheduleReconnect(after) {
   if (state.reconnectTimer) clearTimeout(state.reconnectTimer);
+  if (state.mode === 'revoked') return;
   state.mode = 'reconnecting';
   scheduleRender();
   state.reconnectTimer = setTimeout(() => {
-    if (!state.liveToken.trim()) return;
+    if (!state.liveToken.trim() || state.mode === 'revoked') return;
     startSse(after);
   }, 1500);
 }
@@ -1223,6 +1284,15 @@ async function resyncFromGap() {
   const headers = new Headers({ 'Waypoint-Contract-Version': '1.0.0', 'X-Request-ID': `waypoint-resync-${Date.now()}`, Authorization: `Bearer ${state.liveToken.trim()}` });
   try {
     const resp = await fetch(state.resyncLink, { headers });
+    if (resp.status === 401) {
+      state.mode = 'revoked';
+      state.resyncLink = '';
+      state.loading = false;
+      state.banner = 'This browser session was revoked before resync completed.';
+      safeStorageSet('waypoint-audit-token', '');
+      scheduleRender();
+      return;
+    }
     if (!resp.ok) throw new Error(`resync ${resp.status}`);
     const page = await resp.json();
     setRows(page.items || [], { append: true, pageCursor: page.page?.nextCursor || null, highWaterCursor: page.page?.highWaterCursor || null, hasMore: Boolean(page.page?.hasMore) });
@@ -1404,6 +1474,8 @@ function attackWorkspaceMarkup(active, currentIndex, rows, selected) {
   const targetValues = uniqueValues((row) => row.target.toLowerCase());
   const hostValues = uniqueValues((row) => row.host.toLowerCase());
   const statusValues = uniqueValues((row) => row.status.toLowerCase());
+  const notableAlerts = rows.filter(isNotableAlertRow).slice(-3);
+  const optimisticConflicts = rows.filter(isOptimisticConflictRow).slice(-3);
 
   return `
     <section class="workspace-panel attacks-workspace" aria-label="Attacks workspace">
@@ -1420,7 +1492,9 @@ function attackWorkspaceMarkup(active, currentIndex, rows, selected) {
 
       <p class="workspace-lede">${escapeHtml(active.workspaceLede)}</p>
 
-      ${state.banner ? `<div class="live-banner ${statusClass(state.mode === 'reconnecting' ? 'queued' : state.mode === 'error' ? 'blocked' : state.mode === 'resync' ? 'needs-review' : 'success')}" role="status">${escapeHtml(state.banner)}</div>` : ''}
+      ${state.banner ? `<div class="live-banner ${statusClass(state.mode === 'reconnecting' ? 'queued' : state.mode === 'error' ? 'blocked' : state.mode === 'resync' ? 'needs-review' : state.mode === 'revoked' ? 'blocked' : 'success')}" role="status">${escapeHtml(state.banner)}</div>` : ''}
+      ${notableAlerts.length ? `<div class="live-banner success" role="status"><strong>Notable alerts</strong><span>${escapeHtml(notableAlerts.map((alert) => alert.data?.ruleId || alert.summary || alert.type).join(' · '))}</span></div>` : ''}
+      ${optimisticConflicts.length ? `<div class="live-banner review" role="status"><strong>Optimistic conflict</strong><span>${escapeHtml(optimisticConflicts.map((row) => row.summary || row.data?.reason || row.type).join(' · '))}</span></div>` : ''}
 
       <div class="attack-toolbar">
         <label class="field-group"><span>Technique</span><select data-action="filter" data-filter="technique">${buildOptions(filters.technique, techniqueValues, (value) => value)}</select></label>
