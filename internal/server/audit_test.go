@@ -17,7 +17,7 @@ import (
 	dbm "waypoint/internal/db"
 )
 
-func TestAuditHistoryPaginationSSEReconnectAndRevocation(t *testing.T) {
+func TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
 
@@ -29,43 +29,72 @@ func TestAuditHistoryPaginationSSEReconnectAndRevocation(t *testing.T) {
 		t.Fatalf("apply migrations: %v", err)
 	}
 
-	engagementID := "11111111-1111-4111-8111-111111111111"
-	actorID := "22222222-2222-4222-8222-222222222222"
-	token := "audit-stream-token"
-	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
-	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, actorID, engagementID, hashHex(token))
+	engagementA := "11111111-1111-4111-8111-111111111111"
+	engagementB := "22222222-2222-4222-8222-222222222222"
+	actorA := "33333333-3333-4333-8333-333333333333"
+	actorB := "44444444-4444-4444-8444-444444444444"
+	tokenA := "audit-stream-token-a"
+	tokenB := "audit-stream-token-b"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo A', 'Client A', 'Scope A', 'active')`, engagementA)
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo B', 'Client B', 'Scope B', 'active')`, engagementB)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, actorA, engagementA, hashHex(tokenA))
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'beth.operator', $3, 'operator')`, actorB, engagementB, hashHex(tokenB))
 
-	eventIDs := appendAuditEvents(t, db, engagementID, actorID, []string{"journey.note.added", "journey.note.updated", "journey.note.closed"})
+	a1 := appendAuditEvents(t, db, engagementA, actorA, []string{"journey.note.added"})[0]
+	b1 := appendAuditEvents(t, db, engagementB, actorB, []string{"journey.note.added"})[0]
+	a2 := appendAuditEvents(t, db, engagementA, actorA, []string{"journey.note.updated"})[0]
+	a3 := appendAuditEvents(t, db, engagementA, actorA, []string{"journey.note.closed"})[0]
+
+	if !(mustCursor(a1) < mustCursor(b1) && mustCursor(b1) < mustCursor(a2) && mustCursor(a2) < mustCursor(a3)) {
+		t.Fatalf("event ids are not monotonic: %q %q %q %q", a1, b1, a2, a3)
+	}
 
 	ts := httptest.NewServer(HandlerWithDB(db))
 	defer ts.Close()
 
-	page := decodeAuditPage(t, doAuditRequest(t, ts.Client(), ts.URL+"/api/v1/audit-events?limit=2", token, "req-page", "", ""))
+	page := decodeAuditPage(t, doAuditRequest(t, ts.Client(), ts.URL+"/api/v1/audit-events?limit=2", tokenA, "req-page", "", ""))
 	if len(page.Items) != 2 {
 		t.Fatalf("page items = %d, want 2", len(page.Items))
 	}
-	if page.Page.NextCursor != eventIDs[1] {
-		t.Fatalf("nextCursor = %q, want %q", page.Page.NextCursor, eventIDs[1])
+	if page.Items[0].ID != a1 || page.Items[1].ID != a2 {
+		t.Fatalf("page ids = %q, want %q then %q", []string{page.Items[0].ID, page.Items[1].ID}, a1, a2)
 	}
-	if page.Page.HighWaterCursor == nil || *page.Page.HighWaterCursor != eventIDs[2] {
-		t.Fatalf("highWaterCursor = %#v, want %q", page.Page.HighWaterCursor, eventIDs[2])
+	if page.Items[0].EngagementID != engagementA || page.Items[1].EngagementID != engagementA {
+		t.Fatalf("page engagement ids = %q, want only %q", []string{page.Items[0].EngagementID, page.Items[1].EngagementID}, engagementA)
+	}
+	if page.Page.NextCursor != a2 {
+		t.Fatalf("nextCursor = %q, want %q", page.Page.NextCursor, a2)
+	}
+	if page.Page.HighWaterCursor == nil || *page.Page.HighWaterCursor != a3 {
+		t.Fatalf("highWaterCursor = %#v, want %q", page.Page.HighWaterCursor, a3)
+	}
+	if !page.Page.HasMore {
+		t.Fatalf("page hasMore = false, want true")
 	}
 
-	sseResp := doAuditRequest(t, ts.Client(), ts.URL+"/events?after="+url.QueryEscape(eventIDs[1]), token, "req-sse", eventIDs[1], "")
+	page2 := decodeAuditPage(t, doAuditRequest(t, ts.Client(), ts.URL+"/api/v1/audit-events?after="+url.QueryEscape(a2)+"&limit=2", tokenA, "req-page-2", "", ""))
+	if len(page2.Items) != 1 || page2.Items[0].ID != a3 {
+		t.Fatalf("page2 items = %#v, want only %q", page2.Items, a3)
+	}
+	if page2.Page.HasMore {
+		t.Fatalf("page2 hasMore = true, want false")
+	}
+
+	sseResp := doAuditRequest(t, ts.Client(), ts.URL+"/events", tokenA, "req-sse", "", a1)
 	frame := readSSEFrame(t, sseResp.Body)
 	_ = sseResp.Body.Close()
-	if frame["id"] != eventIDs[2] {
-		t.Fatalf("sse id = %q, want %q", frame["id"], eventIDs[2])
+	if frame["id"] != a2 {
+		t.Fatalf("sse id = %q, want %q", frame["id"], a2)
 	}
-	if frame["event"] != "journey.note.closed" {
-		t.Fatalf("sse event = %q, want journey.note.closed", frame["event"])
+	if frame["event"] != "journey.note.updated" {
+		t.Fatalf("sse event = %q, want journey.note.updated", frame["event"])
 	}
-	if !strings.Contains(frame["data"], eventIDs[2]) {
-		t.Fatalf("sse data = %q, want event payload", frame["data"])
+	if !strings.Contains(frame["data"], `"engagementId":"`+engagementA+`"`) {
+		t.Fatalf("sse data = %q, want engagement %q", frame["data"], engagementA)
 	}
 
-	mustExec(t, db, `UPDATE actor SET revoked_at = now() WHERE id = $1`, actorID)
-	revoked := doAuditRequest(t, ts.Client(), ts.URL+"/events", token, "req-revoked", "", "")
+	mustExec(t, db, `UPDATE actor SET revoked_at = now() WHERE id = $1`, actorA)
+	revoked := doAuditRequest(t, ts.Client(), ts.URL+"/events", tokenA, "req-revoked", "", a2)
 	defer revoked.Body.Close()
 	if revoked.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("revoked SSE status = %d, want %d", revoked.StatusCode, http.StatusUnauthorized)
@@ -143,6 +172,131 @@ func TestTailAuditEventsStopsWhenQueueIsFull(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("tailAuditEvents did not stop for a full queue")
+	}
+}
+
+func TestAuditSSEHeartbeatAndCommittedCaptureVisibility(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "77777777-7777-4777-8777-777777777777"
+	actorID := "88888888-8888-4888-8888-888888888888"
+	token := "heartbeat-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, actorID, engagementID, hashHex(token))
+
+	ts := httptest.NewServer(HandlerWithDB(db))
+	defer ts.Close()
+
+	resp := doAuditRequest(t, ts.Client(), ts.URL+"/events", token, "req-heartbeat", "", "")
+
+	heartbeatCh := make(chan struct {
+		line string
+		err  error
+	}, 1)
+	go func() {
+		line, err := readSSELineValue(resp.Body)
+		heartbeatCh <- struct {
+			line string
+			err  error
+		}{line: line, err: err}
+	}()
+
+	select {
+	case result := <-heartbeatCh:
+		if result.err != nil {
+			t.Fatalf("read heartbeat line: %v", result.err)
+		}
+		if result.line != ": heartbeat" {
+			t.Fatalf("heartbeat line = %q, want %q", result.line, ": heartbeat")
+		}
+	case <-time.After(12 * time.Second):
+		t.Fatal("timed out waiting for SSE heartbeat")
+	}
+	_ = resp.Body.Close()
+
+	auditResp := doAuditRequest(t, ts.Client(), ts.URL+"/events", token, "req-visibility", "", "")
+	defer auditResp.Body.Close()
+
+	visibleCh := make(chan struct {
+		frame map[string]string
+		err   error
+	}, 1)
+	go func() {
+		frame, err := readSSEFrameValue(auditResp.Body)
+		visibleCh <- struct {
+			frame map[string]string
+			err   error
+		}{frame: frame, err: err}
+	}()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	defer tx.Rollback()
+
+	eventID, err := dbm.AppendAuditEvent(ctx, tx, dbm.AuditEventInput{
+		EngagementID: engagementID,
+		Type:         "capture.accepted",
+		Actor: dbm.AuditActorSnapshot{
+			ID:     actorID,
+			Kind:   "human",
+			Handle: "alex.operator",
+			Role:   "operator",
+		},
+		Origin:        dbm.AuditOrigin{Kind: "rest"},
+		Subject:       dbm.AuditSubject{Type: "capture", ID: "99999999-9999-4999-8999-999999999999", Revision: 1},
+		RequestID:     "req-visibility",
+		CorrelationID: "corr-visibility",
+		Data:          map[string]any{"captureId": "99999999-9999-4999-8999-999999999999"},
+	})
+	if err != nil {
+		t.Fatalf("append capture audit event: %v", err)
+	}
+
+	var beforeVisible int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_event WHERE id = $1`, eventID).Scan(&beforeVisible); err != nil {
+		t.Fatalf("count uncommitted audit event: %v", err)
+	}
+	if beforeVisible != 0 {
+		t.Fatalf("uncommitted audit event count = %d, want 0", beforeVisible)
+	}
+
+	select {
+	case result := <-visibleCh:
+		t.Fatalf("sse frame became visible before commit: %#v %v", result.frame, result.err)
+	case <-time.After(250 * time.Millisecond):
+	}
+
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
+
+	select {
+	case result := <-visibleCh:
+		if result.err != nil {
+			t.Fatalf("read committed sse frame: %v", result.err)
+		}
+		if result.frame["id"] != fmt.Sprint(eventID) {
+			t.Fatalf("committed sse id = %q, want %q", result.frame["id"], fmt.Sprint(eventID))
+		}
+		if result.frame["event"] != "capture.accepted" {
+			t.Fatalf("committed sse event = %q, want capture.accepted", result.frame["event"])
+		}
+		if !strings.Contains(result.frame["data"], `"captureId":"99999999-9999-4999-8999-999999999999"`) {
+			t.Fatalf("committed sse data = %q, want capture payload", result.frame["data"])
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for committed capture event on SSE")
 	}
 }
 
@@ -230,6 +384,14 @@ func decodeAuditPage(t *testing.T, resp *http.Response) auditPageResponse {
 
 func readSSEFrame(t *testing.T, r io.Reader) map[string]string {
 	t.Helper()
+	frame, err := readSSEFrameValue(r)
+	if err != nil {
+		t.Fatalf("scan sse frame: %v", err)
+	}
+	return frame
+}
+
+func readSSEFrameValue(r io.Reader) (map[string]string, error) {
 	frame := map[string]string{}
 	s := bufio.NewScanner(r)
 	for s.Scan() {
@@ -249,7 +411,12 @@ func readSSEFrame(t *testing.T, r io.Reader) map[string]string {
 		frame[key] = value
 	}
 	if err := s.Err(); err != nil {
-		t.Fatalf("scan sse frame: %v", err)
+		return nil, err
 	}
-	return frame
+	return frame, nil
+}
+
+func readSSELineValue(r io.Reader) (string, error) {
+	line, err := bufio.NewReader(r).ReadString('\n')
+	return strings.TrimRight(line, "\r\n"), err
 }
