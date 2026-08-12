@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { buildWebAssets, embeddedDistRoot } from './web-assets.mjs';
 
 const webRoot = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(webRoot, '..', '..');
@@ -71,4 +73,21 @@ await test('G3 performance fixture keeps the 100k-action budget focused and boun
   assert.match(audit, /limit must be between 1 and 500/);
   assert.match(audit, /fetchLimit := limit \+ 1/);
   assert.match(audit, /hasMore := len\(items\) > limit/);
+});
+
+await test('web build output is reproducible and matches the embedded assets', async () => {
+  const tempRoot = await mkdtemp(resolve(tmpdir(), 'waypoint-web-build-'));
+
+  try {
+    await buildWebAssets(tempRoot);
+
+    for (const asset of ['index.html', 'assets/waypoint.css', 'assets/waypoint.js']) {
+      const generated = await readFile(resolve(tempRoot, asset), 'utf8');
+      const embedded = await readFile(resolve(embeddedDistRoot, asset), 'utf8');
+
+      assert.equal(generated, embedded, `${asset} drifted from the compiled embedded asset`);
+    }
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true });
+  }
 });

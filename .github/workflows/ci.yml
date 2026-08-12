@@ -35,7 +35,7 @@ jobs:
           node-version: 20
 
       - name: Install web dependencies
-        run: npm install --prefix web
+        run: npm ci --prefix web
 
       - name: Lint
         run: make lint

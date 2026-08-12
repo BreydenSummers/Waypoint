@@ -1,5 +1,7 @@
 FROM node:22-bookworm AS web
 WORKDIR /src
+COPY web/package*.json ./web/
+RUN npm ci --prefix web
 COPY web ./web
 COPY internal ./internal
 COPY contracts ./contracts
