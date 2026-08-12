@@ -486,7 +486,7 @@ const state = {
   hasMore: false,
   filters: { technique: 'all', target: 'all', host: 'all', status: 'all', q: '' },
   guideQuery: '',
-  mode: 'demo',
+  mode: 'idle',
   liveToken: safeStorageGet('waypoint-audit-token') || '',
   resyncLink: '',
   loading: false,
@@ -993,6 +993,7 @@ function feedStatusLabel() {
   if (state.mode === 'demo-live') return `Demo feed · live updates`;
   if (state.rows.some(isOptimisticConflictRow)) return 'Live SSE · conflict review';
   if (state.rows.some(isNotableAlertRow)) return 'Live SSE · notable alert';
+  if (state.mode === 'idle' && !state.rows.length) return 'Empty engagement · 0 attempts';
   return `Demo feed · ${state.rows.length} attempts`;
 }
 
@@ -1541,9 +1542,11 @@ function renderSidebarLog(active) {
           </div>
           <div class="status-pill ${feedStatusTone()}">${escapeHtml(feedStatusLabel())}</div>
         </div>
-        <ul class="recent-attempts">
-          ${recent.map((row) => `<li><strong>${escapeHtml(row.technique)}</strong><span>${escapeHtml(row.target)} · ${escapeHtml(row.host)} · ${escapeHtml(row.statusLabel)}</span></li>`).join('')}
-        </ul>
+        ${recent.length ? `
+          <ul class="recent-attempts">
+            ${recent.map((row) => `<li><strong>${escapeHtml(row.technique)}</strong><span>${escapeHtml(row.target)} · ${escapeHtml(row.host)} · ${escapeHtml(row.statusLabel)}</span></li>`).join('')}
+          </ul>
+        ` : '<p class="guide-note-empty">No authoritative audit events loaded yet. Connect live to replace this trail stub.</p>'}
       </section>
     `;
   }
@@ -2100,7 +2103,6 @@ function boot() {
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.view = state.view;
   document.title = state.view === 'report' ? 'Waypoint — report snapshot' : `Waypoint — ${phaseData[state.activePhase].name}`;
-  primeDemoFeed(false);
   render();
   if (state.liveToken.trim()) {
     connectLive();
