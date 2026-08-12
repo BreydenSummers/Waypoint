@@ -34,11 +34,12 @@ type captureAckResponse struct {
 }
 
 type problemResponse struct {
-	Code        string `json:"code"`
-	Status      int    `json:"status"`
-	RequestID   string `json:"requestId"`
-	ExistingID  string `json:"existingActionId"`
-	FieldErrors []struct {
+	Code              string   `json:"code"`
+	Status            int      `json:"status"`
+	RequestID         string   `json:"requestId"`
+	ExistingID        string   `json:"existingActionId"`
+	SupportedVersions []string `json:"supportedVersions"`
+	FieldErrors       []struct {
 		Pointer string `json:"pointer"`
 		Code    string `json:"code"`
 	} `json:"fieldErrors"`
@@ -115,13 +116,14 @@ func TestCaptureIngestCreatesReplaysAndRejectsChangedPayload(t *testing.T) {
 	if ack.AuditEventCursor == "" || ack.ActionID == "" {
 		t.Fatalf("ack missing ids: %#v", ack)
 	}
+	createdCursor := ack.AuditEventCursor
 
 	resp = doCaptureRequest(t, HandlerWithDB(db), actorToken, "aaaa1111", baseEnvelope, stdout, stderr)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("replay status = %d, want %d", resp.Code, http.StatusOK)
 	}
 	decodeResponse(t, resp, &ack)
-	if ack.Idempotency != "replayed" {
+	if ack.Idempotency != "replayed" || ack.AuditEventCursor != createdCursor {
 		t.Fatalf("replay ack = %#v", ack)
 	}
 
@@ -135,6 +137,14 @@ func TestCaptureIngestCreatesReplaysAndRejectsChangedPayload(t *testing.T) {
 	decodeResponse(t, resp, &prob)
 	if prob.Code != "idempotency_conflict" || prob.ExistingID != ack.ActionID {
 		t.Fatalf("problem = %#v", prob)
+	}
+
+	var conflictType, conflictData string
+	if err := db.QueryRowContext(ctx, `SELECT type, data::text FROM audit_event WHERE subject_id = $1 AND type = 'capture.conflict' ORDER BY id DESC LIMIT 1`, ack.ActionID).Scan(&conflictType, &conflictData); err != nil {
+		t.Fatalf("load conflict audit event: %v", err)
+	}
+	if conflictType != "capture.conflict" || !bytes.Contains([]byte(conflictData), []byte(`"reason":"payload_mismatch"`)) || !bytes.Contains([]byte(conflictData), []byte(`"existingActionId":"`+ack.ActionID+`"`)) {
+		t.Fatalf("conflict audit event unexpected: type=%s data=%s", conflictType, conflictData)
 	}
 
 	var count int
@@ -151,6 +161,26 @@ func TestCaptureIngestCreatesReplaysAndRejectsChangedPayload(t *testing.T) {
 	}
 	if eventType != "capture.accepted" || !bytes.Contains([]byte(data), []byte(`"egressStatus":"disabled"`)) {
 		t.Fatalf("accepted audit event unexpected: type=%s data=%s", eventType, data)
+	}
+}
+
+func TestCaptureRejectsUnsupportedContractVersion(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/captures", strings.NewReader("{}"))
+	req.Header.Set("Waypoint-Contract-Version", "0.9.0")
+	req.Header.Set("X-Request-ID", "req-version-negotiation")
+	rr := httptest.NewRecorder()
+	HandlerWithDB(db).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUpgradeRequired {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUpgradeRequired)
+	}
+	var prob problemResponse
+	decodeResponse(t, rr, &prob)
+	if prob.Code != "unsupported_contract_version" || len(prob.SupportedVersions) != 1 || prob.SupportedVersions[0] != "1.0.0" {
+		t.Fatalf("problem = %#v", prob)
 	}
 }
 
