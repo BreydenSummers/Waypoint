@@ -57,11 +57,15 @@ func TestLiveMultiActorRESTCaptureJourneys(t *testing.T) {
 		},
 	}
 	baseNetwork := map[string]any{
-		"execHost":   map[string]any{"address": "10.10.0.12", "method": "route_selection", "confidence": "confirmed"},
-		"egress":     map[string]any{"mode": "off", "status": "disabled"},
-		"pivotChain": []any{},
+		"execHost": map[string]any{"address": "10.10.0.12", "method": "route_selection", "confidence": "confirmed"},
+		"egress":   map[string]any{"mode": "off", "status": "disabled"},
+		"pivotChain": []any{
+			map[string]any{"type": "ssh_jump", "host": "pivot.internal", "port": 22, "label": "jumpbox"},
+		},
 	}
-	baseTiming := map[string]any{"startedAt": "2025-01-15T10:00:00.000Z", "endedAt": "2025-01-15T10:00:01.000Z", "durationMs": 1000}
+	endedAt := time.Now().UTC().Add(-6 * time.Second)
+	startedAt := endedAt.Add(-1 * time.Second)
+	baseTiming := map[string]any{"startedAt": startedAt.Format(time.RFC3339Nano), "endedAt": endedAt.Format(time.RFC3339Nano), "durationMs": 1000}
 
 	humanKnown := map[string]any{
 		"contractVersion": "1.0.0",
@@ -120,9 +124,20 @@ func TestLiveMultiActorRESTCaptureJourneys(t *testing.T) {
 	if humanAck.Idempotency != "created" || humanAck.ActionID == "" {
 		t.Fatalf("human ack = %#v", humanAck)
 	}
+	if humanAck.ClockSkew == nil || humanAck.ClockSkew.Status != "outside_tolerance" || humanAck.ClockSkew.OffsetMs == 0 {
+		t.Fatalf("human clock skew = %#v", humanAck.ClockSkew)
+	}
 	assertActionSnapshot(t, ctx, db, humanAck.ActionID, humanID, "human", "manual", "parsed", "waypoint.nmap", false)
 	assertEvidenceLinked(t, ctx, db, evidenceDir, humanAck.ActionID, "nmap ok\n", "")
 	assertSingleResultAndObservation(t, ctx, db, humanAck.ActionID, 1, 1)
+	var execHostIP, egressIP, pivotChain string
+	var actionStartedAt, actionEndedAt time.Time
+	if err := db.QueryRowContext(ctx, `SELECT exec_host_ip::text, COALESCE(egress_public_ip::text, ''), pivot_chain::text, started_at, ended_at FROM action WHERE id = $1`, humanAck.ActionID).Scan(&execHostIP, &egressIP, &pivotChain, &actionStartedAt, &actionEndedAt); err != nil {
+		t.Fatalf("load human action metadata: %v", err)
+	}
+	if execHostIP != "10.10.0.12" || egressIP != "" || !strings.Contains(pivotChain, `"ssh_jump"`) || !actionEndedAt.After(actionStartedAt) {
+		t.Fatalf("human action metadata unexpected: execHost=%q egress=%q pivot=%q started=%s ended=%s", execHostIP, egressIP, pivotChain, actionStartedAt, actionEndedAt)
+	}
 
 	aiUnknown := map[string]any{
 		"contractVersion": "1.0.0",
@@ -202,7 +217,7 @@ func TestLiveMultiActorRESTCaptureJourneys(t *testing.T) {
 	}
 	var replayAck captureAckResponse
 	decodeBody(t, replay.body, &replayAck)
-	if replayAck.Idempotency != "replayed" || replayAck.ActionID != humanAck.ActionID {
+	if replayAck.Idempotency != "replayed" || replayAck.ActionID != humanAck.ActionID || replayAck.AuditEventCursor != humanAck.AuditEventCursor {
 		t.Fatalf("replay ack = %#v", replayAck)
 	}
 
