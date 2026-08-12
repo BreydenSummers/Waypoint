@@ -5,10 +5,13 @@ SCRIPT_NAME=$(basename "$0")
 MODE=""
 CONFIG_FILE=""
 PROVISION_FILE=""
+DESTROY_RECEIPT_FILE=""
+DESTROY_BUNDLE_PATH=""
 INSTALL_ROOT=""
 STATE_ROOT=""
 LOG_ROOT=""
 DRY_RUN=0
+DESTROY_FORCE=0
 
 FAIL_AT=${WAYPOINT_INSTALLER_FAIL_AT:-}
 OS_RELEASE_FILE=${WAYPOINT_INSTALLER_OS_RELEASE_FILE:-/etc/os-release}
@@ -16,11 +19,14 @@ UNAME_MACHINE=${WAYPOINT_INSTALLER_UNAME_MACHINE:-$(uname -m)}
 
 usage() {
   cat <<'EOF'
-Usage: waypoint-installer.sh <validate|install|upgrade|provision|diagnostics|rollback> [options]
+Usage: waypoint-installer.sh <validate|install|upgrade|provision|diagnostics|rollback|destroy> [options]
 
 Options:
   --config FILE       installer env file
   --provision FILE    account provisioning JSON file
+  --receipt FILE      verified export receipt for destroy
+  --bundle PATH       exact verified bundle path for destroy
+  --force             break-glass teardown without a verified receipt
   --root DIR          install root (default from config or /opt/waypoint)
   --state-root DIR    state root (default from config or /var/lib/waypoint)
   --log-root DIR      log root (default from config or /var/log/waypoint)
@@ -552,6 +558,59 @@ rollback() {
   echo "$backup_dir"
 }
 
+verify_export_receipt() {
+  local receipt_file=$1
+  local bundle_path=$2
+  python3 - "$receipt_file" "$bundle_path" <<'PY'
+import json
+import pathlib
+import sys
+
+receipt_path = pathlib.Path(sys.argv[1]).resolve(strict=False)
+bundle_path = pathlib.Path(sys.argv[2]).resolve(strict=False)
+with receipt_path.open('r', encoding='utf-8') as fh:
+    data = json.load(fh)
+
+if not isinstance(data, dict):
+    raise SystemExit('receipt must be a JSON object')
+
+status = str(data.get('status', '')).strip().lower()
+verified = data.get('verified') is True or status in {'verified', 'hash-verified', 'sha-256 verified'}
+if not verified:
+    raise SystemExit('receipt is not verified')
+
+receipt_bundle = data.get('bundlePath') or data.get('bundle_path') or data.get('verifiedBundlePath')
+if not receipt_bundle and isinstance(data.get('bundle'), dict):
+    receipt_bundle = data['bundle'].get('path')
+if not receipt_bundle:
+    raise SystemExit('receipt missing bundlePath')
+
+if pathlib.Path(str(receipt_bundle)).resolve(strict=False) != bundle_path:
+    raise SystemExit('receipt bundle path does not match the requested bundle')
+PY
+}
+
+destroy() {
+  [[ -n ${DESTROY_BUNDLE_PATH:-} ]] || die "--bundle is required for destroy"
+  if [[ $DESTROY_FORCE -ne 1 ]]; then
+    [[ -n ${DESTROY_RECEIPT_FILE:-} ]] || die "--receipt is required unless --force is used"
+    [[ -f $DESTROY_RECEIPT_FILE ]] || die "missing receipt file: $DESTROY_RECEIPT_FILE"
+    [[ -e $DESTROY_BUNDLE_PATH ]] || die "missing bundle path: $DESTROY_BUNDLE_PATH"
+    verify_export_receipt "$DESTROY_RECEIPT_FILE" "$DESTROY_BUNDLE_PATH"
+  else
+    log "BREAK-GLASS: destroy proceeding without verified receipt"
+  fi
+
+  systemctl stop waypoint >/dev/null 2>&1 || true
+  systemctl disable waypoint >/dev/null 2>&1 || true
+  if is_local_database; then
+    systemctl stop postgresql >/dev/null 2>&1 || true
+  fi
+
+  rm -rf "$INSTALL_ROOT" "$STATE_ROOT" "$LOG_ROOT"
+  log "destroyed instance after bundle check: $DESTROY_BUNDLE_PATH"
+}
+
 load_config() {
   [[ -n ${CONFIG_FILE:-} ]] || die "--config is required"
   declare -gA CONFIG=()
@@ -575,11 +634,14 @@ main() {
     case $1 in
       --config) CONFIG_FILE=${2:-}; shift 2 ;;
       --provision) PROVISION_FILE=${2:-}; shift 2 ;;
+      --receipt) DESTROY_RECEIPT_FILE=${2:-}; shift 2 ;;
+      --bundle) DESTROY_BUNDLE_PATH=${2:-}; shift 2 ;;
       --root) INSTALL_ROOT=${2:-}; shift 2 ;;
       --state-root) STATE_ROOT=${2:-}; shift 2 ;;
       --log-root) LOG_ROOT=${2:-}; shift 2 ;;
       --dry-run) DRY_RUN=1; shift ;;
-      validate|install|upgrade|provision|diagnostics|rollback)
+      --force) DESTROY_FORCE=1; shift ;;
+      validate|install|upgrade|provision|diagnostics|rollback|destroy)
         MODE=$1
         shift
         ;;
@@ -620,6 +682,9 @@ main() {
     rollback)
       prepare_roots
       rollback "${1:-}"
+      ;;
+    destroy)
+      destroy
       ;;
   esac
 }
