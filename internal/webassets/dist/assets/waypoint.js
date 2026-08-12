@@ -70,6 +70,7 @@ const phaseData = new Proxy(phaseDataFallback, {
 });
 
 const reportPath = '/engagements/demo/summit/report';
+const reportPdfPath = `${reportPath}.pdf`;
 const reportSnapshotFallback = {
   version: 'v1',
   title: 'Runtime report snapshot',
@@ -1616,7 +1617,7 @@ function render() {
           </div>
           <div class="report-toolbar">
             <button type="button" class="secondary-link" data-action="report-back">Back to Summit</button>
-            <button type="button" class="primary-button" data-action="report-print">Print PDF</button>
+            <button type="button" class="primary-button" data-action="report-print">Open PDF artifact</button>
           </div>
         </section>
 
@@ -1973,7 +1974,7 @@ function bindUI() {
   });
 
   root.querySelectorAll('[data-action="report-print"]').forEach((button) => {
-    button.addEventListener('click', () => window.print());
+    button.addEventListener('click', () => window.open(reportPdfPath, '_blank', 'noopener'));
   });
 
   root.querySelectorAll('[data-action="phase"]').forEach((button) => {

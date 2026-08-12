@@ -16,11 +16,12 @@ RUN CGO_ENABLED=0 go build -o /out/waypoint ./cmd/waypoint
 
 FROM debian:bookworm-slim
 RUN apt-get update \
- && apt-get install -y --no-install-recommends curl ca-certificates \
+ && apt-get install -y --no-install-recommends curl ca-certificates chromium \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/waypoint /usr/local/bin/waypoint
-ENV WAYPOINT_ADDR=:8080
+ENV WAYPOINT_ADDR=:8080 \
+    WAYPOINT_CHROMIUM=/usr/bin/chromium
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=2s --start-period=15s --retries=6 CMD curl -fsS http://127.0.0.1:8080/readyz >/dev/null || exit 1
 ENTRYPOINT ["/usr/local/bin/waypoint"]

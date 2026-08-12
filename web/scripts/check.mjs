@@ -10,6 +10,8 @@ const distStyles = await readFile(resolve(webRoot, '../internal/webassets/dist/a
 const index = await readFile(resolve(webRoot, 'index.html'), 'utf8');
 const distIndex = await readFile(resolve(webRoot, '../internal/webassets/dist/index.html'), 'utf8');
 const reportFixture = JSON.parse(await readFile(resolve(webRoot, '../contracts/v1/fixtures/report-snapshot.json'), 'utf8'));
+const reportRenderer = await readFile(resolve(webRoot, 'scripts/report-renderer.mjs'), 'utf8');
+const renderReportScript = await readFile(resolve(webRoot, 'scripts/render-report.mjs'), 'utf8');
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -32,6 +34,10 @@ for (const html of [index, distIndex]) {
 
 if (styles !== distStyles) {
   throw new Error('generated stylesheet drift detected; rerun web build');
+}
+
+if (app.includes('window.print') || distBundle.includes('window.print')) {
+  throw new Error('report view still relies on browser printing');
 }
 
 if (!distBundle.includes("new Proxy(phaseDataFallback")) {
@@ -62,6 +68,16 @@ for (const key of requiredReportKeys) {
 
 if (reportFixture.title !== 'Runtime report snapshot') {
   throw new Error(`Report fixture title was not updated to runtime wording: ${reportFixture.title}`);
+}
+
+if (!reportRenderer.includes('export function buildReportHtml') || !reportRenderer.includes('escapeHtml') || !reportRenderer.includes('Hash verified, not signed')) {
+  throw new Error('Report renderer helper is missing the frozen escaped template');
+}
+if (!renderReportScript.includes('buildReportHtml') || !renderReportScript.includes("WAYPOINT_CHROMIUM || '/usr/bin/chromium'") || !renderReportScript.includes('pathToFileURL(htmlPath).href')) {
+  throw new Error('Report render script is not using the offline frozen renderer');
+}
+if (renderReportScript.includes('window.print')) {
+  throw new Error('Report render script should not rely on browser printing');
 }
 
 const escapedSnippet = escapeHtml(reportFixture.evidence[1].rawSnippet);
