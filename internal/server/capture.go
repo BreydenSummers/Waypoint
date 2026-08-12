@@ -241,8 +241,14 @@ type captureRequestProblem struct{ problem captureProblem }
 
 func (e captureRequestProblem) Error() string { return e.problem.Detail }
 
-func captureHandler(db *sql.DB) http.HandlerFunc {
+func captureHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if store != nil {
+			if err := store.ensureReady(r.Context(), db); err != nil {
+				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusServiceUnavailable), Status: http.StatusServiceUnavailable, Code: "service_unavailable", RequestID: requestIDFromHeader(r.Header.Get("X-Request-ID")), Retryable: true, Detail: "evidence storage is unavailable"})
+				return
+			}
+		}
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -270,7 +276,7 @@ func captureHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		req, err := readCaptureRequest(r)
+		req, err := readCaptureRequest(r, store)
 		if err != nil {
 			if pb, ok := err.(captureRequestProblem); ok {
 				pb.problem.RequestID = reqID
@@ -462,7 +468,7 @@ func captureHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
-func readCaptureRequest(r *http.Request) (captureRequest, error) {
+func readCaptureRequest(r *http.Request, store *evidenceStore) (captureRequest, error) {
 	var out captureRequest
 	mr, err := r.MultipartReader()
 	if err != nil {
@@ -494,19 +500,27 @@ func readCaptureRequest(r *http.Request) (captureRequest, error) {
 				return out, captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", Retryable: false, Detail: err.Error()}}
 			}
 		case "stdout":
-			data, err := readLimitedMultipartPart(part, maxCaptureEvidenceBytes, "/stdout")
+			if store == nil {
+				_ = part.Close()
+				return out, captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusServiceUnavailable), Status: http.StatusServiceUnavailable, Code: "service_unavailable", Retryable: true, Detail: "evidence storage is unavailable"}}
+			}
+			bytes, err := store.ingest(r.Context(), "/evidence/stdout", "stdout", out.Envelope.Evidence.Stdout, part)
 			_ = part.Close()
 			if err != nil {
 				return out, err
 			}
-			out.Stdout = captureEvidenceBytes{digest: digestBytes(data), byteLength: int64(len(data))}
+			out.Stdout = bytes
 		case "stderr":
-			data, err := readLimitedMultipartPart(part, maxCaptureEvidenceBytes, "/stderr")
+			if store == nil {
+				_ = part.Close()
+				return out, captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusServiceUnavailable), Status: http.StatusServiceUnavailable, Code: "service_unavailable", Retryable: true, Detail: "evidence storage is unavailable"}}
+			}
+			bytes, err := store.ingest(r.Context(), "/evidence/stderr", "stderr", out.Envelope.Evidence.Stderr, part)
 			_ = part.Close()
 			if err != nil {
 				return out, err
 			}
-			out.Stderr = captureEvidenceBytes{digest: digestBytes(data), byteLength: int64(len(data))}
+			out.Stderr = bytes
 		default:
 			_ = part.Close()
 			return out, captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", Retryable: false, Detail: fmt.Sprintf("unexpected multipart part %q", name)}}

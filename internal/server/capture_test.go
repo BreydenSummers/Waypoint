@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -150,6 +151,101 @@ func TestCaptureIngestCreatesReplaysAndRejectsChangedPayload(t *testing.T) {
 	}
 	if eventType != "capture.accepted" || !bytes.Contains([]byte(data), []byte(`"egressStatus":"disabled"`)) {
 		t.Fatalf("accepted audit event unexpected: type=%s data=%s", eventType, data)
+	}
+}
+
+func TestCapturePersistsEvidenceAndRecoversOrphans(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	tempEvidenceDir := t.TempDir()
+	t.Setenv("WAYPOINT_EVIDENCE_DIR", tempEvidenceDir)
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	humanID := "22222222-2222-4222-8222-222222222222"
+	actionSourceID := "44444444-4444-4444-8444-444444444444"
+	stdout := []byte("abc")
+	stderr := []byte{}
+	stdoutSum := sha256.Sum256(stdout)
+	stderrSum := sha256.Sum256(stderr)
+	stdoutHash := hex.EncodeToString(stdoutSum[:])
+	stderrHash := hex.EncodeToString(stderrSum[:])
+	actorToken := "human-test-token"
+
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, humanID, engagementID, hashHex(actorToken))
+
+	orphanPath := filepath.Join(tempEvidenceDir, "captures", strings.Repeat("f", 64), "stdout")
+	if err := os.MkdirAll(filepath.Dir(orphanPath), 0o750); err != nil {
+		t.Fatalf("mkdir orphan dir: %v", err)
+	}
+	if err := os.WriteFile(orphanPath, []byte("orphan"), 0o600); err != nil {
+		t.Fatalf("write orphan evidence: %v", err)
+	}
+
+	envelope := map[string]any{
+		"contractVersion": "1.0.0",
+		"captureId":       "cccccccc-cccc-4ccc-8ccc-ccccccccccc1",
+		"sourceAgent": map[string]any{
+			"id":       actionSourceID,
+			"kind":     "operator_wrapper",
+			"name":     "waypoint-wrapper",
+			"version":  "1.0.0",
+			"platform": map[string]any{"os": "linux", "arch": "amd64"},
+		},
+		"phase":       "recon",
+		"initiatedBy": "manual",
+		"command":     "/usr/bin/nmap",
+		"argv":        []string{"nmap", "-sV", "192.0.2.10"},
+		"cwd":         "/home/operator/engagement",
+		"target":      map[string]any{"kind": "ip", "value": "192.0.2.10"},
+		"timing": map[string]any{
+			"startedAt":  "2025-01-15T10:00:00.000Z",
+			"endedAt":    "2025-01-15T10:00:01.000Z",
+			"durationMs": 1000,
+		},
+		"execution": map[string]any{"status": "exited", "exitCode": 0},
+		"network": map[string]any{
+			"execHost":   map[string]any{"address": "10.10.0.12", "method": "route_selection", "confidence": "confirmed"},
+			"egress":     map[string]any{"mode": "off", "status": "disabled"},
+			"pivotChain": []any{},
+		},
+		"evidence": map[string]any{
+			"stdout": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stdout), "sha256": stdoutHash},
+			"stderr": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stderr), "sha256": stderrHash},
+		},
+		"parsing": map[string]any{"status": "raw"},
+	}
+
+	resp := doCaptureRequest(t, HandlerWithDB(db), actorToken, "cccccccc-cccc-4ccc-8ccc-ccccccccccc1", envelope, stdout, stderr)
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d", resp.Code, http.StatusCreated)
+	}
+
+	if _, err := os.Stat(orphanPath); !os.IsNotExist(err) {
+		t.Fatalf("orphan evidence still present after recovery: %v", err)
+	}
+	for _, tc := range []struct {
+		path string
+		want []byte
+	}{
+		{path: filepath.Join(tempEvidenceDir, "captures", stdoutHash, "stdout"), want: stdout},
+		{path: filepath.Join(tempEvidenceDir, "captures", stderrHash, "stderr"), want: stderr},
+	} {
+		got, err := os.ReadFile(tc.path)
+		if err != nil {
+			t.Fatalf("read stored evidence %s: %v", tc.path, err)
+		}
+		if !bytes.Equal(got, tc.want) {
+			t.Fatalf("stored evidence %s = %q, want %q", tc.path, got, tc.want)
+		}
 	}
 }
 
