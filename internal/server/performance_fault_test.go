@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -11,6 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	dbm "waypoint/internal/db"
 )
 
 type performanceProfileFixture struct {
@@ -192,6 +196,145 @@ func TestReadCaptureRequestRejectsOversizedEvidenceBudget(t *testing.T) {
 
 	if _, err := readCaptureRequest(req, newEvidenceStore()); err == nil {
 		t.Fatal("expected oversized evidence upload to be rejected")
+	}
+}
+
+func TestCaptureIngestRejectsDiskPressureBeforeCommitting(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "77777777-7777-4777-8777-777777777777"
+	actorID := "88888888-8888-4888-8888-888888888888"
+	token := "disk-pressure-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, actorID, engagementID, hashHex(token))
+
+	evidenceRoot := filepath.Join(t.TempDir(), "evidence-root")
+	if err := os.WriteFile(evidenceRoot, []byte("occupied"), 0o600); err != nil {
+		t.Fatalf("seed evidence root file: %v", err)
+	}
+	t.Setenv("WAYPOINT_EVIDENCE_DIR", evidenceRoot)
+
+	ts := httptest.NewServer(HandlerWithDB(db))
+	defer ts.Close()
+
+	envelope := rawCaptureEnvelope("dddddddd-dddd-4ddd-8ddd-ddddddddddd1", []byte("operator\n"), []byte("warning\n"))
+	resp := doLiveCaptureRequest(t, ts.Client(), ts.URL+"/api/v1/captures", token, "req-disk-pressure", envelope, []byte("operator\n"), []byte("warning\n"))
+	if resp.status != http.StatusServiceUnavailable {
+		t.Fatalf("disk-pressure status = %d, want %d: %s", resp.status, http.StatusServiceUnavailable, resp.body)
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM action WHERE capture_id = $1`, envelope["captureId"]).Scan(&count); err != nil {
+		t.Fatalf("count actions: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("action count = %d, want 0 after disk-pressure failure", count)
+	}
+}
+
+func TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	t.Setenv("WAYPOINT_EVIDENCE_DIR", t.TempDir())
+	engagementID := "99999999-9999-4999-8999-999999999999"
+	actorID := "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	token := "restart-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, actorID, engagementID, hashHex(token))
+
+	ts := httptest.NewServer(HandlerWithDB(db))
+	defer ts.Close()
+
+	envelope := rawCaptureEnvelope("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee1", []byte("operator\n"), []byte("warning\n"))
+	var partial bytes.Buffer
+	mw := multipart.NewWriter(&partial)
+	enc, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatalf("marshal envelope: %v", err)
+	}
+	if err := mw.WriteField("envelope", string(enc)); err != nil {
+		t.Fatalf("write envelope: %v", err)
+	}
+	if err := mw.WriteField("stdout", "operator\n"); err != nil {
+		t.Fatalf("write stdout: %v", err)
+	}
+	truncated := httptest.NewRequest(http.MethodPost, "/api/v1/captures", bytes.NewReader(partial.Bytes()))
+	truncated.Header.Set("Content-Type", mw.FormDataContentType())
+	truncated.Header.Set("Authorization", "Bearer "+token)
+	truncated.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	truncated.Header.Set("Idempotency-Key", envelope["captureId"].(string))
+	truncated.Header.Set("X-Request-ID", "req-restart-truncated")
+	truncatedRR := httptest.NewRecorder()
+	HandlerWithDB(db).ServeHTTP(truncatedRR, truncated)
+	if truncatedRR.Code == http.StatusCreated {
+		t.Fatal("expected interrupted upload to fail, got created")
+	}
+	var count int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM action WHERE capture_id = $1`, envelope["captureId"]).Scan(&count); err != nil {
+		t.Fatalf("count actions after interrupted upload: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("action count after interrupted upload = %d, want 0", count)
+	}
+
+	resp := doLiveCaptureRequest(t, ts.Client(), ts.URL+"/api/v1/captures", token, "req-restart-complete", envelope, []byte("operator\n"), []byte("warning\n"))
+	if resp.status != http.StatusCreated {
+		t.Fatalf("restart retry status = %d, want %d: %s", resp.status, http.StatusCreated, resp.body)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM action WHERE capture_id = $1`, envelope["captureId"]).Scan(&count); err != nil {
+		t.Fatalf("count actions after retry: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("action count after retry = %d, want 1", count)
+	}
+}
+
+func rawCaptureEnvelope(captureID string, stdout, stderr []byte) map[string]any {
+	return map[string]any{
+		"contractVersion": "1.0.0",
+		"captureId":       captureID,
+		"sourceAgent": map[string]any{
+			"id":       "44444444-4444-4444-8444-444444444444",
+			"kind":     "operator_wrapper",
+			"name":     "waypoint-wrapper",
+			"version":  "1.0.0",
+			"platform": map[string]any{"os": "linux", "arch": "amd64"},
+		},
+		"phase":       "recon",
+		"initiatedBy": "manual",
+		"command":     "/usr/bin/whoami",
+		"argv":        []string{"whoami"},
+		"cwd":         "/home/operator/engagement",
+		"target":      map[string]any{"kind": "host", "value": "jumpbox"},
+		"timing":      map[string]any{"startedAt": "2025-01-15T10:00:00.000Z", "endedAt": "2025-01-15T10:00:01.000Z", "durationMs": 1000},
+		"execution":   map[string]any{"status": "exited", "exitCode": 0},
+		"network": map[string]any{
+			"execHost":   map[string]any{"address": "10.10.0.12", "method": "route_selection", "confidence": "confirmed"},
+			"egress":     map[string]any{"mode": "off", "status": "disabled"},
+			"pivotChain": []any{},
+		},
+		"evidence": map[string]any{
+			"stdout": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stdout), "sha256": hashHex(string(stdout))},
+			"stderr": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stderr), "sha256": hashHex(string(stderr))},
+		},
+		"parsing": map[string]any{"status": "raw"},
 	}
 }
 
