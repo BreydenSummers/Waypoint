@@ -99,6 +99,76 @@ read_os_field() {
   printf '%s' "$value"
 }
 
+db_host_from_dsn() {
+  local dsn=$1
+  python3 - "$dsn" <<'PY'
+from urllib.parse import urlparse
+import sys
+
+dsn = sys.argv[1].strip()
+host = ""
+if dsn:
+    parsed = urlparse(dsn)
+    host = parsed.hostname or ""
+print(host)
+PY
+}
+
+is_local_database() {
+  case $(db_host_from_dsn "$(cfg WAYPOINT_DB_DSN)") in
+    ""|localhost|127.0.0.1|::1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+wait_for_waypoint_ready() {
+  local url
+  url="$(cfg WAYPOINT_PUBLIC_URL)"
+  url="${url%/}/readyz"
+  local attempt
+  for attempt in $(seq 1 30); do
+    if python3 - "$url" <<'PY' >/dev/null 2>&1
+from urllib.request import urlopen
+import sys
+
+url = sys.argv[1]
+with urlopen(url, timeout=5) as response:
+    response.read()
+PY
+    then
+      return 0
+    fi
+    sleep 1
+  done
+  die "waypoint did not become ready at $url"
+}
+
+sync_waypoint_service() {
+  systemctl daemon-reload
+  systemctl enable waypoint
+  systemctl restart waypoint
+  wait_for_waypoint_ready
+}
+
+ensure_local_postgres() {
+  is_local_database || return 0
+  if ! command -v psql >/dev/null 2>&1 || ! command -v pg_isready >/dev/null 2>&1; then
+    command -v apt-get >/dev/null 2>&1 || die "apt-get required to install PostgreSQL tooling"
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y postgresql postgresql-client
+  fi
+  systemctl enable --now postgresql
+  local attempt
+  for attempt in $(seq 1 30); do
+    if pg_isready -d "$(cfg WAYPOINT_DB_DSN)" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  die "postgresql did not become ready"
+}
+
 validate_host() {
   local os_id os_version
   os_id=$(read_os_field ID)
@@ -297,6 +367,8 @@ restore_backup() {
   if [[ -n $previous_link ]]; then
     rm -f "$INSTALL_ROOT/current"
     ln -s "$previous_link" "$INSTALL_ROOT/current"
+  else
+    rm -f "$INSTALL_ROOT/current"
   fi
   if [[ -d $backup_dir/state ]]; then
     mkdir -p "$STATE_ROOT"
@@ -390,9 +462,30 @@ EOF
 
   mv "$temp_release" "$release_dir"
   ln -sfn "$release_dir" "$INSTALL_ROOT/current"
+
+  ensure_local_postgres
+  sync_waypoint_service
+
   if fail_point after_release; then
     restore_backup "$backup_dir" "$release_dir" "$previous_link"
+    if [[ -n $previous_link ]]; then
+      sync_waypoint_service
+    else
+      systemctl stop waypoint >/dev/null 2>&1 || true
+    fi
     die "failure injected after release materialization"
+  fi
+
+  if [[ -n ${PROVISION_FILE:-} ]]; then
+    provision_accounts
+  fi
+
+  if fail_point after_provision; then
+    restore_backup "$backup_dir" "$release_dir" "$previous_link"
+    if [[ -n $previous_link ]]; then
+      sync_waypoint_service
+    fi
+    die "failure injected after provisioning"
   fi
 
   {
@@ -403,14 +496,6 @@ EOF
     printf 'WAYPOINT_INSTALLED_AT=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   } > "$state_file"
 
-  if [[ -n ${PROVISION_FILE:-} ]]; then
-    provision_accounts
-  fi
-
-  if fail_point after_provision; then
-    restore_backup "$backup_dir" "$release_dir" "$previous_link"
-    die "failure injected after provisioning"
-  fi
   rm -rf "$backup_dir"
 }
 
@@ -421,15 +506,10 @@ provision_accounts() {
   local sql_file
   sql_file=$(mktemp "$STATE_ROOT/.provision.XXXXXX.sql")
   emit_provision_sql "$PROVISION_FILE" "$token_dir" > "$sql_file"
-  if [[ ${WAYPOINT_INSTALLER_SKIP_DB:-0} != 1 ]]; then
-    local db_dsn
-    db_dsn=$(cfg WAYPOINT_DB_DSN)
-    if command -v psql >/dev/null 2>&1; then
-      psql "$db_dsn" -X -v ON_ERROR_STOP=1 -f "$sql_file" >/dev/null
-    else
-      log "psql not available; wrote provisioning SQL to $sql_file"
-    fi
-  fi
+  local db_dsn
+  db_dsn=$(cfg WAYPOINT_DB_DSN)
+  command -v psql >/dev/null 2>&1 || die "psql not available for provisioning"
+  psql "$db_dsn" -X -v ON_ERROR_STOP=1 -f "$sql_file" >/dev/null
   mv "$sql_file" "$STATE_ROOT/last-provision.sql"
 }
 
@@ -440,6 +520,11 @@ diagnostics() {
   echo "log_root=$LOG_ROOT"
   echo "current_release=$(current_release_dir)"
   echo "installed_version=$(current_version || true)"
+  echo "waypoint_service=$(systemctl is-active waypoint 2>/dev/null || true)"
+  if is_local_database; then
+    echo "postgres_service=$(systemctl is-active postgresql 2>/dev/null || true)"
+    echo "database_ready=$(pg_isready -d "$(cfg WAYPOINT_DB_DSN)" >/dev/null 2>&1 && echo ready || echo not-ready)"
+  fi
   if [[ -f $state_file ]]; then
     cat "$state_file"
   fi
@@ -462,6 +547,7 @@ rollback() {
     [[ -d $target ]] || die "rollback target not found: $target"
     ln -sfn "$target" "$INSTALL_ROOT/current"
     printf 'WAYPOINT_INSTALLED_VERSION=%s\n' "$version" > "$STATE_ROOT/install.state"
+    sync_waypoint_service
   fi
   echo "$backup_dir"
 }
