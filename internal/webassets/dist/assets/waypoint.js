@@ -503,6 +503,13 @@ const state = {
   teardownState: 'idle',
   summitTimers: [],
   findings: [],
+  selectedFindingId: '',
+  findingDraft: null,
+  findingRevisions: [],
+  findingSaveState: 'idle',
+  findingBanner: '',
+  findingConflict: '',
+  findingRevisionLoading: false,
 };
 
 function safeStorageGet(key) {
@@ -524,6 +531,244 @@ function safeStorageSet(key, value) {
     // ignore
   }
 }
+
+function parseFindingEntityIds(value) {
+  return String(value || '')
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item, index, array) => array.indexOf(item) === index);
+}
+
+function cloneFindingDraft(finding) {
+  if (!finding) return null;
+  return {
+    id: finding.id,
+    revision: Number(finding.revision || 1),
+    title: finding.title || '',
+    severity: finding.severity || 'medium',
+    status: finding.status || 'open',
+    remediation: finding.remediation || '',
+    affectedEntityIdsText: Array.isArray(finding.affectedEntityIds) ? finding.affectedEntityIds.join('\n') : '',
+    evidenceActionIds: Array.isArray(finding.evidenceActionIds) ? finding.evidenceActionIds : [],
+    promotedBy: finding.promotedBy || '',
+    promotedAt: finding.promotedAt || '',
+  };
+}
+
+function findingStatusTone(status) {
+  switch (String(status || '').toLowerCase()) {
+    case 'closed':
+    case 'resolved':
+    case 'accepted-risk':
+    case 'accepted':
+    case 'fixed':
+      return 'success';
+    case 'triage':
+    case 'review':
+    case 'needs-review':
+    case 'open':
+      return 'review';
+    case 'duplicate':
+    case 'conflict':
+      return 'blocked';
+    default:
+      return 'neutral';
+  }
+}
+
+function findingStatusLabel(status) {
+  switch (String(status || '').toLowerCase()) {
+    case 'closed':
+      return 'Closed';
+    case 'resolved':
+      return 'Resolved';
+    case 'accepted-risk':
+      return 'Accepted risk';
+    case 'accepted':
+      return 'Accepted';
+    case 'fixed':
+      return 'Fixed';
+    case 'triage':
+      return 'In triage';
+    case 'review':
+      return 'Review';
+    case 'needs-review':
+      return 'Needs review';
+    case 'duplicate':
+      return 'Duplicate';
+    case 'conflict':
+      return 'Conflict';
+    default:
+      return 'Open';
+  }
+}
+
+function buildFindingValidationItems(draft, current) {
+  const trimmedTitle = String(draft?.title || '').trim();
+  const trimmedSeverity = String(draft?.severity || '').trim().toLowerCase();
+  const trimmedStatus = String(draft?.status || '').trim();
+  const trimmedRemediation = String(draft?.remediation || '').trim();
+  const evidenceCount = Array.isArray(current?.evidenceActionIds) ? current.evidenceActionIds.length : 0;
+  const entityCount = parseFindingEntityIds(draft?.affectedEntityIdsText || '').length;
+
+  return [
+    { label: 'Title is present', ok: Boolean(trimmedTitle), note: trimmedTitle || 'Give the finding a plain-language title.' },
+    { label: 'Severity is one of the approved values', ok: ['info', 'low', 'medium', 'high', 'critical'].includes(trimmedSeverity), note: 'Use info, low, medium, high, or critical.' },
+    { label: 'Status is recorded', ok: Boolean(trimmedStatus), note: trimmedStatus || 'Choose a workflow status before saving.' },
+    { label: 'Remediation is written', ok: Boolean(trimmedRemediation), note: trimmedRemediation || 'Add client-safe remediation guidance.' },
+    { label: 'Evidence trace stays linked', ok: evidenceCount > 0, note: evidenceCount ? `${evidenceCount} evidence action${evidenceCount === 1 ? '' : 's'} linked.` : 'Promote from an attack to attach evidence.' },
+    { label: 'Affected entities are pinned', ok: entityCount > 0, note: entityCount ? `${entityCount} entity${entityCount === 1 ? '' : 'ies'} in the pack.` : 'Add at least one affected entity or sync from the source action.' },
+    { label: 'Revision is current', ok: Boolean(current) && Number(draft?.revision || 0) === Number(current?.revision || 0), note: current ? `Current revision ${current.revision}.` : 'Select a live finding first.' },
+  ];
+}
+
+function loadFindingRevisions(findingId) {
+  const token = state.liveToken.trim();
+  if (!findingId || !token) {
+    state.findingRevisions = [];
+    state.findingRevisionLoading = false;
+    scheduleRender();
+    return Promise.resolve();
+  }
+
+  state.findingRevisionLoading = true;
+  scheduleRender();
+
+  const headers = new Headers({ 'Waypoint-Contract-Version': '1.0.0', 'X-Request-ID': `waypoint-finding-revisions-${Date.now()}`, Authorization: `Bearer ${token}` });
+  return fetch(new URL(`/api/v1/findings/${findingId}/revisions`, window.location.origin), { headers })
+    .then(async (resp) => {
+      if (resp.status === 401) {
+        state.mode = 'revoked';
+        state.banner = 'This browser session was revoked while loading findings.';
+        state.findingRevisions = [];
+        safeStorageSet('waypoint-audit-token', '');
+        scheduleRender();
+        return;
+      }
+      if (!resp.ok) {
+        state.findingRevisions = [];
+        scheduleRender();
+        return;
+      }
+      const page = await resp.json();
+      state.findingRevisions = Array.isArray(page.items) ? page.items : [];
+      scheduleRender();
+    })
+    .catch(() => {
+      state.findingRevisions = [];
+      scheduleRender();
+    })
+    .finally(() => {
+      state.findingRevisionLoading = false;
+      scheduleRender();
+    });
+}
+
+function selectFinding(findingId) {
+  const next = state.findings.find((finding) => finding.id === findingId) || null;
+  state.selectedFindingId = next ? next.id : '';
+  state.findingDraft = cloneFindingDraft(next);
+  state.findingBanner = '';
+  state.findingConflict = '';
+  state.findingSaveState = 'idle';
+  state.findingRevisions = [];
+  state.findingRevisionLoading = Boolean(next);
+  scheduleRender();
+  if (next) {
+    loadFindingRevisions(next.id);
+  }
+}
+
+async function saveFindingDraft() {
+  const current = state.findings.find((finding) => finding.id === state.selectedFindingId) || null;
+  const draft = state.findingDraft && current && state.findingDraft.id === current.id ? state.findingDraft : cloneFindingDraft(current);
+  if (!current || !draft) {
+    state.findingSaveState = 'error';
+    state.findingBanner = 'Pick a finding before saving.';
+    scheduleRender();
+    return;
+  }
+
+  const validation = buildFindingValidationItems(draft, current);
+  const blocking = validation.filter((item) => !item.ok && item.label !== 'Revision is current');
+  if (blocking.length) {
+    state.findingSaveState = 'error';
+    state.findingBanner = 'Fix the guide-style validation before saving.';
+    scheduleRender();
+    return;
+  }
+
+  const payload = {
+    expectedRevision: Number(draft.revision || 0),
+    title: String(draft.title || '').trim(),
+    severity: String(draft.severity || '').trim(),
+    remediation: String(draft.remediation || '').trim(),
+    status: String(draft.status || '').trim(),
+    affectedEntityIds: parseFindingEntityIds(draft.affectedEntityIdsText || ''),
+  };
+
+  const token = state.liveToken.trim();
+  if (!token) {
+    state.findingSaveState = 'error';
+    state.findingBanner = 'A live token is required to save findings.';
+    scheduleRender();
+    return;
+  }
+
+  state.findingSaveState = 'saving';
+  state.findingBanner = 'Saving the authoritative finding revision…';
+  state.findingConflict = '';
+  scheduleRender();
+
+  const headers = new Headers({ 'Waypoint-Contract-Version': '1.0.0', 'X-Request-ID': `waypoint-finding-save-${Date.now()}`, Authorization: `Bearer ${token}` });
+  try {
+    const resp = await fetch(new URL(`/api/v1/findings/${current.id}`, window.location.origin), {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (resp.status === 401) {
+      state.mode = 'revoked';
+      state.banner = 'This browser session was revoked while saving findings.';
+      state.findingSaveState = 'error';
+      safeStorageSet('waypoint-audit-token', '');
+      scheduleRender();
+      return;
+    }
+    if (resp.status === 409) {
+      const problem = await resp.json().catch(() => null);
+      state.findingSaveState = 'conflict';
+      state.findingBanner = 'Optimistic conflict detected. Refresh the latest revision and try again.';
+      state.findingConflict = problem?.detail || 'The finding changed in another browser session before this save completed.';
+      await loadFindings();
+      scheduleRender();
+      return;
+    }
+    if (!resp.ok) {
+      state.findingSaveState = 'error';
+      state.findingBanner = 'The finding could not be saved. Please try again.';
+      scheduleRender();
+      return;
+    }
+    const updated = await resp.json();
+    state.findings = state.findings.map((finding) => (finding.id === updated.id ? updated : finding));
+    state.selectedFindingId = updated.id;
+    state.findingDraft = cloneFindingDraft(updated);
+    state.findingRevisions = [];
+    state.findingRevisionLoading = true;
+    state.findingSaveState = 'saved';
+    state.findingBanner = `Saved revision ${updated.revision}.`;
+    state.findingConflict = '';
+    scheduleRender();
+    await loadFindingRevisions(updated.id);
+  } catch {
+    state.findingSaveState = 'error';
+    state.findingBanner = 'Saving the finding failed. Check the connection and try again.';
+    scheduleRender();
+  }
+}
+
 function runtimePhaseMeta(phase) {
   const reconRows = state.rows.filter((row) => row.data?.phase === 'recon');
   const attackRows = state.rows.filter((row) => row.data?.phase === 'attacks');
@@ -704,6 +949,12 @@ async function loadFindings() {
   const token = state.liveToken.trim();
   if (!token) {
     state.findings = [];
+    state.selectedFindingId = '';
+    state.findingDraft = null;
+    state.findingRevisions = [];
+    state.findingSaveState = 'idle';
+    state.findingRevisionLoading = false;
+    scheduleRender();
     return;
   }
 
@@ -714,19 +965,39 @@ async function loadFindings() {
       state.mode = 'revoked';
       state.banner = 'This browser session was revoked while loading findings.';
       state.findings = [];
+      state.selectedFindingId = '';
+      state.findingDraft = null;
+      state.findingRevisions = [];
+      state.findingSaveState = 'idle';
+      state.findingRevisionLoading = false;
       safeStorageSet('waypoint-audit-token', '');
       scheduleRender();
       return;
     }
     if (!resp.ok) {
       state.findings = [];
+      state.findingRevisions = [];
+      state.findingRevisionLoading = false;
+      scheduleRender();
       return;
     }
     const page = await resp.json();
     state.findings = Array.isArray(page.items) ? page.items : [];
+    const current = state.findings.find((finding) => finding.id === state.selectedFindingId) || state.findings[0] || null;
+    state.selectedFindingId = current ? current.id : '';
+    state.findingDraft = cloneFindingDraft(current);
+    state.findingBanner = state.findings.length ? `Loaded ${state.findings.length} authoritative finding${state.findings.length === 1 ? '' : 's'}.` : 'No promoted findings yet.';
+    state.findingSaveState = 'idle';
+    state.findingRevisions = [];
+    state.findingRevisionLoading = Boolean(current);
     scheduleRender();
+    if (current) {
+      await loadFindingRevisions(current.id);
+    }
   } catch {
     state.findings = [];
+    state.findingRevisions = [];
+    state.findingRevisionLoading = false;
   }
 }
 
@@ -1679,6 +1950,190 @@ function attackWorkspaceMarkup(active, currentIndex, rows, selected) {
   `;
 }
 
+function findingsWorkspaceMarkup(active, currentIndex) {
+  const selected = state.findings.find((finding) => finding.id === state.selectedFindingId) || state.findings[0] || null;
+  const draft = state.findingDraft && selected && state.findingDraft.id === selected.id ? state.findingDraft : cloneFindingDraft(selected);
+  const findingsCount = state.findings.length;
+  const validationItems = buildFindingValidationItems(draft, selected);
+  const validationPasses = validationItems.filter((item) => item.ok).length;
+  const evidenceActionIds = selected?.evidenceActionIds || [];
+  const affectedEntityIds = selected?.affectedEntityIds || [];
+  const currentFindingLabel = selected ? `Revision ${selected.revision || 1} · ${findingStatusLabel(selected.status)}` : 'No finding selected';
+  const editorStatus = state.findingSaveState === 'saving' ? 'saving' : state.findingSaveState === 'saved' ? 'success' : state.findingSaveState === 'conflict' ? 'conflict' : state.findingSaveState === 'error' ? 'blocked' : 'neutral';
+  const editorMessage = state.findingSaveState === 'saving'
+    ? 'Saving this revision into the authoritative trail…'
+    : state.findingSaveState === 'saved'
+      ? 'Revision saved. The list and revision trail refreshed.'
+      : state.findingSaveState === 'conflict'
+        ? 'Optimistic conflict detected. Refresh the latest revision before editing again.'
+        : state.findingSaveState === 'error'
+          ? 'The finding could not be saved. Check the guide-style validation and try again.'
+          : findingsCount
+            ? 'Edit the selected finding and keep the evidence trace attached.'
+            : 'Promote an attack to the Findings trail to unlock the editor.';
+  const traceItems = selected
+    ? [
+        ...evidenceActionIds.map((id) => ({ label: `Action ${id}`, value: 'Evidence-linked action' })),
+        ...affectedEntityIds.map((id) => ({ label: 'Entity', value: id })),
+      ]
+    : [];
+  const revisionItems = state.findingRevisions.length
+    ? state.findingRevisions.map((revision) => {
+        const summaryBits = [revision.Type || revision.type, revision.Actor?.Handle || revision.actor?.handle, revision.Subject?.Revision || revision.subject?.revision]
+          .filter(Boolean)
+          .join(' · ');
+        const data = typeof revision.Data === 'string' ? revision.Data : revision.data ? JSON.stringify(revision.data) : '';
+        return { time: revision.OccurredAt || revision.occurredAt, summary: summaryBits, requestId: revision.RequestID || revision.requestId, type: revision.Type || revision.type, data };
+      })
+    : [];
+
+  return `
+    <section class="workspace-panel findings-workspace" aria-label="Findings workspace">
+      <div class="workspace-header">
+        <div>
+          <p class="workspace-kicker">Stage ${currentIndex + 1} of ${phaseOrder.length}</p>
+          <h2>${escapeHtml(active.workspaceTitle)}</h2>
+        </div>
+        <div class="workspace-status-stack">
+          <p class="workspace-status">${escapeHtml(currentFindingLabel)}</p>
+          <span class="status-pill ${findingsCount ? findingStatusTone(selected?.status) : 'neutral'}">${escapeHtml(findingsCount ? `${findingsCount} finding${findingsCount === 1 ? '' : 's'} loaded` : 'Empty engagement')}</span>
+        </div>
+      </div>
+
+      ${state.findingBanner ? `<div class="live-banner ${editorStatus === 'blocked' ? 'blocked' : editorStatus === 'conflict' ? 'review' : 'success'}" role="status">${escapeHtml(state.findingBanner)}</div>` : ''}
+      ${state.findingConflict ? `<div class="live-banner review" role="status"><strong>Optimistic conflict</strong><span>${escapeHtml(state.findingConflict)}</span></div>` : ''}
+
+      <p class="workspace-lede">${escapeHtml(findingsCount ? active.workspaceLede.replace(/\d+ live findings/, `${findingsCount} live findings`).replace(/the trail/, 'the trail') : 'Promote an attack to begin authoring the first finding, then keep the evidence trail and revision history attached.')}</p>
+
+      <div class="findings-shell">
+        <section class="finding-list-panel" aria-label="Authoritative findings list">
+          <div class="panel-heading compact">
+            <div>
+              <h3>Authoritative finding list</h3>
+              <p>Every promoted result stays grounded in a single evidence trail and revision history.</p>
+            </div>
+            <span class="status-pill ${findingsCount ? 'success' : 'neutral'}">${escapeHtml(findingsCount ? `${findingsCount} total` : 'No findings yet')}</span>
+          </div>
+          <div class="finding-list" role="listbox" aria-label="Findings available for editing">
+            ${findingsCount ? state.findings.map((finding) => {
+              const isSelected = finding.id === selected?.id;
+              const traceCount = Array.isArray(finding.evidenceActionIds) ? finding.evidenceActionIds.length : 0;
+              const entityCount = Array.isArray(finding.affectedEntityIds) ? finding.affectedEntityIds.length : 0;
+              return `
+                <button type="button" class="finding-card ${isSelected ? 'is-selected' : ''}" data-action="finding-select" data-finding-id="${escapeHtml(finding.id)}" aria-selected="${isSelected ? 'true' : 'false'}">
+                  <div class="finding-card-head">
+                    <div>
+                      <p class="guide-note-kicker">Revision ${escapeHtml(String(finding.revision || 1))}</p>
+                      <h4>${escapeHtml(finding.title)}</h4>
+                    </div>
+                    <span class="status-pill ${findingStatusTone(finding.status)}">${escapeHtml(findingStatusLabel(finding.status))}</span>
+                  </div>
+                  <p class="finding-card-summary">${escapeHtml(finding.remediation || 'No remediation drafted yet.')}</p>
+                  <dl class="finding-card-meta">
+                    <div><dt>Severity</dt><dd>${escapeHtml(finding.severity)}</dd></div>
+                    <div><dt>Evidence</dt><dd>${escapeHtml(String(traceCount))}</dd></div>
+                    <div><dt>Entities</dt><dd>${escapeHtml(String(entityCount))}</dd></div>
+                    <div><dt>Promoted</dt><dd>${escapeHtml(finding.promotedAt ? formatTime(finding.promotedAt) : 'Pending')}</dd></div>
+                  </dl>
+                </button>
+              `;
+            }).join('') : `<p class="finding-empty guide-note-empty">Fog on the trail — no promoted findings yet. Promote an attack to populate this list.</p>`}
+          </div>
+        </section>
+
+        <section class="finding-editor-panel" aria-label="Finding editor and revision trail" aria-live="polite">
+          ${selected ? `
+            <div class="finding-editor-card">
+              <div class="panel-heading compact">
+                <div>
+                  <h3>Finding editor</h3>
+                  <p>${escapeHtml(selected.title)}</p>
+                </div>
+                <span class="status-pill ${editorStatus === 'saving' ? 'queued' : editorStatus === 'success' ? 'success' : editorStatus === 'conflict' ? 'review' : editorStatus === 'blocked' ? 'blocked' : 'neutral'}">${escapeHtml(editorStatus === 'saving' ? 'Saving' : editorStatus === 'success' ? 'Saved' : editorStatus === 'conflict' ? 'Conflict' : editorStatus === 'blocked' ? 'Needs review' : 'Ready')}</span>
+              </div>
+              <div class="finding-editor-grid">
+                <label class="field-group finding-field"><span>Title</span><input type="text" data-action="finding-field" data-field="title" value="${escapeHtml(draft?.title || '')}" /></label>
+                <label class="field-group finding-field"><span>Severity</span><select data-action="finding-field" data-field="severity">${['info', 'low', 'medium', 'high', 'critical'].map((severity) => `<option value="${severity}"${String(draft?.severity || '').toLowerCase() === severity ? ' selected' : ''}>${severity}</option>`).join('')}</select></label>
+                <label class="field-group finding-field"><span>Status</span><select data-action="finding-field" data-field="status">${['open', 'triage', 'review', 'needs-review', 'closed'].map((status) => `<option value="${status}"${String(draft?.status || '').toLowerCase() === status ? ' selected' : ''}>${status}</option>`).join('')}</select></label>
+                <label class="field-group finding-field finding-field-wide"><span>Remediation</span><textarea data-action="finding-field" data-field="remediation" rows="4">${escapeHtml(draft?.remediation || '')}</textarea></label>
+                <label class="field-group finding-field finding-field-wide"><span>Affected entity IDs</span><textarea data-action="finding-field" data-field="affectedEntityIdsText" rows="3" placeholder="One UUID per line">${escapeHtml(draft?.affectedEntityIdsText || '')}</textarea></label>
+              </div>
+              <div class="summit-controls finding-actions">
+                <button type="button" class="primary-button" data-action="finding-save"${state.findingSaveState === 'saving' ? ' disabled' : ''}>${state.findingSaveState === 'saving' ? 'Saving…' : 'Save finding revision'}</button>
+                <button type="button" class="secondary-link" data-action="finding-refresh">Refresh trail</button>
+              </div>
+            </div>
+          ` : `<p class="empty-state finding-empty">Select a promoted finding to open the editor, evidence trace, and revision history.</p>`}
+
+          <div class="finding-details-grid">
+            <section class="detail-card finding-validation-panel" aria-label="Guide-style accessible validation">
+              <div class="detail-head">
+                <div>
+                  <p class="workspace-kicker">Guide-style validation</p>
+                  <h3>Accessible validation</h3>
+                  <p>${escapeHtml(editorMessage)}</p>
+                </div>
+                <span class="status-pill ${validationPasses === validationItems.length ? 'success' : validationPasses > 0 ? 'review' : 'neutral'}">${validationPasses}/${validationItems.length}</span>
+              </div>
+              <ul class="validation-list">
+                ${validationItems.map((item) => `<li class="${item.ok ? 'is-pass' : 'is-warn'}"><strong>${item.ok ? '✓' : '•'} ${escapeHtml(item.label)}</strong><span>${escapeHtml(item.note)}</span></li>`).join('')}
+              </ul>
+            </section>
+
+            <section class="detail-card finding-trace-panel" aria-label="Evidence trace">
+              <div class="detail-head">
+                <div>
+                  <p class="workspace-kicker">Evidence trace</p>
+                  <h3>Linked evidence</h3>
+                  <p>Trace the finding back to the exact actions that promoted it.</p>
+                </div>
+                <span class="status-pill ${evidenceActionIds.length ? 'success' : 'neutral'}">${escapeHtml(String(evidenceActionIds.length))} actions</span>
+              </div>
+              ${selected ? `
+                <div class="finding-trace-list">
+                  <div class="trace-group">
+                    <h4>Action links</h4>
+                    <div class="trace-chip-list">${evidenceActionIds.length ? evidenceActionIds.map((id) => `<span class="trace-chip">Action ${escapeHtml(id)}</span>`).join('') : '<span class="guide-note-empty">No evidence actions linked yet.</span>'}</div>
+                  </div>
+                  <div class="trace-group">
+                    <h4>Affected entities</h4>
+                    <div class="trace-chip-list">${affectedEntityIds.length ? affectedEntityIds.map((id) => `<span class="trace-chip">${escapeHtml(id)}</span>`).join('') : '<span class="guide-note-empty">No affected entities pinned.</span>'}</div>
+                  </div>
+                </div>
+              ` : '<p class="guide-note-empty">Pick a finding to inspect the linked evidence trail.</p>'}
+            </section>
+
+            <section class="detail-card finding-revision-panel" aria-label="Revision history">
+              <div class="detail-head">
+                <div>
+                  <p class="workspace-kicker">Revision history</p>
+                  <h3>Audit trail revisions</h3>
+                  <p>Every save is timestamped and attributable, so the report can fall out of the trail.</p>
+                </div>
+                <span class="status-pill ${state.findingRevisionLoading ? 'queued' : revisionItems.length ? 'success' : 'neutral'}">${state.findingRevisionLoading ? 'Loading' : `${revisionItems.length} events`}</span>
+              </div>
+              ${revisionItems.length ? `
+                <ol class="revision-list">
+                  ${revisionItems.map((item) => `<li>
+                    <strong>${escapeHtml(item.type || 'finding.revised')}</strong>
+                    <span>${escapeHtml(formatTime(item.time || new Date().toISOString()))}</span>
+                    <small>${escapeHtml(item.summary || 'Revision recorded')} ${item.requestId ? `· Request ${escapeHtml(item.requestId)}` : ''}</small>
+                  </li>`).join('')}
+                </ol>
+              ` : `<p class="guide-note-empty">No revision history loaded yet. Save or refresh to fetch the audit trail.</p>`}
+            </section>
+          </div>
+        </section>
+      </div>
+
+      <div class="workspace-footer">
+        <a class="secondary-link" href="${phasePath(phaseOrder[Math.max(0, currentIndex - 1)])}" data-action="phase" data-phase="${phaseOrder[Math.max(0, currentIndex - 1)]}">Back to ${escapeHtml(phaseData[phaseOrder[Math.max(0, currentIndex - 1)]].name)}</a>
+        <a class="primary-button" href="${phasePath(phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)])}" data-action="phase" data-phase="${phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]}">${escapeHtml(`Continue to ${phaseData[phaseOrder[Math.min(phaseOrder.length - 1, currentIndex + 1)]].name} →`)}</a>
+      </div>
+    </section>
+  `;
+}
+
 function renderSidebarLog(active) {
   const recent = [...state.visibleRows].sort((a, b) => Number(b.id) - Number(a.id)).slice(0, 3);
   if (active.id === 'attacks') {
@@ -1958,7 +2413,9 @@ function render() {
 
           ${state.activePhase === 'attacks'
             ? attackWorkspaceMarkup(active, currentIndex, state.visibleRows, selected)
-            : `
+            : state.activePhase === 'findings'
+              ? findingsWorkspaceMarkup(active, currentIndex)
+              : `
               <section class="workspace-panel" aria-label="${escapeHtml(active.name)} route skeleton">
                 <div class="workspace-header">
                   <div>
@@ -2093,7 +2550,7 @@ function render() {
               <p class="metric-label">Current waypoint</p>
               <strong>${escapeHtml(active.name)}</strong>
             </div>
-            <p>${escapeHtml(active.id === 'attacks' ? 'What have we tried, what worked, and what is still fogged? This view keeps the answer obvious.' : active.id === 'findings' ? 'Promotions stay defensible and linked to evidence.' : active.id === 'summit' ? 'Export, verify the manifest, then wipe the disposable box.' : 'Collect signals and keep the pack tidy.' )}</p>
+            <p>${escapeHtml(active.id === 'attacks' ? 'What have we tried, what worked, and what is still fogged? This view keeps the answer obvious.' : active.id === 'findings' ? 'Authoritative findings stay listed with evidence trace, revision history, and guide-style validation.' : active.id === 'summit' ? 'Export, verify the manifest, then wipe the disposable box.' : 'Collect signals and keep the pack tidy.' )}</p>
           </section>
         </aside>
       </div>
@@ -2161,6 +2618,30 @@ function bindUI() {
     state.guideQuery = event.target.value;
     scheduleRender();
   });
+
+  root.querySelectorAll('[data-action="finding-select"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectFinding(button.dataset.findingId);
+    });
+  });
+
+  root.querySelectorAll('[data-action="finding-field"]').forEach((control) => {
+    const syncField = () => {
+      if (!state.findingDraft) return;
+      const field = control.dataset.field;
+      if (!field) return;
+      state.findingDraft = { ...state.findingDraft, [field]: control.value };
+      state.findingSaveState = 'idle';
+      state.findingBanner = '';
+      state.findingConflict = '';
+      scheduleRender();
+    };
+    control.addEventListener('input', syncField);
+    control.addEventListener('change', syncField);
+  });
+
+  root.querySelector('[data-action="finding-save"]')?.addEventListener('click', () => saveFindingDraft());
+  root.querySelector('[data-action="finding-refresh"]')?.addEventListener('click', () => loadFindings());
 
   root.querySelectorAll('[data-action="summit-preflight"]').forEach((button) => {
     button.addEventListener('click', () => startSummitExport());

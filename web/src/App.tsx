@@ -259,19 +259,20 @@ const waypointDetails: Record<PhaseId, Omit<Waypoint, 'state'>> = {
     path: `${engagementPath}/findings`,
     x: 430,
     y: 128,
-    note: 'Reviewed offline briefing: keep confirmed results grounded until the first finding is promoted.',
+    note: 'Reviewed offline briefing: keep confirmed results grounded until the first finding is promoted. The authoritative list, editor, evidence trace, and revision history stay visible together.',
     briefing: {
       what: 'Promote only confirmed results and keep the source action attached so the report remains defensible.',
       whenToUse: 'Use this after an attack has enough proof to become a finding and before you write report copy.',
-      risks: 'A finding without evidence is only a claim, so keep the action trail visible through promotion.',
+      risks: 'A finding without evidence is only a claim, so keep the action trail visible through promotion. Optimistic conflict is a guide note, not a dead end.',
       contextLabel: 'Open reviewed Findings briefing',
       contextHref: '#briefing-findings',
     },
     workspaceTitle: 'Findings workspace',
-    workspaceLede: 'Promote confirmed results, keep evidence links intact, and draft the report straight from the trail.',
+    workspaceLede: 'Promote confirmed results, keep the authoritative finding list in view, and draft the report from the trail with guide-style accessible validation.',
     cards: [
-      { title: 'Promotion', items: ['Attack → finding', 'Severity and remediation fields', 'Evidence stays linked'] },
-      { title: 'Report copy', items: ['Client-readable summary', 'Machine-readable bundle', 'Empty signatures hook'] },
+      { title: 'Authoritative list', items: ['Promoted findings stay selectable', 'Empty state explains the next move', 'Conflict state stays visible'] },
+      { title: 'Editor and trace', items: ['Title, severity, remediation, and status', 'Evidence trace stays linked', 'Revision history and validation remain accessible'] },
+      { title: 'Report copy', items: ['Client-readable summary', 'Machine-readable bundle', 'Optimistic conflict warnings stay attributable'] },
     ],
   },
   summit: {
@@ -356,10 +357,10 @@ const guideExplainers: GuideExplainer[] = [
     title: 'Evidence-linked promotion',
     what: 'Promote only confirmed results and keep the source action linked so the report stays defensible.',
     whenToUse: 'Best when an attack has enough proof to become a finding.',
-    risks: 'Never drop the action trail; a finding without evidence is just a claim.',
+    risks: 'Never drop the action trail; a finding without evidence is just a claim. Optimistic conflict is a guide note, not a dead end.',
     contextLabel: 'Open promotion note',
     contextHref: '#guide-findings-linking',
-    keywords: ['finding', 'evidence', 'promotion', 'report'],
+    keywords: ['finding', 'evidence', 'promotion', 'report', 'conflict'],
   },
   {
     id: 'guide-summit-manifest',
@@ -372,6 +373,16 @@ const guideExplainers: GuideExplainer[] = [
     contextHref: '#guide-summit-manifest',
     keywords: ['bundle', 'manifest', 'export', 'summit'],
   },
+];
+
+const findingsWorkspaceChecklist = [
+  'Authoritative finding list',
+  'Finding editor',
+  'Evidence trace',
+  'Revision history',
+  'Guide-style accessible validation',
+  'Optimistic conflict',
+  'Empty state',
 ];
 
 function getInitialTheme(): ThemeMode {
