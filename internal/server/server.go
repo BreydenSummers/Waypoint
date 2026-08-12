@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io/fs"
@@ -29,7 +30,7 @@ func handler(db *sql.DB) http.Handler {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", healthz)
-	mux.HandleFunc("/readyz", readyz(assets))
+	mux.HandleFunc("/readyz", readyz(assets, db))
 	mux.HandleFunc("/api/v1/captures", captureHandler(db))
 	mux.HandleFunc("/captures", captureHandler(db))
 	mux.HandleFunc("/api/v1/entities/merge", mergeEntityHandler(db))
@@ -50,9 +51,23 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, statusResponse{Status: "ok"})
 }
 
-func readyz(assets fs.FS) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
+type dbPinger interface {
+	PingContext(context.Context) error
+}
+
+func readyz(assets fs.FS, db dbPinger) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if err := requiredAssetsPresent(assets); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, statusResponse{Status: "not-ready"})
+			return
+		}
+		if db == nil {
+			writeJSON(w, http.StatusServiceUnavailable, statusResponse{Status: "not-ready"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, statusResponse{Status: "not-ready"})
 			return
 		}

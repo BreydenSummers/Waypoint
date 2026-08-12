@@ -19,6 +19,31 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 
+	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		version text PRIMARY KEY,
+		applied_at timestamptz NOT NULL DEFAULT now()
+	)`); err != nil {
+		return fmt.Errorf("ensure migration ledger: %w", err)
+	}
+
+	rows, err := db.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+	if err != nil {
+		return fmt.Errorf("load applied migrations: %w", err)
+	}
+	defer rows.Close()
+
+	applied := make(map[string]struct{})
+	for rows.Next() {
+		var version string
+		if err := rows.Scan(&version); err != nil {
+			return fmt.Errorf("scan applied migration: %w", err)
+		}
+		applied[version] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate applied migrations: %w", err)
+	}
+
 	names := make([]string, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".up.sql") {
@@ -29,6 +54,10 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 	sort.Strings(names)
 
 	for _, name := range names {
+		if _, ok := applied[name]; ok {
+			continue
+		}
+
 		body, err := migrationFS.ReadFile("migrations/" + name)
 		if err != nil {
 			return err
@@ -41,6 +70,10 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 		if _, err := tx.ExecContext(ctx, string(body)); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("apply %s: %w", name, err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, name); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("record %s: %w", name, err)
 		}
 		if err := tx.Commit(); err != nil {
 			_ = tx.Rollback()
