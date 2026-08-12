@@ -43,6 +43,9 @@ if (!distBundle.includes('buildRuntimeJourneyLog') || !distBundle.includes('buil
 if (!distBundle.includes("new URL('/api/v1/audit-events'") || !distBundle.includes("fetch(new URL('/api/v1/findings'")) {
   throw new Error('Authoritative API fetches are missing from the embedded bundle');
 }
+if (!distBundle.includes('Session revoked') || !distBundle.includes('Notable alerts') || !distBundle.includes('Optimistic conflict') || !distBundle.includes('capture.conflict')) {
+  throw new Error('Browser revocation, alert, or optimistic-conflict handling is missing from the embedded bundle');
+}
 if (!distBundle.includes('reportSnapshotFallback') || !distBundle.includes('journeyLog = new Proxy')) {
   throw new Error('Report or journey runtime proxies are missing from the embedded bundle');
 }
