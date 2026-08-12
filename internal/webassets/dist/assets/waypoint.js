@@ -485,6 +485,7 @@ const state = {
   highWaterCursor: null,
   hasMore: false,
   filters: { technique: 'all', target: 'all', host: 'all', status: 'all', q: '' },
+  groupBy: 'technique',
   guideQuery: '',
   mode: 'idle',
   liveToken: safeStorageGet('waypoint-audit-token') || '',
@@ -866,9 +867,79 @@ function statusClass(status) {
       return 'queued';
     case 'raw':
       return 'raw';
+    case 'failure':
+      return 'blocked';
+    case 'unknown':
+      return 'review';
+    case 'unworked':
+      return 'queued';
     default:
       return 'neutral';
   }
+}
+
+const attackStateOrder = ['success', 'failure', 'unknown', 'unworked'];
+const attackGroupLabels = {
+  technique: 'Technique',
+  target: 'Target',
+  host: 'Host',
+};
+
+function attackStateLabel(state) {
+  switch (String(state || '').toLowerCase()) {
+    case 'success':
+      return 'Success';
+    case 'failure':
+      return 'Failure';
+    case 'unknown':
+      return 'Unknown';
+    case 'unworked':
+      return 'Unworked';
+    default:
+      return statusToLabel(state);
+  }
+}
+
+function attackStateClass(state) {
+  switch (String(state || '').toLowerCase()) {
+    case 'success':
+      return 'success';
+    case 'failure':
+      return 'blocked';
+    case 'unknown':
+      return 'review';
+    case 'unworked':
+      return 'queued';
+    default:
+      return statusClass(state);
+  }
+}
+
+function attackStateFromRow(row) {
+  const status = String(row?.status || '').toLowerCase();
+  const parseStatus = String(row?.parseStatus || '').toLowerCase();
+  if (status === 'success' || status === 'alert') return 'success';
+  if (status === 'blocked' || status === 'conflict' || status === 'revoked' || status === 'failed' || status === 'error') return 'failure';
+  if (status === 'queued' || status === 'unworked') return 'unworked';
+  if (status === 'needs-review' || status === 'review' || status === 'raw' || parseStatus === 'raw' || parseStatus === 'needs-plugin' || parseStatus === 'parse-failed') return 'unknown';
+  return 'unknown';
+}
+
+function attackStateCounts(rows) {
+  const counts = { success: 0, failure: 0, unknown: 0, unworked: 0 };
+  for (const row of rows) {
+    counts[attackStateFromRow(row)] += 1;
+  }
+  return counts;
+}
+
+function attackGroupLabel(field) {
+  return attackGroupLabels[field] || String(field || 'Group');
+}
+
+function attackGroupValue(row, field) {
+  const value = String(row?.[field] || '').trim();
+  return value || `Unspecified ${String(attackGroupLabel(field)).toLowerCase()}`;
 }
 
 function isNotableAlertRow(row) {
@@ -999,18 +1070,32 @@ function selectedAttempt() {
   return state.visibleRows.find((row) => row.id === state.selectedId) || state.rows.find((row) => row.id === state.selectedId) || state.visibleRows[0] || state.rows[0] || null;
 }
 
-function groupAttempts(rows) {
+function groupAttempts(rows, groupBy = state.groupBy) {
   const buckets = new Map();
   for (const row of rows) {
-    const key = row.technique || 'Unspecified technique';
+    const key = attackGroupValue(row, groupBy);
     if (!buckets.has(key)) {
-      buckets.set(key, { key, rows: [], targets: new Set(), hosts: new Set(), counts: new Map(), latest: row });
+      buckets.set(key, {
+        key,
+        groupBy,
+        rows: [],
+        targets: new Set(),
+        hosts: new Set(),
+        techniques: new Set(),
+        actors: new Set(),
+        origins: new Set(),
+        counts: { success: 0, failure: 0, unknown: 0, unworked: 0 },
+        latest: row,
+      });
     }
     const bucket = buckets.get(key);
     bucket.rows.push(row);
     bucket.targets.add(row.target);
     bucket.hosts.add(row.host);
-    bucket.counts.set(row.status, (bucket.counts.get(row.status) || 0) + 1);
+    bucket.techniques.add(row.technique);
+    bucket.actors.add(row.actor?.handle || row.actor?.kind || 'unknown actor');
+    bucket.origins.add([row.origin?.kind, row.origin?.service].filter(Boolean).join(' / ') || 'authoritative capture');
+    bucket.counts[attackStateFromRow(row)] += 1;
     if (Number(row.id) > Number(bucket.latest.id)) bucket.latest = row;
   }
 
@@ -1386,40 +1471,46 @@ function renderWaypoints(waypoints, activeId) {
 }
 
 function attackSummaryCards(rows) {
-  const techniques = new Set(rows.map((row) => row.technique));
+  const groups = new Set(rows.map((row) => attackGroupValue(row, state.groupBy)));
   const targets = new Set(rows.map((row) => row.target));
   const hosts = new Set(rows.map((row) => row.host));
-  const blocked = rows.filter((row) => row.status === 'blocked').length;
+  const states = attackStateCounts(rows);
   return `
     <div class="attack-summary-grid" aria-label="Attack summary">
       <div class="metric"><span class="metric-label">Attempts</span><strong>${rows.length}</strong></div>
-      <div class="metric"><span class="metric-label">Techniques</span><strong>${techniques.size}</strong></div>
+      <div class="metric"><span class="metric-label">Groups</span><strong>${groups.size}</strong></div>
       <div class="metric"><span class="metric-label">Targets</span><strong>${targets.size}</strong></div>
-      <div class="metric"><span class="metric-label">Blocked</span><strong>${blocked}</strong></div>
       <div class="metric"><span class="metric-label">Hosts</span><strong>${hosts.size}</strong></div>
+      <div class="metric"><span class="metric-label">Success</span><strong>${states.success}</strong></div>
+      <div class="metric"><span class="metric-label">Failure</span><strong>${states.failure}</strong></div>
+      <div class="metric"><span class="metric-label">Unknown</span><strong>${states.unknown}</strong></div>
+      <div class="metric"><span class="metric-label">Unworked</span><strong>${states.unworked}</strong></div>
     </div>
   `;
 }
 
 function attackRowMarkup(row, selected) {
+  const attackState = attackStateFromRow(row);
+  const actorLabel = row.actor.kind === 'ai_agent' ? `${row.actor.handle} · AI` : row.actor.handle;
+  const originLabel = [row.origin.kind, row.origin.service].filter(Boolean).join(' / ') || 'authoritative capture';
   return `
     <li class="attack-row ${selected ? 'is-selected' : ''}">
       <button type="button" class="attack-row-button" data-action="select-attempt" data-row-id="${escapeHtml(row.id)}"${selected ? ' aria-current="true"' : ''}>
         <div class="attack-row-top">
           <span class="attack-row-time">${escapeHtml(formatTime(row.occurredAt))}</span>
-          <span class="attack-row-actor">${escapeHtml(row.actor.handle)}</span>
+          <span class="attack-row-actor">${escapeHtml(actorLabel)}</span>
           <span class="actor-chip ${escapeHtml(row.actor.kind)}">${escapeHtml(row.actor.kind)}</span>
         </div>
         <div class="attack-row-main">
           <span class="attack-field"><strong>Technique</strong><span>${escapeHtml(row.technique)}</span></span>
           <span class="attack-field"><strong>Target</strong><span>${escapeHtml(row.target)}</span></span>
           <span class="attack-field"><strong>Host</strong><span>${escapeHtml(row.host)}</span></span>
-          <span class="attack-field"><strong>Status</strong><span class="status-pill ${statusClass(row.status)}">${escapeHtml(row.statusLabel)}</span></span>
+          <span class="attack-field"><strong>State</strong><span class="status-pill ${attackStateClass(attackState)}">${escapeHtml(attackStateLabel(attackState))}</span></span>
         </div>
         <div class="attack-row-note">${escapeHtml(row.summary)}</div>
         <div class="attack-row-foot">
           <span>${escapeHtml(row.command || row.origin.service || row.origin.kind)}</span>
-          <span>Cursor ${escapeHtml(row.id)} · ${escapeHtml(row.requestId)}</span>
+          <span>${escapeHtml(originLabel)} · ${escapeHtml(row.statusLabel)} · Cursor ${escapeHtml(row.id)}${row.requestId ? ` · ${escapeHtml(row.requestId)}` : ''}</span>
         </div>
       </button>
     </li>
@@ -1427,24 +1518,28 @@ function attackRowMarkup(row, selected) {
 }
 
 function attackGroupsMarkup(rows, selectedId) {
-  const groups = groupAttempts(rows);
+  const groups = groupAttempts(rows, state.groupBy);
   if (!groups.length) {
     return '<p class="empty-state">Fog on the trail — relax a filter or reconnect the feed to reveal attempts.</p>';
   }
   return groups.map((group) => {
-    const statusSummary = [...group.counts.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([status, count]) => `<span class="status-pill ${statusClass(status)}">${escapeHtml(statusToLabel(status))} ${count}</span>`)
-      .join('');
+    const provenance = [
+      `${group.actors.size} operators`,
+      `${group.origins.size} capture paths`,
+      `Latest ${group.latest.actor?.handle || 'unknown'} · ${[group.latest.origin?.kind, group.latest.origin?.service].filter(Boolean).join(' / ') || 'authoritative capture'}`,
+    ].join(' · ');
     return `
       <section class="attack-group">
         <header class="attack-group-header">
           <div>
-            <p class="workspace-kicker">Technique</p>
+            <p class="workspace-kicker">${escapeHtml(attackGroupLabel(group.groupBy))}</p>
             <h3>${escapeHtml(group.key)}</h3>
-            <p>${group.rows.length} attempts · ${group.targets.size} targets · ${group.hosts.size} hosts</p>
+            <p>${group.rows.length} attempts · ${group.targets.size} targets · ${group.hosts.size} hosts · ${group.techniques.size} techniques</p>
+            <p class="attack-group-provenance">${escapeHtml(provenance)}</p>
           </div>
-          <div class="attack-group-meta">${statusSummary}</div>
+          <div class="attack-group-meta">
+            ${attackStateOrder.map((stateName) => `<span class="status-pill ${attackStateClass(stateName)}">${escapeHtml(attackStateLabel(stateName))} ${group.counts[stateName]}</span>`).join('')}
+          </div>
         </header>
         <ol class="attack-group-list">
           ${group.rows.map((row) => attackRowMarkup(row, row.id === selectedId)).join('')}
@@ -1459,6 +1554,13 @@ function attemptDetailMarkup(row) {
     return '<p class="empty-state">No attempt selected yet. Pick a row to open its raw and structured evidence.</p>';
   }
   const structuredJson = JSON.stringify(row.structured || {}, null, 2);
+  const attackState = attackStateFromRow(row);
+  const pivotChain = Array.isArray(row.data?.pivotChain) ? row.data.pivotChain : Array.isArray(row.pivotChain) ? row.pivotChain : [];
+  const actorBits = [row.actor.kind, row.actor.handle, row.actor.agentName, row.actor.model ? `model ${row.actor.model}` : '', row.actor.version ? `v${row.actor.version}` : '', row.actor.authorizedBy ? `authorized by ${row.actor.authorizedBy}` : ''].filter(Boolean).join(' · ');
+  const originBits = [row.origin.kind, row.origin.service].filter(Boolean).join(' · ') || 'authoritative capture';
+  const execHostIp = row.data?.execHostIp || row.execHostIp || 'Not recorded';
+  const egressIp = row.data?.egressPublicIp || row.egressPublicIp || 'Not recorded';
+  const outcomeBits = [row.statusLabel, attackStateLabel(attackState)].filter(Boolean).join(' · ');
   return `
     <div class="detail-card">
       <div class="detail-head">
@@ -1467,13 +1569,17 @@ function attemptDetailMarkup(row) {
           <h3>${escapeHtml(row.technique)}</h3>
           <p>${escapeHtml(row.summary)}</p>
         </div>
-        <span class="status-pill ${statusClass(row.status)}">${escapeHtml(row.statusLabel)}</span>
+        <span class="status-pill ${attackStateClass(attackState)}">${escapeHtml(attackStateLabel(attackState))}</span>
       </div>
-      <dl class="detail-grid">
-        <div><dt>Actor</dt><dd>${escapeHtml(row.actor.kind)} · ${escapeHtml(row.actor.handle)}${row.actor.agentName ? ` · ${escapeHtml(row.actor.agentName)}` : ''}</dd></div>
+      <dl class="detail-grid provenance-grid">
+        <div><dt>Actor</dt><dd>${escapeHtml(actorBits)}</dd></div>
+        <div><dt>Origin</dt><dd>${escapeHtml(originBits)}</dd></div>
+        <div><dt>Exec host IP</dt><dd>${escapeHtml(execHostIp)}</dd></div>
+        <div><dt>Public egress IP</dt><dd>${escapeHtml(egressIp)}</dd></div>
+        <div><dt>Pivot chain</dt><dd>${escapeHtml(pivotChain.length ? pivotChain.join(' → ') : 'None recorded')}</dd></div>
+        <div><dt>Outcome</dt><dd>${escapeHtml(outcomeBits)}</dd></div>
         <div><dt>Target</dt><dd>${escapeHtml(row.target)}</dd></div>
         <div><dt>Host</dt><dd>${escapeHtml(row.host)}</dd></div>
-        <div><dt>Source</dt><dd>${escapeHtml(row.origin.kind)}${row.origin.service ? ` · ${escapeHtml(row.origin.service)}` : ''}</dd></div>
         <div><dt>Command</dt><dd>${escapeHtml(row.command || 'Not captured')}</dd></div>
         <div><dt>Parse</dt><dd>${escapeHtml(row.parseStatus)}${row.pluginId ? ` · ${escapeHtml(row.pluginId)}` : ''}</dd></div>
         <div><dt>Timing</dt><dd>${escapeHtml(formatTime(row.occurredAt))}</dd></div>
@@ -1539,6 +1645,9 @@ function attackWorkspaceMarkup(active, currentIndex, rows, selected) {
       ${optimisticConflicts.length ? `<div class="live-banner review" role="status"><strong>Optimistic conflict</strong><span>${escapeHtml(optimisticConflicts.map((row) => row.summary || row.data?.reason || row.type).join(' · '))}</span></div>` : ''}
 
       <div class="attack-toolbar">
+        <div class="attack-group-switcher" role="group" aria-label="Group attempts by">
+          ${(['technique', 'target', 'host']).map((field) => `<button type="button" data-action="group-by" data-group-by="${field}" class="${state.groupBy === field ? 'is-active' : ''}" aria-pressed="${state.groupBy === field}">${attackGroupLabel(field)}</button>`).join('')}
+        </div>
         <label class="field-group"><span>Technique</span><select data-action="filter" data-filter="technique">${buildOptions(filters.technique, techniqueValues, (value) => value)}</select></label>
         <label class="field-group"><span>Target</span><select data-action="filter" data-filter="target">${buildOptions(filters.target, targetValues, (value) => value)}</select></label>
         <label class="field-group"><span>Host</span><select data-action="filter" data-filter="host">${buildOptions(filters.host, hostValues, (value) => value)}</select></label>
@@ -2104,6 +2213,15 @@ function bindUI() {
   root.querySelector('[data-action="load-more"]')?.addEventListener('click', () => loadNextBatch());
   root.querySelector('[data-action="resync"]')?.addEventListener('click', () => resyncFromGap());
 
+  root.querySelectorAll('[data-action="group-by"]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const groupBy = button.dataset.groupBy;
+      if (!groupBy || groupBy === state.groupBy) return;
+      state.groupBy = groupBy;
+      scheduleRender();
+    });
+  });
+
   root.querySelectorAll('[data-action="select-attempt"]').forEach((button) => {
     button.addEventListener('click', () => {
       state.selectedId = button.dataset.rowId;
@@ -2130,6 +2248,14 @@ function bindUI() {
 function onFilterChange(event) {
   const { filter } = event.target.dataset;
   if (!filter) return;
+  if (filter === 'groupBy') {
+    const next = event.target.value;
+    if (next && next !== state.groupBy) {
+      state.groupBy = next;
+      scheduleRender();
+    }
+    return;
+  }
   state.filters[filter] = event.target.value;
   refreshVisibleRows();
   scheduleRender();
