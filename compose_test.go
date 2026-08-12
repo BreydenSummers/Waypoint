@@ -25,6 +25,11 @@ func TestComposeDeploymentFilesCoverOneStepDeployment(t *testing.T) {
 			t.Fatalf("compose.yml missing %q", want)
 		}
 	}
+	for _, forbidden := range []string{"type: bind", "./", "../"} {
+		if strings.Contains(compose, forbidden) {
+			t.Fatalf("compose.yml unexpectedly contains %q; use named volumes for host portability", forbidden)
+		}
+	}
 
 	dockerfile := mustReadFile(t, "Dockerfile")
 	for _, want := range []string{
@@ -44,11 +49,45 @@ func TestComposeConfigValidatesWhenDockerComposeIsAvailable(t *testing.T) {
 		t.Skip("docker not available")
 	}
 
-	cmd := exec.Command("docker", "compose", "-f", "compose.yml", "config")
-	cmd.Env = os.Environ()
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("docker compose config failed: %v\n%s", err, output)
+	mustComposeConfigOutput := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("docker", append([]string{"compose", "-f", "compose.yml"}, args...)...)
+		cmd.Env = os.Environ()
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("docker compose %s failed: %v\n%s", strings.Join(args, " "), err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+
+	_ = mustComposeConfigOutput("config")
+
+	services := strings.Fields(mustComposeConfigOutput("config", "--services"))
+	if len(services) != 2 {
+		t.Fatalf("docker compose config --services count = %d, want 2 (%v)", len(services), services)
+	}
+	serviceSet := map[string]bool{}
+	for _, service := range services {
+		serviceSet[service] = true
+	}
+	for _, want := range []string{"postgres", "waypoint"} {
+		if !serviceSet[want] {
+			t.Fatalf("docker compose config --services missing %q in %v", want, services)
+		}
+	}
+
+	volumes := strings.Fields(mustComposeConfigOutput("config", "--volumes"))
+	if len(volumes) != 2 {
+		t.Fatalf("docker compose config --volumes count = %d, want 2 (%v)", len(volumes), volumes)
+	}
+	volumeSet := map[string]bool{}
+	for _, volume := range volumes {
+		volumeSet[volume] = true
+	}
+	for _, want := range []string{"waypoint-postgres", "waypoint-evidence"} {
+		if !volumeSet[want] {
+			t.Fatalf("docker compose config --volumes missing %q in %v", want, volumes)
+		}
 	}
 }
 
