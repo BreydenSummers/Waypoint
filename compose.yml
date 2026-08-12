@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: waypoint
+      POSTGRES_USER: waypoint
+      POSTGRES_PASSWORD: waypoint
+    volumes:
+      - waypoint-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waypoint -d waypoint"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  waypoint:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: waypoint:compose
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      WAYPOINT_ADDR: :8080
+      WAYPOINT_DB_DSN: postgres://waypoint:waypoint@postgres:5432/waypoint?sslmode=disable
+      WAYPOINT_EVIDENCE_DIR: /var/lib/waypoint/evidence
+    ports:
+      - "8080:8080"
+    volumes:
+      - waypoint-evidence:/var/lib/waypoint/evidence
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/readyz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  waypoint-postgres:
+  waypoint-evidence:
