@@ -148,9 +148,10 @@ func TestHandlersReturnServiceUnavailableWithoutDatabase(t *testing.T) {
 }
 
 func TestReadCaptureRequestRejectsInterruptedMultipartUpload(t *testing.T) {
+	t.Setenv("WAYPOINT_EVIDENCE_DIR", t.TempDir())
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	if err := mw.WriteField("envelope", `{"captureId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1"}`); err != nil {
+	if err := mw.WriteField("envelope", `{"captureId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1","evidence":{"stdout":{"mediaType":"text/plain","byteLength":2,"sha256":"2689367b205c16ce32ed4200942b8b8b1e262dfc70d9bc9fbc77c49699a4f1df"},"stderr":{"mediaType":"text/plain","byteLength":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}}}`); err != nil {
 		t.Fatalf("write envelope: %v", err)
 	}
 	if err := mw.WriteField("stdout", "ok"); err != nil {
@@ -160,15 +161,16 @@ func TestReadCaptureRequestRejectsInterruptedMultipartUpload(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/captures", bytes.NewReader(body.Bytes()))
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 
-	if _, err := readCaptureRequest(req); err == nil {
+	if _, err := readCaptureRequest(req, newEvidenceStore()); err == nil {
 		t.Fatal("expected interrupted multipart upload to be rejected")
 	}
 }
 
 func TestReadCaptureRequestRejectsOversizedEvidenceBudget(t *testing.T) {
+	t.Setenv("WAYPOINT_EVIDENCE_DIR", t.TempDir())
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	if err := mw.WriteField("envelope", `{"captureId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1"}`); err != nil {
+	if err := mw.WriteField("envelope", `{"captureId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1","evidence":{"stdout":{"mediaType":"text/plain","byteLength":33554432,"sha256":"<ignored>"},"stderr":{"mediaType":"text/plain","byteLength":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}}}`); err != nil {
 		t.Fatalf("write envelope: %v", err)
 	}
 	stdout, err := mw.CreateFormField("stdout")
@@ -188,7 +190,7 @@ func TestReadCaptureRequestRejectsOversizedEvidenceBudget(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/captures", bytes.NewReader(body.Bytes()))
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 
-	if _, err := readCaptureRequest(req); err == nil {
+	if _, err := readCaptureRequest(req, newEvidenceStore()); err == nil {
 		t.Fatal("expected oversized evidence upload to be rejected")
 	}
 }
