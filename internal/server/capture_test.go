@@ -249,6 +249,145 @@ func TestCapturePersistsEvidenceAndRecoversOrphans(t *testing.T) {
 	}
 }
 
+func TestCaptureEvidenceDeduplicatesAndSurvivesRestart(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	evidenceDir := t.TempDir()
+	t.Setenv("WAYPOINT_EVIDENCE_DIR", evidenceDir)
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	humanID := "22222222-2222-4222-8222-222222222222"
+	actionSourceID := "44444444-4444-4444-8444-444444444444"
+	actorToken := "human-test-token"
+	stdout := []byte("abc")
+	stderr := []byte("warning\n")
+	stdoutHash := hashHex(string(stdout))
+	stderrHash := hashHex(string(stderr))
+
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, humanID, engagementID, hashHex(actorToken))
+
+	makeEnvelope := func(captureID string) map[string]any {
+		return map[string]any{
+			"contractVersion": "1.0.0",
+			"captureId":       captureID,
+			"sourceAgent": map[string]any{
+				"id":       actionSourceID,
+				"kind":     "operator_wrapper",
+				"name":     "waypoint-wrapper",
+				"version":  "1.0.0",
+				"platform": map[string]any{"os": "linux", "arch": "amd64"},
+			},
+			"phase":       "recon",
+			"initiatedBy": "manual",
+			"command":     "/usr/bin/nmap",
+			"argv":        []string{"nmap", "-sV", "demo.local"},
+			"cwd":         "/home/operator/engagement",
+			"target":      map[string]any{"kind": "hostname", "value": "demo.local"},
+			"timing": map[string]any{
+				"startedAt":  "2025-01-15T10:00:00.000Z",
+				"endedAt":    "2025-01-15T10:00:01.000Z",
+				"durationMs": 1000,
+			},
+			"execution": map[string]any{"status": "exited", "exitCode": 0},
+			"network": map[string]any{
+				"execHost":   map[string]any{"address": "10.10.0.12", "method": "route_selection", "confidence": "confirmed"},
+				"egress":     map[string]any{"mode": "off", "status": "disabled"},
+				"pivotChain": []any{},
+			},
+			"evidence": map[string]any{
+				"stdout": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stdout), "sha256": stdoutHash},
+				"stderr": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": len(stderr), "sha256": stderrHash},
+			},
+			"parsing": map[string]any{"status": "raw"},
+		}
+	}
+
+	firstEnvelope := makeEnvelope("cccccccc-cccc-4ccc-8ccc-ccccccccccc1")
+	first := doCaptureRequest(t, HandlerWithDB(db), actorToken, "req-first", firstEnvelope, stdout, stderr)
+	if first.Code != http.StatusCreated {
+		t.Fatalf("first capture status = %d, want %d", first.Code, http.StatusCreated)
+	}
+	var firstAck captureAckResponse
+	decodeResponse(t, first, &firstAck)
+
+	var firstStdoutID, firstStderrID, firstStdoutKey, firstStderrKey string
+	if err := db.QueryRowContext(ctx, `SELECT se.id::text, ee.id::text, se.storage_key, ee.storage_key FROM action a JOIN evidence se ON se.id = a.stdout_evidence_id JOIN evidence ee ON ee.id = a.stderr_evidence_id WHERE a.id = $1`, firstAck.ActionID).Scan(&firstStdoutID, &firstStderrID, &firstStdoutKey, &firstStderrKey); err != nil {
+		t.Fatalf("load first evidence refs: %v", err)
+	}
+	if firstStdoutKey != "captures/"+stdoutHash+"/stdout" || firstStderrKey != "captures/"+stderrHash+"/stderr" {
+		t.Fatalf("storage keys = %q %q", firstStdoutKey, firstStderrKey)
+	}
+
+	orphanPath := filepath.Join(evidenceDir, "captures", strings.Repeat("f", 64), "stdout")
+	if err := os.MkdirAll(filepath.Dir(orphanPath), 0o750); err != nil {
+		t.Fatalf("mkdir orphan dir: %v", err)
+	}
+	if err := os.WriteFile(orphanPath, []byte("orphan"), 0o600); err != nil {
+		t.Fatalf("write orphan evidence: %v", err)
+	}
+	tmpPath := filepath.Join(evidenceDir, ".tmp", ".tmp-stale-blob")
+	if err := os.MkdirAll(filepath.Dir(tmpPath), 0o700); err != nil {
+		t.Fatalf("mkdir tmp dir: %v", err)
+	}
+	if err := os.WriteFile(tmpPath, []byte("tmp"), 0o600); err != nil {
+		t.Fatalf("write temp evidence: %v", err)
+	}
+
+	secondEnvelope := cloneMap(makeEnvelope("cccccccc-cccc-4ccc-8ccc-ccccccccccc2"))
+	second := doCaptureRequest(t, HandlerWithDB(db), actorToken, "req-second", secondEnvelope, stdout, stderr)
+	if second.Code != http.StatusCreated {
+		t.Fatalf("second capture status = %d, want %d", second.Code, http.StatusCreated)
+	}
+	var secondAck captureAckResponse
+	decodeResponse(t, second, &secondAck)
+
+	var secondStdoutID, secondStderrID string
+	if err := db.QueryRowContext(ctx, `SELECT se.id::text, ee.id::text FROM action a JOIN evidence se ON se.id = a.stdout_evidence_id JOIN evidence ee ON ee.id = a.stderr_evidence_id WHERE a.id = $1`, secondAck.ActionID).Scan(&secondStdoutID, &secondStderrID); err != nil {
+		t.Fatalf("load second evidence refs: %v", err)
+	}
+	if firstStdoutID != secondStdoutID || firstStderrID != secondStderrID {
+		t.Fatalf("dedup ids changed: first=%s/%s second=%s/%s", firstStdoutID, firstStderrID, secondStdoutID, secondStderrID)
+	}
+
+	var evidenceCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM evidence WHERE engagement_id = $1`, engagementID).Scan(&evidenceCount); err != nil {
+		t.Fatalf("count evidence rows: %v", err)
+	}
+	if evidenceCount != 2 {
+		t.Fatalf("evidence row count = %d, want 2", evidenceCount)
+	}
+	if _, err := os.Stat(orphanPath); !os.IsNotExist(err) {
+		t.Fatalf("orphan evidence still present after restart recovery: %v", err)
+	}
+	if _, err := os.Stat(tmpPath); !os.IsNotExist(err) {
+		t.Fatalf("temporary evidence still present after restart recovery: %v", err)
+	}
+	for _, tc := range []struct {
+		path string
+		want []byte
+	}{
+		{path: firstStdoutKey, want: stdout},
+		{path: firstStderrKey, want: stderr},
+	} {
+		data, err := os.ReadFile(filepath.Join(evidenceDir, filepath.FromSlash(tc.path)))
+		if err != nil {
+			t.Fatalf("read committed evidence %s: %v", tc.path, err)
+		}
+		if !bytes.Equal(data, tc.want) {
+			t.Fatalf("committed evidence %s = %q, want %q", tc.path, data, tc.want)
+		}
+	}
+}
+
 func TestCaptureAcceptsAIInitiationWithDecisionContext(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
