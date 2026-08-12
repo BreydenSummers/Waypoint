@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-import { computeArchiveHash, isSafeBundlePath, sha256 } from './bundle-tools.mjs';
+import { computeArchiveHash, isSafeBundlePath, sha256, verifyBundle } from './bundle-tools.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fixtureSnapshot = JSON.parse(await readFile(resolve(repoRoot, 'contracts/v1/fixtures/report-snapshot.json'), 'utf8'));
@@ -97,10 +97,20 @@ assert.equal(verifyOutput.status, 'verified');
 assert.equal(verifyOutput.payloadCount, manifest.payloads.length);
 assert.equal(verifyOutput.archiveSha256, archiveSha256);
 
+await writeFile(sidecarPath, `${archiveSha256}-tampered\n`, 'utf8');
+await assert.rejects(() => verifyBundle(bundleRoot), /outer archive hash mismatch/);
+await writeFile(sidecarPath, `${archiveSha256}\n`, 'utf8');
+
+await writeFile(manifestPath, JSON.stringify({
+  ...manifest,
+  payloads: [...manifest.payloads, { path: '../escape.dump', size: 1, sha256: sha256(Buffer.from('x')) }],
+}, null, 2), 'utf8');
+await assert.rejects(() => verifyBundle(bundleRoot), /unsafe bundle path/);
+
 const outputHtml = join(tempRoot, 'restored-report.html');
 const regenRun = spawnSync('node', [resolve(repoRoot, 'bundle/tools/regenerate-report.mjs'), bundleRoot, outputHtml], { encoding: 'utf8' });
-assert.equal(regenRun.status, 0, regenRun.stderr);
-const regenerated = await readFile(outputHtml, 'utf8');
-assert.ok(regenerated.includes('Runtime report snapshot'));
-assert.ok(regenerated.includes('bundle/tools/verify-restore.mjs'));
-assert.ok(regenerated.includes('Hash verified, not signed'));
+assert.equal(regenRun.status, 1, regenRun.stderr);
+assert.match(regenRun.stderr, /unsafe bundle path/);
+
+const regenerated = await readFile(outputHtml, 'utf8').catch(() => '');
+assert.equal(regenerated, '');
