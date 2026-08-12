@@ -583,15 +583,55 @@ function runtimePhaseMeta(phase) {
 }
 
 function buildRuntimeJourneyLog() {
-  const rows = state.rows.slice(-3);
-  if (!rows.length) {
+  const rows = state.visibleRows.length ? state.visibleRows : state.rows;
+  const recent = rows.slice(-3);
+
+  if (state.loading && !rows.length) {
+    return [
+      'Loading authoritative audit history…',
+      'Waiting for the first committed batch to arrive.',
+    ];
+  }
+
+  if (state.mode === 'resync' && !rows.length) {
+    return [
+      'Cursor gap detected — resync is required.',
+      'Reload persisted history before reconnecting to the live feed.',
+    ];
+  }
+
+  if ((state.mode === 'error' || state.mode === 'revoked') && !rows.length) {
+    return [
+      state.mode === 'revoked' ? 'Session revoked — reconnect with a fresh bearer token.' : 'Live feed unavailable — demo trail remains ready.',
+      'No authoritative audit events are visible yet.',
+    ];
+  }
+
+  if (!recent.length) {
+    if (state.rows.length) {
+      return [
+        'No authoritative audit events match the current filters.',
+        'Relax a filter or clear search to reveal the trail again.',
+      ];
+    }
     return [
       'No authoritative audit events loaded yet.',
       'Connect live to replace this trail stub.',
     ];
   }
 
-  return rows.map((row) => `${formatTime(row.occurredAt)} — ${row.actor?.handle || 'unknown actor'} · ${row.type || row.technique || 'audit event'} · ${row.summary || row.command || row.target || 'event recorded'}`);
+  return recent.map((row) => {
+    const actor = row.actor?.kind === 'ai_agent'
+      ? `${row.actor.handle} (AI)`
+      : row.actor?.handle || 'unknown actor';
+    const source = [row.origin?.kind, row.origin?.service].filter(Boolean).join('/') || 'authoritative capture';
+    const target = row.target || 'unknown target';
+    const result = row.result?.label || row.statusLabel || row.status || 'recorded';
+    const immutable = [`cursor ${row.id}`];
+    if (row.requestId) immutable.push(`request ${row.requestId}`);
+    if (row.subject?.type) immutable.push(`subject ${row.subject.type}#${row.subject.revision || 1}`);
+    return `${formatTime(row.occurredAt)} — ${actor} · ${source} · target ${target} · result ${result} · ${immutable.join(' · ')}`;
+  });
 }
 
 function buildRuntimeReport(fallback) {
@@ -1544,9 +1584,14 @@ function renderSidebarLog(active) {
         </div>
         ${recent.length ? `
           <ul class="recent-attempts">
-            ${recent.map((row) => `<li><strong>${escapeHtml(row.technique)}</strong><span>${escapeHtml(row.target)} · ${escapeHtml(row.host)} · ${escapeHtml(row.statusLabel)}</span></li>`).join('')}
+            ${recent.map((row) => {
+              const actor = row.actor?.kind === 'ai_agent' ? `${row.actor.handle} (AI)` : row.actor?.handle || 'unknown actor';
+              const source = [row.origin?.kind, row.origin?.service].filter(Boolean).join('/') || 'authoritative capture';
+              const result = row.result?.label || row.statusLabel || row.status || 'recorded';
+              return `<li><strong>${escapeHtml(actor)}</strong><span>${escapeHtml(source)} · ${escapeHtml(row.target)} · ${escapeHtml(result)}</span><small>Cursor ${escapeHtml(row.id)}${row.requestId ? ` · Request ${escapeHtml(row.requestId)}` : ''}${row.subject?.type ? ` · Subject ${escapeHtml(row.subject.type)}#${escapeHtml(row.subject.revision || 1)}` : ''}</small></li>`;
+            }).join('')}
           </ul>
-        ` : '<p class="guide-note-empty">No authoritative audit events loaded yet. Connect live to replace this trail stub.</p>'}
+        ` : state.loading ? '<p class="guide-note-empty">Loading authoritative audit history…</p>' : state.mode === 'resync' ? '<p class="guide-note-empty">Cursor gap detected — resync history before reconnecting.</p>' : state.mode === 'revoked' ? '<p class="guide-note-empty">Session revoked — reconnect with a fresh bearer token.</p>' : state.mode === 'error' ? '<p class="guide-note-empty">Live feed unavailable; demo trail remains ready.</p>' : '<p class="guide-note-empty">No authoritative audit events loaded yet. Connect live to replace this trail stub.</p>'}
       </section>
     `;
   }
