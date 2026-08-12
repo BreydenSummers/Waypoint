@@ -188,6 +188,13 @@ func outOfBandReviewHandler(db *sql.DB, originKind string) http.HandlerFunc {
 			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load review state failed"})
 			return
 		}
+		if ok, err := sourceActionCaptured(ctx, tx, actor.EngagementID, req.SourceActionID); err != nil {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "validate source action failed"})
+			return
+		} else if !ok {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "invalid_source_capture", RequestID: reqID, Retryable: false, FieldErrors: []fieldError{{Pointer: "/sourceActionId", Code: "not_found", Message: "sourceActionId must reference a captured action in this engagement."}}, Detail: "source action is not captured in this engagement"})
+			return
+		}
 
 		eventID, err := dbutil.AppendAuditEvent(ctx, tx, dbutil.AuditEventInput{
 			EngagementID:  actor.EngagementID,
@@ -209,6 +216,17 @@ func outOfBandReviewHandler(db *sql.DB, originKind string) http.HandlerFunc {
 		}
 		writeJSONWithHeaders(w, http.StatusCreated, outOfBandReviewResponse{ContractVersion: outOfBandReviewContractVersion, ClaimID: req.ClaimID, AuditEventCursor: eventCursor(eventID), ResolvedAt: req.ResolvedAt, Idempotency: "created"}, reqID)
 	}
+}
+
+func sourceActionCaptured(ctx context.Context, tx *sql.Tx, engagementID, actionID string) (bool, error) {
+	var found int
+	if err := tx.QueryRowContext(ctx, `SELECT 1 FROM action WHERE engagement_id = $1 AND id = $2 LIMIT 1`, engagementID, actionID).Scan(&found); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func lockOutOfBandReviewScope(ctx context.Context, tx *sql.Tx, engagementID, actorID, claimID string) error {
