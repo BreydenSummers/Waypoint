@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const app = await readFile(resolve(webRoot, 'src/App.tsx'), 'utf8');
+const styles = await readFile(resolve(webRoot, 'src/styles.css'), 'utf8');
 const distBundle = await readFile(resolve(webRoot, '../internal/webassets/dist/assets/waypoint.js'), 'utf8');
+const distStyles = await readFile(resolve(webRoot, '../internal/webassets/dist/assets/waypoint.css'), 'utf8');
 const index = await readFile(resolve(webRoot, 'index.html'), 'utf8');
 const distIndex = await readFile(resolve(webRoot, '../internal/webassets/dist/index.html'), 'utf8');
 const reportFixture = JSON.parse(await readFile(resolve(webRoot, '../contracts/v1/fixtures/report-snapshot.json'), 'utf8'));
@@ -28,12 +30,31 @@ for (const html of [index, distIndex]) {
   }
 }
 
+if (styles !== distStyles) {
+  throw new Error('generated stylesheet drift detected; rerun web build');
+}
+
 for (const source of [app, distBundle]) {
   if (!source.includes("workspaceTitle: 'Recon workspace'")) {
     throw new Error('Recon workspace title missing from source or embedded bundle');
   }
   if (!source.includes("workspaceLede: 'Collect raw signals, preserve provenance, and keep the audit spine instant to query.'")) {
     throw new Error('Recon workspace lede missing from source or embedded bundle');
+  }
+  if (!source.includes("workspaceTitle: 'Attacks workspace'")) {
+    throw new Error('Attacks workspace title missing from source or embedded bundle');
+  }
+  if (!source.includes("workspaceLede: 'Run commands through the wrapper, keep the path to each attempt obvious, and preserve evidence.'")) {
+    throw new Error('Attacks workspace lede missing from source or embedded bundle');
+  }
+  if (!source.includes("note: 'Captured actions land here with source, host, egress IP, and outcome.'")) {
+    throw new Error('Attacks guide note missing from source or embedded bundle');
+  }
+  if (!source.includes("{ title: 'Capture lane', items: ['Command + argv', 'stdout / stderr refs', 'Exit status and timing'] }")) {
+    throw new Error('Attacks capture-lane copy missing from source or embedded bundle');
+  }
+  if (!source.includes("{ title: 'Attribution', items: ['Operator identity', 'Exec host IP', 'Public egress IP + pivot chain'] }")) {
+    throw new Error('Attacks attribution copy missing from source or embedded bundle');
   }
   if (!source.includes("workspaceTitle: 'Findings workspace'")) {
     throw new Error('Findings workspace title missing from source or embedded bundle');

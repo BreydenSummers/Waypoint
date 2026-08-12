@@ -22,12 +22,12 @@ const phaseData = {
     path: '/engagements/demo/attacks',
     x: 228,
     y: 182,
-    note: 'Grouped attempts stay searchable by technique, target, and host. Raw output is always rendered safely.',
+    note: 'Captured actions land here with source, host, egress IP, and outcome.',
     workspaceTitle: 'Attacks workspace',
-    workspaceLede: 'Group attempts by technique, target, and host; inspect status, raw output, and structured evidence without ever rendering tool HTML.',
+    workspaceLede: 'Run commands through the wrapper, keep the path to each attempt obvious, and preserve evidence.',
     cards: [
-      { title: 'Capture lane', items: ['Technique, target, host, and status', 'Raw stdout / stderr refs', 'Parse state and timing'] },
-      { title: 'Attribution', items: ['Actor identity', 'Exec host + pivot chain', 'Public egress IP when known'] },
+      { title: 'Capture lane', items: ['Command + argv', 'stdout / stderr refs', 'Exit status and timing'] },
+      { title: 'Attribution', items: ['Operator identity', 'Exec host IP', 'Public egress IP + pivot chain'] },
     ],
   },
   findings: {
@@ -1298,7 +1298,7 @@ function renderSidebarLog(active) {
   const journeyLog = [
     'Day 1 — Basecamp set. Project named, team invited, scope loaded.',
     'Day 2 — Creek crossed. 240 records packed into the trail log.',
-    `Now — Made camp in ${active.name}. The audit trail is live and attributed.`,
+    'Now — Made camp in Attacks. The audit trail is live and attributed.',
   ];
 
   return `
