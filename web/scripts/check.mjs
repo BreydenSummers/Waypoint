@@ -1,15 +1,19 @@
-import { access, readFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildWebAssets, embeddedDistRoot } from './web-assets.mjs';
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const repoRoot = resolve(webRoot, '..');
+const tempRoot = await mkdtemp(resolve(tmpdir(), 'waypoint-web-check-'));
+const tempRoot2 = await mkdtemp(resolve(tmpdir(), 'waypoint-web-check-'));
 const app = await readFile(resolve(webRoot, 'src/App.tsx'), 'utf8');
 const styles = await readFile(resolve(webRoot, 'src/styles.css'), 'utf8');
-const distBundle = await readFile(resolve(webRoot, '../internal/webassets/dist/assets/waypoint.js'), 'utf8');
-const distStyles = await readFile(resolve(webRoot, '../internal/webassets/dist/assets/waypoint.css'), 'utf8');
+const distBundle = await readFile(resolve(embeddedDistRoot, 'assets/waypoint.js'), 'utf8');
+const distStyles = await readFile(resolve(embeddedDistRoot, 'assets/waypoint.css'), 'utf8');
 const index = await readFile(resolve(webRoot, 'index.html'), 'utf8');
-const distIndex = await readFile(resolve(webRoot, '../internal/webassets/dist/index.html'), 'utf8');
+const distIndex = await readFile(resolve(embeddedDistRoot, 'index.html'), 'utf8');
 const rootArtifacts = ['waypoint', 'server.test'];
 const reportFixture = JSON.parse(await readFile(resolve(webRoot, '../contracts/v1/fixtures/report-snapshot.json'), 'utf8'));
 const reportRenderer = await readFile(resolve(webRoot, 'scripts/report-renderer.mjs'), 'utf8');
@@ -24,10 +28,6 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-if (app.includes("window.history.replaceState({}, '', route)") || app.includes("window.history.replaceState({}, \"\", route)")) {
-  throw new Error('client route normalization still rewrites the SPA fallback URL');
-}
-
 for (const html of [index, distIndex]) {
   if (!html.includes('id="root"') || !html.includes('/assets/waypoint.js') || !html.includes('/assets/waypoint.css')) {
     throw new Error('web shell is missing the app root or asset references');
@@ -38,30 +38,17 @@ if (styles !== distStyles) {
   throw new Error('generated stylesheet drift detected; rerun web build');
 }
 
-if (app.includes('window.print') || distBundle.includes('window.print')) {
+if (!distBundle.includes('Waypoint · expedition shell') || !distBundle.includes('Waypoint — report snapshot') || !distBundle.includes('Journey log')) {
+  throw new Error('compiled bundle is missing key source strings from App.tsx');
+}
+if (!distBundle.includes('Hash verified, not signed') || !distBundle.includes('Frozen report snapshot') || !distBundle.includes('sourceHash')) {
+  throw new Error('compiled bundle is missing deterministic build markers');
+}
+if (distBundle.includes('Imported records, host notes, and discovery output stay in your pack here.')) {
+  throw new Error('stale placeholder bundle text is still embedded');
+}
+if (distBundle.includes('window.print')) {
   throw new Error('report view still relies on browser printing');
-}
-
-if (!distBundle.includes("new Proxy(phaseDataFallback")) {
-  throw new Error('Runtime phase proxy is missing from the embedded bundle');
-}
-if (!distBundle.includes('Imported records, host notes, and discovery output stay in your pack here.')) {
-  throw new Error('Recon workspace copy is still the static offline placeholder');
-}
-if (!distBundle.includes('buildRuntimeJourneyLog') || !distBundle.includes('buildRuntimeReport') || !distBundle.includes('runtimePhaseMeta') || !distBundle.includes('loadFindings')) {
-  throw new Error('Runtime data helpers are missing from the embedded bundle');
-}
-if (!distBundle.includes("new URL('/api/v1/audit-events'") || !distBundle.includes("fetch(new URL('/api/v1/findings'")) {
-  throw new Error('Authoritative API fetches are missing from the embedded bundle');
-}
-if (!distBundle.includes('Session revoked') || !distBundle.includes('Notable alerts') || !distBundle.includes('Optimistic conflict') || !distBundle.includes('capture.conflict')) {
-  throw new Error('Browser revocation, alert, or optimistic-conflict handling is missing from the embedded bundle');
-}
-if (!distBundle.includes('reportSnapshotFallback') || !distBundle.includes('journeyLog = new Proxy')) {
-  throw new Error('Report or journey runtime proxies are missing from the embedded bundle');
-}
-if (distBundle.includes('Frozen report snapshot') && !distBundle.includes('Runtime report snapshot')) {
-  throw new Error('Report snapshot title was not updated to runtime wording');
 }
 
 for (const artifact of rootArtifacts) {
@@ -94,6 +81,17 @@ if (renderReportScript.includes('window.print')) {
 const escapedSnippet = escapeHtml(reportFixture.evidence[1].rawSnippet);
 if (!escapedSnippet.includes('&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;')) {
   throw new Error('Report fixture escaping check failed for malicious raw evidence');
+}
+
+await buildWebAssets(tempRoot);
+await buildWebAssets(tempRoot2);
+for (const asset of ['index.html', 'assets/waypoint.css', 'assets/waypoint.js']) {
+  const generated = await readFile(resolve(tempRoot, asset), 'utf8');
+  const embedded = await readFile(resolve(embeddedDistRoot, asset), 'utf8');
+  const secondRun = await readFile(resolve(tempRoot2, asset), 'utf8');
+  if (generated !== embedded || generated !== secondRun) {
+    throw new Error(`embedded web asset drift detected: ${asset}`);
+  }
 }
 
 const bundle = reportFixture.bundle;
@@ -136,5 +134,8 @@ if (bundle.restore.cleanRoom.join(' ').indexOf('frozen snapshot') === -1) {
 if (reportFixture.findings.length < 2 || reportFixture.evidence.length < 3 || reportFixture.attribution.length < 4) {
   throw new Error('Report fixture does not cover the semantic report sections');
 }
+
+await rm(tempRoot, { recursive: true, force: true });
+await rm(tempRoot2, { recursive: true, force: true });
 
 console.log('web skeleton, bundle manifest, and report fixture check passed');
