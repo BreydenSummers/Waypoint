@@ -5,7 +5,7 @@
   "scripts": {
     "build": "node build.mjs",
     "lint": "node scripts/check.mjs",
-    "test": "node --test scripts/report-renderer.test.mjs scripts/bundle-tools.test.mjs scripts/g3-workspaces.test.mjs && node scripts/check.mjs",
+    "test": "node --test scripts/report-renderer.test.mjs scripts/bundle-tools.test.mjs scripts/bundle-export.test.mjs scripts/g3-workspaces.test.mjs && node scripts/check.mjs",
     "render:report": "node scripts/render-report.mjs"
   },
   "dependencies": {},
