@@ -295,6 +295,17 @@ func readToken(t *testing.T, path string) string {
 	return strings.TrimSpace(string(b))
 }
 
+func assertFileMode(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if got := info.Mode().Perm(); got != want {
+		t.Fatalf("%s mode = %v, want %v", path, got, want)
+	}
+}
+
 type destroyFixture struct {
 	scriptPath    string
 	workDir       string
@@ -371,6 +382,11 @@ func TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown(t *testing.
 			if firstHumanToken == firstAIToken || firstHumanToken == "" || firstAIToken == "" {
 				t.Fatalf("unexpected provision tokens: human=%q ai=%q", firstHumanToken, firstAIToken)
 			}
+			assertFileMode(t, filepath.Join(fixture.stateRoot, "config.env"), 0o600)
+			assertFileMode(t, filepath.Join(fixture.stateRoot, "install.state"), 0o600)
+			assertFileMode(t, filepath.Join(fixture.stateRoot, "tokens", "00000000-0000-0000-0000-000000000010.token"), 0o600)
+			assertFileMode(t, filepath.Join(fixture.stateRoot, "tokens", "00000000-0000-0000-0000-000000000011.token"), 0o600)
+			assertFileMode(t, filepath.Join(fixture.stateRoot, "last-provision.sql"), 0o600)
 
 			diagnostics := runInstaller(t, fixture.scriptPath, fixture.env, fixture.workDir, "diagnostics", "--config", fixture.configPath, "--provision", fixture.provisionPath)
 			for _, want := range []string{"waypoint_service=active", "database_ready=ready", "installed_version=1.0.0"} {

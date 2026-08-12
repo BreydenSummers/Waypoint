@@ -357,6 +357,7 @@ record_failure() {
     printf 'install_root=%s\n' "$INSTALL_ROOT"
     printf 'state_root=%s\n' "$STATE_ROOT"
   } > "$LOG_ROOT/installer/last-failure.txt"
+  chmod 600 "$LOG_ROOT/installer/last-failure.txt" 2>/dev/null || true
 }
 
 restore_backup() {
@@ -445,11 +446,13 @@ WAYPOINT_PUBLIC_URL=$(cfg WAYPOINT_PUBLIC_URL)
 WAYPOINT_DB_DSN=$(cfg WAYPOINT_DB_DSN)
 WAYPOINT_PACKAGE_PATH=$package_path
 EOF
+  chmod 600 "$STATE_ROOT/config.env"
   cat > "$temp_release/waypoint.env" <<EOF
 WAYPOINT_VERSION=$(cfg WAYPOINT_VERSION)
 WAYPOINT_PUBLIC_URL=$(cfg WAYPOINT_PUBLIC_URL)
 WAYPOINT_DB_DSN=$(cfg WAYPOINT_DB_DSN)
 EOF
+  chmod 600 "$temp_release/waypoint.env"
   cat > "$temp_release/systemd/waypoint.service" <<EOF
 [Unit]
 Description=Waypoint
@@ -501,6 +504,7 @@ EOF
     printf 'WAYPOINT_PACKAGE_PATH=%s\n' "$package_path"
     printf 'WAYPOINT_INSTALLED_AT=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   } > "$state_file"
+  chmod 600 "$state_file"
 
   rm -rf "$backup_dir"
 }
@@ -517,6 +521,7 @@ provision_accounts() {
   command -v psql >/dev/null 2>&1 || die "psql not available for provisioning"
   psql "$db_dsn" -X -v ON_ERROR_STOP=1 -f "$sql_file" >/dev/null
   mv "$sql_file" "$STATE_ROOT/last-provision.sql"
+  chmod 600 "$STATE_ROOT/last-provision.sql"
 }
 
 diagnostics() {
