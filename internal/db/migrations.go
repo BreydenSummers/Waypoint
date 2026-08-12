@@ -13,20 +13,32 @@ import (
 //go:embed migrations/*.up.sql
 var migrationFS embed.FS
 
+const migrationAdvisoryLockID int64 = 915061
+
 func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 	entries, err := fs.ReadDir(migrationFS, "migrations")
 	if err != nil {
 		return err
 	}
 
-	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationAdvisoryLockID); err != nil {
+		return fmt.Errorf("lock migrations: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
 		version text PRIMARY KEY,
 		applied_at timestamptz NOT NULL DEFAULT now()
 	)`); err != nil {
 		return fmt.Errorf("ensure migration ledger: %w", err)
 	}
 
-	rows, err := db.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+	rows, err := tx.QueryContext(ctx, `SELECT version FROM schema_migrations`)
 	if err != nil {
 		return fmt.Errorf("load applied migrations: %w", err)
 	}
@@ -63,22 +75,15 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
 		if _, err := tx.ExecContext(ctx, string(body)); err != nil {
-			_ = tx.Rollback()
 			return fmt.Errorf("apply %s: %w", name, err)
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, name); err != nil {
-			_ = tx.Rollback()
 			return fmt.Errorf("record %s: %w", name, err)
 		}
-		if err := tx.Commit(); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("commit %s: %w", name, err)
-		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migrations: %w", err)
 	}
 	return nil
 }
