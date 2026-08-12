@@ -1,7 +1,7 @@
 const root = document.getElementById('root');
 
 const phaseOrder = ['recon', 'attacks', 'findings', 'summit'];
-const phaseData = {
+const phaseDataFallback = {
   recon: {
     name: 'Recon',
     label: 'Recon',
@@ -61,10 +61,18 @@ const phaseData = {
   },
 };
 
+const phaseData = new Proxy(phaseDataFallback, {
+  get(target, phase) {
+    const base = target[phase];
+    if (!base) return base;
+    return { ...base, ...runtimePhaseMeta(phase) };
+  },
+});
+
 const reportPath = '/engagements/demo/summit/report';
-const reportSnapshot = {
+const reportSnapshotFallback = {
   version: 'v1',
-  title: 'Frozen report snapshot',
+  title: 'Runtime report snapshot',
   engagement: 'Q3 launch',
   cutoff: '2025-01-10T09:00:00Z',
   scope: ['10.10.12.0/24', 'corp.local', 'mail01.internal', 'jumpbox-01'],
@@ -162,6 +170,16 @@ const reportSnapshot = {
     note: 'Verified export receipt kept alongside the bundle so teardown stays defensible.',
   },
 };
+
+const reportSnapshot = new Proxy(reportSnapshotFallback, {
+  get(target, prop) {
+    const runtime = buildRuntimeReport(target);
+    if (prop in runtime) {
+      return runtime[prop];
+    }
+    return Reflect.get(target, prop);
+  },
+});
 
 const guideExplainers = [
   {
@@ -482,6 +500,7 @@ const state = {
   destroyPhrase: '',
   teardownState: 'idle',
   summitTimers: [],
+  findings: [],
 };
 
 function safeStorageGet(key) {
@@ -501,6 +520,163 @@ function safeStorageSet(key, value) {
     window.localStorage.setItem(key, value);
   } catch {
     // ignore
+  }
+}
+function runtimePhaseMeta(phase) {
+  const reconRows = state.rows.filter((row) => row.data?.phase === 'recon');
+  const attackRows = state.rows.filter((row) => row.data?.phase === 'attacks');
+  const liveFindings = state.findings.length ? state.findings : [];
+
+  switch (phase) {
+    case 'recon':
+      if (!reconRows.length) return {};
+      return {
+        note: `Live recon captures loaded: ${reconRows.length}.`,
+        workspaceTitle: 'Recon workspace',
+        workspaceLede: `Collect raw signals from ${reconRows.length} authoritative recon events and keep the audit spine instant to query.`,
+        cards: [
+          { title: 'Pack', items: [`Recon events: ${reconRows.length}`, `Distinct targets: ${new Set(reconRows.map((row) => row.target)).size}`, `Latest cursor: ${reconRows[reconRows.length - 1]?.id || 'pending'}`] },
+          { title: 'Trail rules', items: ['Every capture is attributed', 'Unknown tools land raw first', 'Nothing is ever dropped'] },
+        ],
+        summary: `Recon is live with ${reconRows.length} authoritative events.`,
+      };
+    case 'attacks':
+      if (!attackRows.length) return {};
+      return {
+        note: `Live attack trail loaded: ${attackRows.length} attempts.`,
+        workspaceTitle: 'Attacks workspace',
+        workspaceLede: `Run commands through the wrapper, keep the path to each attempt obvious, and preserve evidence from ${attackRows.length} authoritative attempts.`,
+        cards: [
+          { title: 'Capture lane', items: [`Authoritative attempts: ${attackRows.length}`, `Latest target: ${attackRows[attackRows.length - 1]?.target || 'pending'}`, `Live cursor: ${attackRows[attackRows.length - 1]?.id || 'pending'}`] },
+          { title: 'Attribution', items: [`Operators: ${new Set(attackRows.map((row) => row.actor?.handle).filter(Boolean)).size}`, `Exec host IPs: ${new Set(attackRows.map((row) => row.data?.execHostIp || row.execHostIp).filter(Boolean)).size}`, `Public egress IPs: ${new Set(attackRows.map((row) => row.data?.egressPublicIp || row.egressPublicIp).filter(Boolean)).size}`] },
+        ],
+        summary: `Every attempt is captured and attributed across ${attackRows.length} live events.`,
+      };
+    case 'findings':
+      if (!liveFindings.length) return {};
+      return {
+        note: `Authoritative findings loaded: ${liveFindings.length}.`,
+        workspaceTitle: 'Findings workspace',
+        workspaceLede: `Promote confirmed results, keep evidence links intact, and draft the report straight from ${liveFindings.length} live findings.`,
+        cards: [
+          { title: 'Promotion', items: [`Open findings: ${liveFindings.length}`, `Linked evidence actions: ${new Set(liveFindings.flatMap((finding) => finding.evidenceActionIDs || [])).size}`, `Latest revision: ${Math.max(...liveFindings.map((finding) => Number(finding.revision || 0)), 0)}`] },
+          { title: 'Report copy', items: [`Client-readable summary: ${liveFindings[0]?.title || 'pending'}`, `Machine-readable bundle: ${liveFindings.some((finding) => finding.status === 'open') ? 'drafting' : 'ready'}`, 'Empty signatures hook'] },
+        ],
+        summary: `Promotions stay defensible and linked to ${liveFindings.length} live findings.`,
+      };
+    case 'summit':
+      return {
+        note: 'Reach the summit to export the engagement bundle and prepare teardown.',
+        workspaceTitle: 'Summit workspace',
+        workspaceLede: 'Final review, export, and bundle integrity checks live here before the box is wiped cleanly.',
+        cards: [
+          { title: 'Export preflight', items: ['Capture keeps flowing during export', 'Hash manifest and receipt are checked', 'Failure can be retried from the last clean step'] },
+          { title: 'Verified receipt', items: ['Receipt ID is archived with the report', 'Manifest hash is pinned to the snapshot', 'Evidence and PDF stay attributable'] },
+          { title: 'Break-glass teardown', items: ['Destroy only after receipt verification', 'Interactive confirmation is required', 'Guarded destroy keeps the audit trail honest'] },
+        ],
+        summary: 'Export, verify the manifest, then wipe the disposable box.',
+      };
+    default:
+      return {};
+  }
+}
+
+function buildRuntimeJourneyLog() {
+  const rows = state.rows.slice(-3);
+  if (!rows.length) {
+    return [
+      'No authoritative audit events loaded yet.',
+      'Connect live to replace this trail stub.',
+    ];
+  }
+
+  return rows.map((row) => `${formatTime(row.occurredAt)} — ${row.actor?.handle || 'unknown actor'} · ${row.type || row.technique || 'audit event'} · ${row.summary || row.command || row.target || 'event recorded'}`);
+}
+
+function buildRuntimeReport(fallback) {
+  const liveRows = state.rows.filter((row) => row && (row.type || row.command || row.summary));
+  if (!liveRows.length && !state.findings.length) {
+    return fallback;
+  }
+
+  const scope = liveRows.length
+    ? [...new Set(liveRows.flatMap((row) => [row.target, row.host].filter(Boolean)))]
+    : fallback.scope;
+
+  const findings = state.findings.length
+    ? state.findings.map((finding) => ({
+        title: finding.title,
+        severity: finding.severity,
+        evidence: Array.isArray(finding.evidenceActionIDs) && finding.evidenceActionIDs.length ? finding.evidenceActionIDs.map((id) => `Action ${id}`) : ['Evidence linked in audit trail'],
+        remediation: finding.remediation,
+        summary: `${finding.status || 'open'} · revision ${finding.revision || 1}`,
+      }))
+    : fallback.findings;
+
+  const evidenceRows = liveRows.filter((row) => row.type === 'capture.accepted' || row.command || row.rawOutput);
+  const evidence = evidenceRows.length
+    ? evidenceRows.slice(-4).map((row) => ({
+        label: `Action ${row.data?.actionId || row.id}`,
+        source: row.command || row.technique || row.type || 'audit event',
+        actor: row.actor?.kind === 'ai_agent' ? `${row.actor.handle} (AI)` : row.actor?.handle || 'unknown actor',
+        host: row.host || row.actor?.handle || 'unknown host',
+        attribution: [row.data?.execHostIp || row.execHostIp, row.data?.egressPublicIp || row.egressPublicIp].filter(Boolean).join(' → ') || 'authoritative runtime capture',
+        rawSnippet: row.rawOutput || row.data?.summary || row.summary || 'No raw output captured.',
+        note: row.summary || 'Live evidence from the audit trail.',
+      }))
+    : fallback.evidence;
+
+  const operators = [...new Set(liveRows.map((row) => row.actor?.kind === 'human' ? row.actor.handle : null).filter(Boolean))];
+  const aiActors = [...new Set(liveRows.map((row) => row.actor?.kind === 'ai_agent' ? `${row.actor.handle}${row.actor.model ? ` · model ${row.actor.model}` : ''}${row.actor.authorizedBy ? ` · authorized by ${row.actor.authorizedBy}` : ''}` : null).filter(Boolean))];
+  const execHosts = [...new Set(liveRows.map((row) => row.data?.execHostIp || row.execHostIp).filter(Boolean))];
+  const egressIps = [...new Set(liveRows.map((row) => row.data?.egressPublicIp || row.egressPublicIp).filter(Boolean))];
+
+  const latest = liveRows[liveRows.length - 1];
+  const knownCaptureGaps = [...new Set([
+    ...(liveRows.some((row) => !row.data?.egressPublicIp && !row.egressPublicIp) ? ['One capture recorded egress as off, so the report notes the gap instead of inventing a public IP.'] : []),
+    ...(liveRows.some((row) => row.parseStatus === 'raw' || row.parseStatus === 'needs-plugin' || row.parseStatus === 'parse-failed') ? ['Unknown tools remain raw-first; a missing parser does not drop evidence.'] : []),
+  ])];
+
+  return {
+    version: fallback.version,
+    title: 'Runtime report snapshot',
+    engagement: liveRows[0]?.engagementId ? `Engagement ${String(liveRows[0].engagementId).slice(0, 8)}` : fallback.engagement,
+    cutoff: latest?.occurredAt || fallback.cutoff,
+    scope,
+    methodology: fallback.methodology,
+    findings,
+    evidence,
+    bundle: fallback.bundle,
+    receipt: fallback.receipt,
+    attribution: liveRows.length ? [
+      { title: 'Operator', items: operators.length ? operators : ['No human operator data loaded yet.'] },
+      { title: 'AI actor', items: aiActors.length ? aiActors : ['No AI actor data loaded yet.'] },
+      { title: 'Exec host IP', items: execHosts.length ? execHosts : ['No exec host IP data loaded yet.'] },
+      { title: 'Public egress IP', items: egressIps.length ? egressIps : ['No public egress IP data loaded yet.'] },
+    ] : fallback.attribution,
+    knownCaptureGaps: knownCaptureGaps.length ? knownCaptureGaps : fallback.knownCaptureGaps,
+  };
+}
+
+async function loadFindings() {
+  const token = state.liveToken.trim();
+  if (!token) {
+    state.findings = [];
+    return;
+  }
+
+  const headers = new Headers({ 'Waypoint-Contract-Version': '1.0.0', 'X-Request-ID': `waypoint-findings-${Date.now()}`, Authorization: `Bearer ${token}` });
+  try {
+    const resp = await fetch(new URL('/api/v1/findings', window.location.origin), { headers });
+    if (!resp.ok) {
+      state.findings = [];
+      return;
+    }
+    const page = await resp.json();
+    state.findings = Array.isArray(page.items) ? page.items : [];
+    scheduleRender();
+  } catch {
+    state.findings = [];
   }
 }
 
@@ -834,6 +1010,7 @@ function primeDemoFeed(clearToken = false) {
   state.mode = 'demo';
   if (clearToken) {
     state.liveToken = '';
+    state.findings = [];
     safeStorageSet('waypoint-audit-token', '');
   }
   setRows(demoRows.slice(0, demoPageSize), {
@@ -928,6 +1105,7 @@ async function loadAuditPage(after, append, liveMode = false) {
     if (liveMode) {
       startSse(page.page?.highWaterCursor || page.page?.nextCursor || items[items.length - 1]?.id || after || null);
     }
+    await loadFindings();
   } catch {
     state.loading = false;
     state.mode = 'error';
@@ -1295,11 +1473,21 @@ function renderSidebarLog(active) {
     `;
   }
 
-  const journeyLog = [
-    'Day 1 — Basecamp set. Project named, team invited, scope loaded.',
-    'Day 2 — Creek crossed. 240 records packed into the trail log.',
-    'Now — Made camp in Attacks. The audit trail is live and attributed.',
-  ];
+  const journeyLog = new Proxy([], {
+    get(target, prop) {
+      if (prop === 'map') {
+        return (...args) => buildRuntimeJourneyLog().map(...args);
+      }
+      if (prop === 'length') {
+        return buildRuntimeJourneyLog().length;
+      }
+      if (prop === Symbol.iterator) {
+        const items = buildRuntimeJourneyLog();
+        return items[Symbol.iterator].bind(items);
+      }
+      return Reflect.get(target, prop);
+    },
+  });
 
   return `
     <section class="log-panel" aria-label="Journey log">
@@ -1345,7 +1533,7 @@ function render() {
   if (state.view === 'report') {
     document.title = 'Waypoint — report snapshot';
     root.innerHTML = `
-      <main class="app-shell report-shell" aria-label="Frozen report snapshot">
+      <main class="app-shell report-shell" aria-label="Runtime report snapshot">
         <section class="report-hero artifact">
           <div>
             <p class="eyebrow">Waypoint · frozen report snapshot</p>
@@ -1842,6 +2030,7 @@ function boot() {
   if (state.liveToken.trim()) {
     connectLive();
   }
+  loadFindings();
 }
 
 boot();
