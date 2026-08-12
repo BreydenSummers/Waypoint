@@ -1,6 +1,6 @@
 # Waypoint v1 PRD traceability
 
-Status: planning baseline; no product implementation is claimed  
+Status: audited release baseline — **not v1-ready**; see [`release-evidence/remediation-audit.md`](release-evidence/remediation-audit.md)  
 Canonical requirements: [`../PRD.md`](../PRD.md)  
 Execution and task definitions: [`v1-execution-plan.md`](v1-execution-plan.md)  
 Design references: [`design-spec.md`](design-spec.md), [`waypoint-mockup.html`](waypoint-mockup.html)  
@@ -146,22 +146,22 @@ Populate this table during V1-037; do not mark the release complete if any appli
 
 | Evidence ID | Required artifact | Covers | State / location |
 |---|---|---|---|
-| EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Pass · `docs/release-evidence/v1-037.md#ev-01` |
-| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Pass · `docs/release-evidence/v1-037.md#ev-02` |
-| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Pass · `docs/release-evidence/v1-037.md#ev-03` |
-| EV-04 | Offline replay + platform matrix | PRD-CAP-004/005/011 | Pass · `docs/release-evidence/v1-037.md#ev-04` |
-| EV-05 | Egress mode packet assertions | PRD-NET-001/002/003 | Pass · `docs/release-evidence/v1-037.md#ev-05` |
-| EV-06 | Entity dedup/merge/split provenance report | PRD-DATA-004/005 | Pass · `docs/release-evidence/v1-037.md#ev-06` |
-| EV-07 | Two-browser SSE/concurrency recording | PRD-DATA-006, PRD-RT-001/002 | Pass · `docs/release-evidence/v1-037.md#ev-07` |
-| EV-08 | Finding-to-evidence-to-report trace report | PRD-FIND-001/002, PRD-REP-001 | Pass · `docs/release-evidence/v1-037.md#ev-08` |
-| EV-09 | Bundle manifest, outer hash, clean-room restore log | PRD-REP-002/003/004/005 | Pass · `docs/release-evidence/v1-037.md#ev-09` |
-| EV-10 | Guarded teardown and post-wipe bundle verification | PRD-LIFE-001 | Pass · `docs/release-evidence/v1-037.md#ev-10` |
-| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Pass · `docs/release-evidence/v1-037.md#ev-11` |
-| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Pass · `docs/release-evidence/v1-037.md#ev-12` |
-| EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Pass · `docs/release-evidence/v1-037.md#ev-13` |
-| EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Pass · `docs/release-evidence/v1-037.md#ev-14` |
-| EV-15 | Accessibility tree/keyboard/axe/reduced-motion report | PRD-A11Y-001/002 | Pass · `docs/release-evidence/v1-037.md#ev-15` |
-| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pass · `docs/release-evidence/v1-037.md#ev-16` |
+| EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Unverified · core-only contract check; sibling runtime unavailable; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Fail · production binary has no PostgreSQL wiring and real-DB tests skipped; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Fail · live capture returns 503 and evidence bytes are discarded; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-04 | Offline replay + platform matrix | PRD-CAP-004/005/011 | Unverified · no collector repository or retained platform artifacts; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-05 | Egress mode packet assertions | PRD-NET-001/002/003 | Fail · no startup resolver implementation or packet evidence; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-06 | Entity dedup/merge/split provenance report | PRD-DATA-004/005 | Unverified · relevant PostgreSQL integration tests skipped; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-07 | Two-browser SSE/concurrency recording | PRD-DATA-006, PRD-RT-001/002 | Fail · browser uses no API/SSE and no recording exists; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-08 | Finding-to-evidence-to-report trace report | PRD-FIND-001/002, PRD-REP-001 | Fail · UI/report are static fixtures, not authoritative runtime data; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-09 | Bundle manifest, outer hash, clean-room restore log | PRD-REP-002/003/004/005 | Fail · no export/bundle/restore implementation; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-10 | Guarded teardown and post-wipe bundle verification | PRD-LIFE-001 | Fail · teardown is simulated React state only; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Fail · no Compose/Dockerfile; installer test skips database work; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Fail · tests assert fixture constants/query text, not measured budgets; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Fail · architecture lint is not a security test; runtime controls are missing; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Unverified · no browser screenshots or operator-flow evidence; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-15 | Accessibility tree/keyboard/axe/reduced-motion report | PRD-A11Y-001/002 | Unverified · no browser accessibility/axe evidence; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
+| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pass · source inventory and architecture lint find no functioning v2 feature surface; `docs/release-evidence/remediation-audit.md#release-evidence-disposition` |
 
 ## 9. Planning coverage check
 
