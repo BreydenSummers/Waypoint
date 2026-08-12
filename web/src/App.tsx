@@ -95,6 +95,7 @@ type GuideExplainer = {
 
 const engagementPath = '/engagements/demo';
 const reportPath = `${engagementPath}/summit/report`;
+const reportPdfPath = `${reportPath}.pdf`;
 const waypointOrder: PhaseId[] = ['recon', 'attacks', 'findings', 'summit'];
 const reportSnapshot: ReportSnapshot = {
   version: 'v1',
@@ -507,8 +508,8 @@ export function App() {
             <button type="button" className="secondary-link" onClick={() => { setView('trail'); setActiveId('summit'); navigateToPhase('summit'); }}>
               Back to Summit
             </button>
-            <button type="button" className="primary-button" onClick={() => window.print()}>
-              Print PDF
+            <button type="button" className="primary-button" onClick={() => window.open(reportPdfPath, '_blank', 'noopener')}>
+              Open PDF artifact
             </button>
           </div>
         </section>
