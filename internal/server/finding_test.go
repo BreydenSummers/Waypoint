@@ -26,11 +26,14 @@ func TestFindingPromotionRevisionsAndOperatorOnlyPromotion(t *testing.T) {
 
 	engagementID := "11111111-1111-4111-8111-111111111111"
 	humanID := "22222222-2222-4222-8222-222222222222"
+	viewerID := "23232323-2323-4232-8232-232323232323"
 	aiID := "33333333-3333-4333-8333-333333333333"
 	humanToken := "finding-human-token"
+	viewerToken := "finding-viewer-token"
 	aiToken := "finding-ai-token"
 	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
 	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, humanID, engagementID, hashHex(humanToken))
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'violet.viewer', $3, 'viewer')`, viewerID, engagementID, hashHex(viewerToken))
 	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role, agent_name, model, version, authorized_by) VALUES ($1, $2, 'ai_agent', 'field-agent-7', $3, 'operator', 'Waypoint', 'gpt-4.1', '1.0', $4)`, aiID, engagementID, hashHex(aiToken), humanID)
 
 	entityID := "44444444-4444-4444-8444-444444444444"
@@ -48,6 +51,26 @@ func TestFindingPromotionRevisionsAndOperatorOnlyPromotion(t *testing.T) {
 
 	ts := httptest.NewServer(HandlerWithDB(db))
 	defer ts.Close()
+
+	for i, tc := range []struct {
+		name    string
+		payload map[string]any
+	}{
+		{name: "missing source action", payload: map[string]any{"title": "Anonymous shares exposed", "severity": "high", "remediation": "Restrict share access and review group membership.", "status": "open"}},
+		{name: "missing title", payload: map[string]any{"sourceActionId": actionID, "severity": "high", "remediation": "Restrict share access and review group membership.", "status": "open"}},
+		{name: "missing severity", payload: map[string]any{"sourceActionId": actionID, "title": "Anonymous shares exposed", "remediation": "Restrict share access and review group membership.", "status": "open"}},
+		{name: "missing remediation", payload: map[string]any{"sourceActionId": actionID, "title": "Anonymous shares exposed", "severity": "high", "status": "open"}},
+		{name: "missing status", payload: map[string]any{"sourceActionId": actionID, "title": "Anonymous shares exposed", "severity": "high", "remediation": "Restrict share access and review group membership."}},
+	} {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			resp := doFindingRequest(t, ts.Client(), ts.URL+"/api/v1/findings/promote", humanToken, "req-finding-invalid-"+string(rune('0'+i)), http.MethodPost, tc.payload)
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusBadRequest)
+			}
+		})
+	}
 
 	promoteReq := map[string]any{
 		"sourceActionId": actionID,
@@ -107,6 +130,11 @@ func TestFindingPromotionRevisionsAndOperatorOnlyPromotion(t *testing.T) {
 	if aiResp.StatusCode != http.StatusForbidden {
 		t.Fatalf("ai promote status = %d, want %d", aiResp.StatusCode, http.StatusForbidden)
 	}
+	viewerResp := doFindingRequest(t, ts.Client(), ts.URL+"/api/v1/findings/promote", viewerToken, "req-finding-viewer", http.MethodPost, promoteReq)
+	defer viewerResp.Body.Close()
+	if viewerResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("viewer promote status = %d, want %d", viewerResp.StatusCode, http.StatusForbidden)
+	}
 
 	updateReq := map[string]any{
 		"expectedRevision": promoted.Revision,
@@ -129,6 +157,11 @@ func TestFindingPromotionRevisionsAndOperatorOnlyPromotion(t *testing.T) {
 	if staleResp.StatusCode != http.StatusConflict {
 		t.Fatalf("stale update status = %d, want %d", staleResp.StatusCode, http.StatusConflict)
 	}
+	viewerUpdateResp := doFindingRequest(t, ts.Client(), ts.URL+"/api/v1/findings/"+promoted.ID, viewerToken, "req-finding-viewer-update", http.MethodPatch, updateReq)
+	defer viewerUpdateResp.Body.Close()
+	if viewerUpdateResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("viewer update status = %d, want %d", viewerUpdateResp.StatusCode, http.StatusForbidden)
+	}
 
 	revisionsResp := doFindingRequest(t, ts.Client(), ts.URL+"/api/v1/findings/"+promoted.ID+"/revisions", humanToken, "req-finding-revisions", http.MethodGet, nil)
 	defer revisionsResp.Body.Close()
@@ -139,6 +172,12 @@ func TestFindingPromotionRevisionsAndOperatorOnlyPromotion(t *testing.T) {
 	decodeHTTPResponse(t, revisionsResp, &revisions)
 	if len(revisions.Items) != 2 || revisions.Items[0].Actor.Kind != "human" || revisions.Items[1].Actor.Kind != "human" {
 		t.Fatalf("finding revisions = %#v", revisions)
+	}
+	if revisions.Items[0].Actor.Handle != "alex.operator" || revisions.Items[0].Actor.Role != "operator" || revisions.Items[1].Actor.Handle != "alex.operator" || revisions.Items[1].Actor.Role != "operator" {
+		t.Fatalf("finding revision actors = %#v", revisions.Items)
+	}
+	if revisions.Items[0].Subject.Revision != 1 || revisions.Items[1].Subject.Revision != 2 {
+		t.Fatalf("finding revision numbers = %#v", revisions.Items)
 	}
 	if revisions.Items[0].Type != "finding.promoted" || revisions.Items[1].Type != "finding.status-changed" {
 		t.Fatalf("finding revision event types = %#v", revisions.Items)
