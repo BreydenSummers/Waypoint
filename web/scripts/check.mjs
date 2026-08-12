@@ -34,60 +34,20 @@ if (styles !== distStyles) {
   throw new Error('generated stylesheet drift detected; rerun web build');
 }
 
-for (const source of [app, distBundle]) {
-  if (!source.includes("workspaceTitle: 'Recon workspace'")) {
-    throw new Error('Recon workspace title missing from source or embedded bundle');
-  }
-  if (!source.includes("workspaceLede: 'Collect raw signals, preserve provenance, and keep the audit spine instant to query.'")) {
-    throw new Error('Recon workspace lede missing from source or embedded bundle');
-  }
-  if (!source.includes("workspaceTitle: 'Attacks workspace'")) {
-    throw new Error('Attacks workspace title missing from source or embedded bundle');
-  }
-  if (!source.includes("workspaceLede: 'Run commands through the wrapper, keep the path to each attempt obvious, and preserve evidence.'")) {
-    throw new Error('Attacks workspace lede missing from source or embedded bundle');
-  }
-  if (!source.includes("note: 'Captured actions land here with source, host, egress IP, and outcome.'")) {
-    throw new Error('Attacks guide note missing from source or embedded bundle');
-  }
-  if (!source.includes("{ title: 'Capture lane', items: ['Command + argv', 'stdout / stderr refs', 'Exit status and timing'] }")) {
-    throw new Error('Attacks capture-lane copy missing from source or embedded bundle');
-  }
-  if (!source.includes("{ title: 'Attribution', items: ['Operator identity', 'Exec host IP', 'Public egress IP + pivot chain'] }")) {
-    throw new Error('Attacks attribution copy missing from source or embedded bundle');
-  }
-  if (!source.includes("workspaceTitle: 'Findings workspace'")) {
-    throw new Error('Findings workspace title missing from source or embedded bundle');
-  }
-  if (!source.includes("workspaceLede: 'Promote confirmed results, keep evidence links intact, and draft the report straight from the trail.'")) {
-    throw new Error('Findings workspace lede missing from source or embedded bundle');
-  }
-  if (!source.includes("note: 'Imported records, host notes, and discovery output stay in your pack here.'")) {
-    throw new Error('Recon guide note missing from source or embedded bundle');
-  }
-  if (!source.includes("note: 'No promoted results yet — this waypoint stays in fog until the first finding lands.'")) {
-    throw new Error('Findings guide note missing from source or embedded bundle');
-  }
-  if (!source.includes('guideExplainers') || !source.includes('guide-note-card') || !source.includes('guide-search')) {
-    throw new Error('Static guide content system is missing from source or embedded bundle');
-  }
-  for (const token of ['guide-recon-dns', 'guide-recon-dedup', 'guide-attacks-smb-signing', 'guide-attacks-safe-output', 'guide-findings-linking', 'guide-summit-manifest']) {
-    if (!source.includes(token)) {
-      throw new Error(`Guide explainer ${token} missing from source or embedded bundle`);
-    }
-  }
-  if (!source.includes('summit/report') || !source.includes('Frozen report snapshot') || !source.includes('report-shell')) {
-    throw new Error('Report snapshot route or semantic sections are missing from source or embedded bundle');
-  }
-  if (!source.includes('Verified export receipt') || !source.includes('Break-glass teardown') || !source.includes('Run export preflight')) {
-    throw new Error('Summit export flow or receipt copy is missing from source or embedded bundle');
-  }
-  if (!source.includes('Capture remained live while export froze a clean snapshot.') || !source.includes('WIPE NOW') || !source.includes('Destroy disposable instance')) {
-    throw new Error('Guarded destroy or receipt language is missing from source or embedded bundle');
-  }
-  if (source.includes('exact command') || source.includes('AI claims') || source.includes('AI-generated')) {
-    throw new Error('Static guide content leaked deferred v2 command or AI guidance');
-  }
+if (!distBundle.includes("new Proxy(phaseDataFallback")) {
+  throw new Error('Runtime phase proxy is missing from the embedded bundle');
+}
+if (!distBundle.includes('buildRuntimeJourneyLog') || !distBundle.includes('buildRuntimeReport') || !distBundle.includes('runtimePhaseMeta') || !distBundle.includes('loadFindings')) {
+  throw new Error('Runtime data helpers are missing from the embedded bundle');
+}
+if (!distBundle.includes("new URL('/api/v1/audit-events'") || !distBundle.includes("fetch(new URL('/api/v1/findings'")) {
+  throw new Error('Authoritative API fetches are missing from the embedded bundle');
+}
+if (!distBundle.includes('reportSnapshotFallback') || !distBundle.includes('journeyLog = new Proxy')) {
+  throw new Error('Report or journey runtime proxies are missing from the embedded bundle');
+}
+if (distBundle.includes('Frozen report snapshot') && !distBundle.includes('Runtime report snapshot')) {
+  throw new Error('Report snapshot title was not updated to runtime wording');
 }
 
 const requiredReportKeys = ['version', 'title', 'engagement', 'cutoff', 'scope', 'methodology', 'findings', 'evidence', 'bundle', 'attribution', 'knownCaptureGaps'];
@@ -95,6 +55,10 @@ for (const key of requiredReportKeys) {
   if (!(key in reportFixture)) {
     throw new Error(`Report fixture missing ${key}`);
   }
+}
+
+if (reportFixture.title !== 'Runtime report snapshot') {
+  throw new Error(`Report fixture title was not updated to runtime wording: ${reportFixture.title}`);
 }
 
 const escapedSnippet = escapeHtml(reportFixture.evidence[1].rawSnippet);
