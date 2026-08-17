@@ -1184,6 +1184,147 @@ html[data-theme='dark'] .finding-field select {
   margin-top: 14px;
 }
 
+.ops-form-grid,
+.claim-review-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.ops-form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ops-form-grid-wide,
+.claim-review-layout {
+  grid-template-columns: 1fr;
+}
+
+.operations-shell {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.operations-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.operations-card,
+.secret-token-card {
+  border-radius: 18px;
+  border: 1px solid var(--workspace-border);
+  background: var(--workspace-surface);
+  padding: 16px;
+  box-shadow: 0 18px 34px var(--chrome-shadow);
+}
+
+.operations-card-wide {
+  display: grid;
+  gap: 12px;
+}
+
+.actor-roster,
+.claim-review-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.actor-row,
+.claim-row {
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid var(--workspace-border);
+  background: rgba(255, 255, 255, 0.22);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  color: var(--chrome-strong);
+}
+
+html[data-theme='dark'] .actor-row,
+html[data-theme='dark'] .claim-row {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.actor-row.is-selected,
+.claim-row.is-selected {
+  border-color: rgba(186, 117, 23, 0.34);
+  box-shadow: inset 0 0 0 1px rgba(250, 238, 218, 0.08);
+}
+
+.actor-row-top,
+.claim-row-top,
+.actor-row-main,
+.claim-row-main,
+.actor-row-foot,
+.claim-row-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.actor-row-main,
+.claim-row-main,
+.actor-row-foot,
+.claim-row-foot {
+  font-size: 12px;
+  color: var(--chrome-muted);
+}
+
+.actor-row strong,
+.claim-row strong,
+.secret-token-card h4,
+.claim-review-detail h4 {
+  color: var(--chrome-strong);
+}
+
+.secret-token {
+  margin-top: 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(186, 117, 23, 0.22);
+  background: rgba(186, 117, 23, 0.08);
+  padding: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  color: var(--dark-cocoa);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.ops-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.ops-meta-grid dt {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--chrome-muted);
+}
+
+.ops-meta-grid dd {
+  margin: 4px 0 0;
+  color: var(--chrome-strong);
+  overflow-wrap: anywhere;
+}
+
+.claim-review-layout {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.claim-review-detail {
+  display: grid;
+  gap: 12px;
+}
+
 .finding-details-grid {
   margin-top: 14px;
 }
@@ -1254,6 +1395,10 @@ html[data-theme='dark'] .trace-chip {
 
 .finding-empty {
   padding: 10px 0;
+}
+
+.ops-inline-note {
+  margin-top: 2px;
 }
 
 .attack-list-column,
@@ -1532,7 +1677,11 @@ html[data-theme='dark'] .live-banner {
   .evidence-split,
   .detail-grid,
   .provenance-grid,
-  .finding-editor-grid {
+  .finding-editor-grid,
+  .operations-grid,
+  .ops-form-grid,
+  .claim-review-layout,
+  .ops-meta-grid {
     grid-template-columns: 1fr;
   }
 

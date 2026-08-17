@@ -1,4 +1,4 @@
-const sourceHash = "b5381e847a4afa7fe2c95af8244899e50a0065ba1db696fad8dd370945df8e60";
+const sourceHash = "3c78f2472076cfe418c135d1a4a17696576115978f700e274354c71cb40696c8";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -69,17 +69,31 @@ const state = {
   actions: [],
   entities: [],
   findings: [],
+  actorsStatus: 'loading',
+  actorsError: '',
+  actors: [],
+  claimsStatus: 'loading',
+  claimsError: '',
+  claims: [],
   reportSnapshot: null,
   reportRaw: '',
   guideQuery: '',
   entityQuery: '',
+  actorQuery: '',
   selectedActionId: '',
+  selectedActorId: '',
+  selectedClaimId: '',
   selectedEntityId: '',
   mergeSourceId: '',
   mergeTargetId: '',
   selectedObservationId: '',
   selectedFindingId: '',
   selectedEvidenceId: '',
+  actorCredential: null,
+  provisionDraft: { kind: 'human', handle: '', role: 'operator', agentName: '', model: '', version: '', authorizedBy: '' },
+  claimResolutionDraft: { resolution: 'linked', sourceActionId: '', notes: '' },
+  actorConflict: '',
+  claimConflict: '',
   selectedEvidence: null,
   selectedEvidenceContent: '',
   selectedEvidenceError: '',
@@ -342,6 +356,11 @@ function buildAuditSummary(event) {
   if (event.type === 'entity.merged') return 'Entity merged';
   if (event.type === 'entity.split') return 'Entity split';
   if (event.type === 'capture.accepted') return `${details.phase || event.subject.type} · ${details.parseStatus || 'captured'}`;
+  if (event.type === 'actor.provisioned') return `Actor provisioned · ${details.actorId || event.subject.id}`;
+  if (event.type === 'actor.credential-rotated') return `Credential rotated · v${details.credentialVersion || event.subject.revision || '?'}`;
+  if (event.type === 'actor.revoked') return `Actor revoked · ${details.actorId || event.subject.id}`;
+  if (event.type === 'out-of-band.flagged') return `Claim flagged · ${details.claimKind || event.subject.id}`;
+  if (event.type === 'out-of-band.resolved') return `Claim resolved · ${details.claimKind || event.subject.id}`;
   return jsonText(details).slice(0, 120);
 }
 
@@ -430,6 +449,33 @@ function selectedFinding() {
   return state.findings.find((finding) => finding.id === state.selectedFindingId) || state.findings[0] || null;
 }
 
+function selectedActor() {
+  return state.actors.find((actor) => actor.actor.id === state.selectedActorId) || state.actors[0] || null;
+}
+
+function selectedClaim() {
+  return state.claims.find((claim) => claim.id === state.selectedClaimId) || state.claims[0] || null;
+}
+
+function activeHumanActors() {
+  return state.actors.filter((actor) => actor.status === 'active' && actor.actor.kind === 'human');
+}
+
+function filteredActors() {
+  const query = state.actorQuery.trim().toLowerCase();
+  return state.actors.filter((actor) => {
+    if (!query) return true;
+    return [actor.actor.handle, actor.actor.kind, actor.actor.role, actor.status, actor.actor.agentName || '', actor.actor.model || '', actor.actor.version || '', actor.actor.authorizedBy || '', actor.createdBy, String(actor.revision)]
+      .join(' ')
+      .toLowerCase()
+      .includes(query);
+  });
+}
+
+function filteredClaims() {
+  return state.claims;
+}
+
 function notableAlerts() {
   return state.auditEvents.filter((event) => event.type === 'alert.notable').slice(0, 3);
 }
@@ -441,6 +487,116 @@ function currentWaypointLabel() {
 function selectedEvidenceRef(action, evidenceId) {
   if (!action) return null;
   return [action.evidenceReferences.stdout, action.evidenceReferences.stderr].find((item) => item.id === evidenceId) || null;
+}
+
+function syncProvisionAuthorizer() {
+  if (state.provisionDraft.kind !== 'ai_agent') return;
+  const humans = activeHumanActors();
+  if (!humans.length) return;
+  if (humans.some((actor) => actor.actor.id === state.provisionDraft.authorizedBy)) return;
+  state.provisionDraft.authorizedBy = humans[0].actor.id;
+}
+
+async function issueActorCredential() {
+  state.actorConflict = '';
+  try {
+    const body = {
+      kind: state.provisionDraft.kind,
+      handle: state.provisionDraft.handle,
+      role: state.provisionDraft.role,
+      agentName: state.provisionDraft.kind === 'ai_agent' ? state.provisionDraft.agentName : undefined,
+      model: state.provisionDraft.kind === 'ai_agent' ? state.provisionDraft.model : undefined,
+      version: state.provisionDraft.kind === 'ai_agent' ? state.provisionDraft.version : undefined,
+      authorizedBy: state.provisionDraft.kind === 'ai_agent' ? state.provisionDraft.authorizedBy || activeHumanActors()[0]?.actor.id || '' : undefined,
+    };
+    const response = await fetch('/api/v1/actors', {
+      method: 'POST',
+      headers: { ...authHeaders(state.token, newRequestId()), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const created = await response.json();
+    state.actorCredential = created;
+    state.selectedActorId = created.actorRecord.actor.id;
+    state.provisionDraft.handle = '';
+    state.provisionDraft.agentName = '';
+    state.provisionDraft.model = '';
+    state.provisionDraft.version = '';
+    state.provisionDraft.authorizedBy = '';
+    await refreshActors();
+    state.actorConflict = `Issued credential v${created.actorRecord.credentialVersion} for ${created.actorRecord.actor.handle}.`;
+  } catch (error) {
+    state.actorConflict = error instanceof Error ? error.message : 'Unable to issue credential';
+  }
+  render();
+}
+
+async function rotateActorCredential(actor) {
+  state.actorConflict = '';
+  try {
+    const response = await fetch(`/api/v1/actors/${actor.actor.id}/rotate`, {
+      method: 'POST',
+      headers: authHeaders(state.token, newRequestId()),
+    });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const rotated = await response.json();
+    state.actorCredential = rotated;
+    state.selectedActorId = rotated.actorRecord.actor.id;
+    await refreshActors();
+    state.actorConflict = `Rotated ${rotated.actorRecord.actor.handle} to credential v${rotated.actorRecord.credentialVersion}.`;
+  } catch (error) {
+    state.actorConflict = error instanceof Error ? error.message : 'Unable to rotate credential';
+  }
+  render();
+}
+
+async function revokeActorCredential(actor) {
+  state.actorConflict = '';
+  try {
+    const response = await fetch(`/api/v1/actors/${actor.actor.id}/revoke`, {
+      method: 'POST',
+      headers: authHeaders(state.token, newRequestId()),
+    });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const revoked = await response.json();
+    state.selectedActorId = revoked.actor.id;
+    await refreshActors();
+    state.actorConflict = `Revoked ${revoked.actor.handle} at revision ${revoked.revision}.`;
+  } catch (error) {
+    state.actorConflict = error instanceof Error ? error.message : 'Unable to revoke credential';
+  }
+  render();
+}
+
+async function resolveClaim() {
+  const claim = selectedClaim();
+  if (!claim) return;
+  state.claimConflict = '';
+  try {
+    const sourceActionId = state.claimResolutionDraft.resolution === 'linked' ? (state.claimResolutionDraft.sourceActionId || selectedAction()?.id || '') : undefined;
+    if (state.claimResolutionDraft.resolution === 'linked' && !sourceActionId) {
+      throw new Error("Can't link this claim yet — sourceActionId is required when resolution is linked.");
+    }
+    const response = await fetch(`/api/v1/out-of-band-claims/${claim.id}/resolve`, {
+      method: 'POST',
+      headers: { ...authHeaders(state.token, newRequestId()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        resolution: state.claimResolutionDraft.resolution,
+        sourceActionId,
+        notes: state.claimResolutionDraft.notes || undefined,
+        expectedRevision: claim.revision,
+      }),
+    });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const updated = await response.json();
+    state.claims = state.claims.map((item) => (item.id === updated.id ? updated : item));
+    state.selectedClaimId = updated.id;
+    state.claimConflict = `Claim ${updated.id} resolved as ${updated.status}.`;
+    await refreshClaims();
+  } catch (error) {
+    state.claimConflict = error instanceof Error ? error.message : 'Unable to resolve claim';
+  }
+  render();
 }
 
 function scheduleRender() {
@@ -591,6 +747,42 @@ async function refreshFindings(signal) {
   render();
 }
 
+async function refreshActors(signal) {
+  state.actorsStatus = 'loading';
+  state.actorsError = '';
+  render();
+  try {
+    const page = await apiJson('/api/v1/actors?limit=100', state.token, signal);
+    state.actors = Array.isArray(page.items) ? page.items : [];
+    if (!state.selectedActorId && state.actors.length) state.selectedActorId = state.actors[0].actor.id;
+    const humans = activeHumanActors();
+    if (state.provisionDraft.kind === 'ai_agent' && humans.length && !humans.some((actor) => actor.actor.id === state.provisionDraft.authorizedBy)) {
+      state.provisionDraft.authorizedBy = humans[0].actor.id;
+    }
+    state.actorsStatus = 'ready';
+  } catch (error) {
+    state.actorsStatus = 'error';
+    state.actorsError = error instanceof Error ? error.message : 'Unable to load actors';
+  }
+  render();
+}
+
+async function refreshClaims(signal) {
+  state.claimsStatus = 'loading';
+  state.claimsError = '';
+  render();
+  try {
+    const page = await apiJson('/api/v1/out-of-band-claims?limit=100', state.token, signal);
+    state.claims = Array.isArray(page.items) ? page.items : [];
+    if (!state.selectedClaimId && state.claims.length) state.selectedClaimId = state.claims[0].id;
+    state.claimsStatus = 'ready';
+  } catch (error) {
+    state.claimsStatus = 'error';
+    state.claimsError = error instanceof Error ? error.message : 'Unable to load pending claims';
+  }
+  render();
+}
+
 async function refreshReport(signal) {
   state.reportStatus = 'loading';
   state.reportError = '';
@@ -615,6 +807,8 @@ async function refreshEverything() {
     refreshActions(controller.signal),
     refreshEntities(controller.signal),
     refreshFindings(controller.signal),
+    refreshActors(controller.signal),
+    refreshClaims(controller.signal),
   ]);
   controller.abort();
   if (state.view === 'report' || state.activePhase === 'summit') {
@@ -655,10 +849,15 @@ function startStream() {
             void refreshActions();
             void refreshEntities();
             void refreshFindings();
+            void refreshClaims();
           } else if (event.event.startsWith('entity.')) {
             void refreshEntities();
           } else if (event.event.startsWith('finding.')) {
             void refreshFindings();
+          } else if (event.event.startsWith('actor.')) {
+            void refreshActors();
+          } else if (event.event.startsWith('out-of-band.')) {
+            void refreshClaims();
           }
           render();
         });
@@ -913,6 +1112,182 @@ function renderBadge(status) {
   return `<span class="status-pill ${status}">${escapeHtml(status)}</span>`;
 }
 
+function renderOperationsShell() {
+  const actors = filteredActors();
+  const actor = selectedActor();
+  const claims = filteredClaims();
+  const claim = selectedClaim();
+  const humans = activeHumanActors();
+  return `
+    <section class="operations-shell" aria-label="Provisioning and claim review workspace">
+      <div class="panel-heading">
+        <div>
+          <p class="guide-note-kicker">Operations</p>
+          <h2>Provisioning and review</h2>
+        </div>
+        <p>One-time secrets are shown once, AI actors must cite an active human authorizer, and pending gaps stay visible until they are linked or dismissed.</p>
+      </div>
+
+      <div class="operations-grid">
+        <article class="operations-card">
+          <div class="detail-head">
+            <div>
+              <p class="guide-note-kicker">Actor provisioning</p>
+              <h3>Issue a one-time credential</h3>
+            </div>
+            ${renderBadge('review')}
+          </div>
+          <form class="ops-form-grid" data-action="actor-provision-form">
+            <label class="finding-field"><span>Kind</span><select value="${escapeHtml(state.provisionDraft.kind)}" data-action="provision-draft" data-field="kind"><option value="human" ${state.provisionDraft.kind === 'human' ? 'selected' : ''}>Human</option><option value="ai_agent" ${state.provisionDraft.kind === 'ai_agent' ? 'selected' : ''}>AI agent</option></select></label>
+            <label class="finding-field"><span>Handle</span><input value="${escapeHtml(state.provisionDraft.handle)}" data-action="provision-draft" data-field="handle" placeholder="alex.operator" /></label>
+            <label class="finding-field"><span>Role</span><select value="${escapeHtml(state.provisionDraft.role)}" data-action="provision-draft" data-field="role"><option value="owner" ${state.provisionDraft.role === 'owner' ? 'selected' : ''}>Owner</option><option value="operator" ${state.provisionDraft.role === 'operator' ? 'selected' : ''}>Operator</option><option value="viewer" ${state.provisionDraft.role === 'viewer' ? 'selected' : ''}>Viewer</option></select></label>
+            ${state.provisionDraft.kind === 'ai_agent' ? `
+              <label class="finding-field"><span>Agent name</span><input value="${escapeHtml(state.provisionDraft.agentName)}" data-action="provision-draft" data-field="agentName" placeholder="Synthetic Field Agent" /></label>
+              <label class="finding-field"><span>Model</span><input value="${escapeHtml(state.provisionDraft.model)}" data-action="provision-draft" data-field="model" placeholder="gpt-4.1" /></label>
+              <label class="finding-field"><span>Version</span><input value="${escapeHtml(state.provisionDraft.version)}" data-action="provision-draft" data-field="version" placeholder="2025.01" /></label>
+              <label class="finding-field"><span>Authorized by</span>
+                <select value="${escapeHtml(state.provisionDraft.authorizedBy)}" data-action="provision-draft" data-field="authorizedBy">
+                  <option value="">Pick an active human authorizer</option>
+                  ${humans.map((human) => `<option value="${human.actor.id}" ${state.provisionDraft.authorizedBy === human.actor.id ? 'selected' : ''}>${escapeHtml(human.actor.handle)} · rev ${human.revision}</option>`).join('')}
+                </select>
+              </label>
+              <p class="guide-note-empty ops-inline-note">${humans.length ? 'Only active human operators can authorise AI actors.' : 'AI actors need an active human operator on the hook before a credential can be issued.'}</p>
+            ` : ''}
+            <div class="guide-tools" style="margin-top:12px">
+              <button type="submit" class="primary-button" data-action="issue-credential" ${!state.provisionDraft.handle.trim() || (state.provisionDraft.kind === 'ai_agent' && !state.provisionDraft.authorizedBy) ? 'disabled' : ''}>Issue one-time credential</button>
+              <button type="button" class="secondary-link" data-action="burn-credential" ${state.actorCredential ? '' : 'disabled'}>Burn copy</button>
+            </div>
+          </form>
+          ${state.actorConflict ? `<div class="live-banner review"><strong>Credential note</strong> ${escapeHtml(state.actorConflict)}</div>` : ''}
+          ${state.actorCredential ? `
+            <div class="secret-token-card" aria-label="One-time credential response">
+              <div class="panel-heading compact"><h4>One-time token</h4><p>${escapeHtml(state.actorCredential.actorRecord.actor.handle)} · v${state.actorCredential.actorRecord.credentialVersion} · issued ${escapeHtml(formatTime(state.actorCredential.issuedAt))}</p></div>
+              <div class="secret-token" role="textbox" aria-readonly="true">${escapeHtml(state.actorCredential.token)}</div>
+              <div class="guide-tools">
+                <button type="button" class="secondary-link" data-action="copy-credential">Copy token</button>
+                <span class="guide-note-empty">Do not paste this into the audit trail or logs.</span>
+              </div>
+            </div>
+          ` : '<p class="guide-note-empty">The plaintext token only appears in this response once. It never returns from list or read endpoints.</p>'}
+        </article>
+
+        <article class="operations-card">
+          <div class="detail-head">
+            <div>
+              <p class="guide-note-kicker">Actor roster</p>
+              <h3>Rotate or revoke live credentials</h3>
+            </div>
+            ${renderBadge(state.actorsStatus === 'ready' ? 'review' : 'neutral')}
+          </div>
+          <label class="guide-search" style="margin-top:0">
+            <span class="sr-only">Search actors</span>
+            <input value="${escapeHtml(state.actorQuery)}" data-action="actor-query" placeholder="Search handle, role, revision…" aria-label="Search actors" />
+          </label>
+          ${state.actorsError ? `<div class="live-banner"><strong>Actor note</strong> ${escapeHtml(state.actorsError)}</div>` : ''}
+          ${!actors.length && state.actorsStatus === 'ready' ? '<div class="guide-note-empty">No actors yet. Provision a credential above, then rotate or revoke it from the roster.</div>' : ''}
+          <div class="actor-roster">
+            ${actors.map((item) => `
+              <button type="button" class="actor-row ${actor && actor.actor.id === item.actor.id ? 'is-selected' : ''}" data-action="select-actor" data-id="${item.actor.id}">
+                <div class="actor-row-top">
+                  <strong>${escapeHtml(item.actor.handle)}</strong>
+                  ${renderBadge(item.status === 'active' ? 'success' : 'blocked')}
+                </div>
+                <div class="actor-row-main">
+                  <span>${escapeHtml(item.actor.kind)}${item.actor.kind === 'ai_agent' ? ` · ${escapeHtml(item.actor.model || '')}` : ''}</span>
+                  <span>role ${escapeHtml(item.actor.role)}</span>
+                </div>
+                <div class="actor-row-foot">
+                  <span>cred v${item.credentialVersion}</span>
+                  <span>rev ${item.revision}</span>
+                </div>
+              </button>`).join('')}
+          </div>
+          ${actor ? `
+            <div class="secret-token-card" style="margin-top:12px">
+              <div class="panel-heading compact"><h4>${escapeHtml(actor.actor.handle)}</h4><p>${escapeHtml(actor.actor.kind)} · ${escapeHtml(actor.actor.role)} · ${escapeHtml(actor.status)}</p></div>
+              <dl class="ops-meta-grid">
+                <div><dt>Created by</dt><dd>${escapeHtml(actor.createdBy)}</dd></div>
+                <div><dt>Created at</dt><dd>${escapeHtml(formatTime(actor.createdAt))}</dd></div>
+                <div><dt>Credential version</dt><dd>${actor.credentialVersion}</dd></div>
+                <div><dt>Revision</dt><dd>${actor.revision}</dd></div>
+                ${actor.actor.kind === 'ai_agent' ? `<div><dt>Authorized by</dt><dd>${escapeHtml(actor.actor.authorizedBy || '—')}</dd></div>` : ''}
+                ${actor.lastRotatedAt ? `<div><dt>Last rotated</dt><dd>${escapeHtml(formatTime(actor.lastRotatedAt))}</dd></div>` : ''}
+                ${actor.revokedAt ? `<div><dt>Revoked at</dt><dd>${escapeHtml(formatTime(actor.revokedAt))}</dd></div>` : ''}
+              </dl>
+              <div class="guide-tools">
+                <button type="button" class="primary-button" data-action="rotate-credential" ${actor.status !== 'active' ? 'disabled' : ''}>Rotate credential</button>
+                <button type="button" class="secondary-link" data-action="revoke-credential" ${actor.status !== 'active' ? 'disabled' : ''}>Revoke credential</button>
+              </div>
+            </div>
+          ` : '<div class="guide-note-empty">Provision a credential above, then choose a record to rotate or revoke it.</div>'}
+        </article>
+      </div>
+
+      <article class="operations-card operations-card-wide">
+        <div class="detail-head">
+          <div>
+            <p class="guide-note-kicker">Claim review</p>
+            <h3>Pending out-of-band claims</h3>
+          </div>
+          ${renderBadge(state.claimsStatus === 'ready' ? 'review' : 'neutral')}
+        </div>
+        <p class="workspace-lede">Best-effort claims stay visible until they are linked to a captured action or explicitly dismissed; resolved gaps remain in the trail for audit.</p>
+        ${state.claimsError ? `<div class="live-banner"><strong>Claim note</strong> ${escapeHtml(state.claimsError)}</div>` : ''}
+        ${!claims.length && state.claimsStatus === 'ready' ? '<div class="guide-note-empty">No pending claims. Best-effort claim review is clear for now.</div>' : ''}
+        <div class="claim-review-layout">
+          <div class="claim-review-list">
+            ${claims.map((item) => `
+              <button type="button" class="claim-row ${claim && claim.id === item.id ? 'is-selected' : ''}" data-action="select-claim" data-id="${item.id}">
+                <div class="claim-row-top">
+                  <strong>${escapeHtml(item.claimKind)} · ${escapeHtml(item.claimedSubjectId.slice(0, 8))}…</strong>
+                  ${renderBadge(item.status === 'pending' ? 'review' : item.status === 'linked' ? 'success' : 'blocked')}
+                </div>
+                <div class="claim-row-main">
+                  <span>${escapeHtml(item.reason)}</span>
+                  <span>action ${escapeHtml(item.sourceActionId || 'not captured')}</span>
+                </div>
+                <div class="claim-row-foot">
+                  <span>${escapeHtml(formatTime(item.observedAt))}</span>
+                  <span>rev ${item.revision}</span>
+                </div>
+              </button>`).join('')}
+          </div>
+          <div class="claim-review-detail">
+            ${claim ? `
+              <div class="detail-head">
+                <div>
+                  <p class="guide-note-kicker">Selected claim</p>
+                  <h4>${escapeHtml(claim.claimKind)} · ${escapeHtml(claim.id)}</h4>
+                </div>
+                ${renderBadge(claim.status === 'pending' ? 'review' : claim.status === 'linked' ? 'success' : 'blocked')}
+              </div>
+              <dl class="ops-meta-grid">
+                <div><dt>Claimed subject</dt><dd>${escapeHtml(claim.claimedSubjectId)}</dd></div>
+                <div><dt>Observed by</dt><dd>${escapeHtml(claim.observedBy.handle)}</dd></div>
+                <div><dt>Observed at</dt><dd>${escapeHtml(formatTime(claim.observedAt))}</dd></div>
+                <div><dt>Boundary</dt><dd>${escapeHtml(claim.detectionBoundary)}</dd></div>
+                <div><dt>Source action</dt><dd>${escapeHtml(claim.sourceActionId || 'missing')}</dd></div>
+                <div><dt>Revision</dt><dd>${claim.revision}</dd></div>
+              </dl>
+              ${claim.status === 'pending' ? `
+                <form class="finding-editor-grid" data-action="claim-resolution-form" style="margin-top:12px">
+                  <label class="finding-field"><span>Resolution</span><select value="${escapeHtml(state.claimResolutionDraft.resolution)}" data-action="claim-resolution-draft" data-field="resolution"><option value="linked" ${state.claimResolutionDraft.resolution === 'linked' ? 'selected' : ''}>Link to captured action</option><option value="dismissed" ${state.claimResolutionDraft.resolution === 'dismissed' ? 'selected' : ''}>Dismiss visibly</option></select></label>
+                  <label class="finding-field"><span>Source action</span><input value="${escapeHtml(state.claimResolutionDraft.sourceActionId)}" data-action="claim-resolution-draft" data-field="sourceActionId" placeholder="${escapeHtml(selectedAction()?.id || 'Choose a captured action')}" ${state.claimResolutionDraft.resolution === 'dismissed' ? 'disabled' : ''} /></label>
+                  <label class="finding-field finding-field-wide"><span>Notes</span><textarea data-action="claim-resolution-draft" data-field="notes" placeholder="Explain why the gap is linked or dismissed.">${escapeHtml(state.claimResolutionDraft.notes)}</textarea></label>
+                  <div class="guide-tools">
+                    <button type="button" class="secondary-link" data-action="use-selected-attack" ${selectedAction() ? '' : 'disabled'}>Use selected attack</button>
+                    <button type="submit" class="primary-button">Resolve claim</button>
+                  </div>
+                </form>
+              ` : '<p class="guide-note-empty">This claim is already resolved; the review view keeps the gap visible for audit purposes.</p>'}
+              ${state.claimConflict ? `<div class="live-banner review"><strong>Review note</strong> ${escapeHtml(state.claimConflict)}</div>` : ''}
+            ` : '<div class="guide-note-empty">Choose a pending gap to link it to a captured action or dismiss it plainly.</div>'}
+          </div>
+        </div>
+      </article>
+    </section>`;
+}
+
 function renderTrailMap() {
   const activeIndex = waypointOrder.indexOf(state.activePhase);
   const trailStatusText = `Trail ${Math.min(activeIndex + 1, waypointOrder.length)} / ${waypointOrder.length} · ${phaseNames[state.activePhase]}`;
@@ -1028,6 +1403,8 @@ function renderTrailMap() {
             <p class="workspace-lede">${escapeHtml(phaseSummary(state.activePhase))}</p>
 
             ${renderPhaseWorkspace()}
+
+            ${renderOperationsShell()}
 
             <div class="workspace-footer">
               <a class="secondary-link" href="${escapeHtml(phasePath(state.engagementId, waypointOrder[Math.max(0, waypointOrder.indexOf(state.activePhase) - 1)]))}" data-action="go-prev">Back to ${escapeHtml(phaseNames[waypointOrder[Math.max(0, waypointOrder.indexOf(state.activePhase) - 1)]] || phaseNames.recon)}</a>
@@ -1503,6 +1880,10 @@ async function handleSubmit(event) {
   } else if (action === 'finding-form') {
     updateFindingDraft(form);
     await saveFinding(form);
+  } else if (action === 'actor-provision-form') {
+    await issueActorCredential();
+  } else if (action === 'claim-resolution-form') {
+    await resolveClaim();
   }
 }
 
@@ -1530,6 +1911,9 @@ async function handleClick(event) {
   }
   if (action === 'guide-search') return;
   if (action === 'entity-search') return;
+  if (action === 'actor-query') return;
+  if (action === 'provision-draft') return;
+  if (action === 'claim-resolution-draft') return;
   if (action === 'select-entity') {
     setSelectedEntityId(target.dataset.id || '');
     state.mergeSourceId = target.dataset.id || '';
@@ -1583,6 +1967,46 @@ async function handleClick(event) {
   }
   if (action === 'select-finding') {
     setSelectedFindingId(target.dataset.id || '');
+    return;
+  }
+  if (action === 'select-actor') {
+    state.selectedActorId = target.dataset.id || '';
+    render();
+    return;
+  }
+  if (action === 'select-claim') {
+    state.selectedClaimId = target.dataset.id || '';
+    render();
+    return;
+  }
+  if (action === 'use-selected-attack') {
+    state.claimResolutionDraft.sourceActionId = selectedAction()?.id || state.claimResolutionDraft.sourceActionId;
+    render();
+    return;
+  }
+  if (action === 'burn-credential') {
+    state.actorCredential = null;
+    render();
+    return;
+  }
+  if (action === 'copy-credential') {
+    if (state.actorCredential?.token) {
+      void navigator.clipboard?.writeText(state.actorCredential.token);
+    }
+    return;
+  }
+  if (action === 'rotate-credential') {
+    const actor = selectedActor();
+    if (actor) await rotateActorCredential(actor);
+    return;
+  }
+  if (action === 'revoke-credential') {
+    const actor = selectedActor();
+    if (actor) await revokeActorCredential(actor);
+    return;
+  }
+  if (action === 'issue-credential') {
+    await issueActorCredential();
     return;
   }
   if (action === 'save-finding') {
@@ -1652,6 +2076,31 @@ function handleInput(event) {
     updateEntityQuery(target.value);
     return;
   }
+  if (action === 'actor-query') {
+    state.actorQuery = target.value;
+    render();
+    return;
+  }
+  if (action === 'provision-draft') {
+    const field = target.dataset.field || '';
+    if (!field) return;
+    state.provisionDraft[field] = target.value;
+    if (field === 'kind') {
+      state.provisionDraft.kind = target.value;
+      if (target.value === 'human') state.provisionDraft.authorizedBy = '';
+      syncProvisionAuthorizer();
+    }
+    if (field === 'authorizedBy' || field === 'kind') syncProvisionAuthorizer();
+    render();
+    return;
+  }
+  if (action === 'claim-resolution-draft') {
+    const field = target.dataset.field || '';
+    if (!field) return;
+    state.claimResolutionDraft[field] = target.value;
+    render();
+    return;
+  }
   if (action === 'destroy-phrase') {
     state.destroyPhrase = target.value;
     return;
@@ -1671,6 +2120,9 @@ function handleChange(event) {
     state.teardownArmed = target.checked;
     render();
   }
+  if (target.dataset.action === 'provision-draft' || target.dataset.action === 'claim-resolution-draft') {
+    handleInput(event);
+  }
 }
 
 function handlePopState() {
@@ -1686,6 +2138,9 @@ function initializeSelectionFromData() {
   }
   if (!state.selectedEntityId && state.entities.length) state.selectedEntityId = state.entities[0].id;
   if (!state.selectedFindingId && state.findings.length) state.selectedFindingId = state.findings[0].id;
+  if (!state.selectedActorId && state.actors.length) state.selectedActorId = state.actors[0].actor.id;
+  if (!state.selectedClaimId && state.claims.length) state.selectedClaimId = state.claims[0].id;
+  syncProvisionAuthorizer();
   const action = selectedAction();
   if (action && !state.findingPromotionDraft.title) {
     state.findingPromotionDraft = {
