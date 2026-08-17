@@ -71,7 +71,32 @@ func TestAssembleReportSnapshotOrdersSectionsAndGaps(t *testing.T) {
 		UpdatedAt:        time.Date(2025, 1, 10, 8, 45, 0, 0, time.UTC),
 	}}
 
-	snapshot, err := assembleReportSnapshot(context.Background(), engagement, actions, findings, nil)
+	pendingAt := time.Date(2025, 1, 10, 7, 15, 0, 0, time.UTC)
+	dismissedAt := time.Date(2025, 1, 10, 7, 30, 0, 0, time.UTC)
+	resolvedAt := time.Date(2025, 1, 10, 7, 45, 0, 0, time.UTC)
+	captureGaps := []outOfBandClaimItem{
+		{
+			ID:         "gap-dismissed",
+			ClaimKind:  "result",
+			Status:     outOfBandClaimStatusDismissed,
+			Reason:     "missing_captured_source_action",
+			ObservedAt: dismissedAt,
+			ObservedBy: auditEventActor{Handle: "alex.operator", Role: "operator"},
+			ResolvedAt: &resolvedAt,
+			ResolvedBy: &auditEventActor{Handle: "alex.operator", Role: "operator"},
+			Notes:      "Dismissed after validating the raw evidence path.",
+		},
+		{
+			ID:         "gap-pending",
+			ClaimKind:  "entity",
+			Status:     outOfBandClaimStatusPending,
+			Reason:     "missing_captured_source_action",
+			ObservedAt: pendingAt,
+			ObservedBy: auditEventActor{Handle: "field-agent-7", Kind: "ai_agent", Role: "operator", AgentName: "field-agent-7", Model: "gpt-4.1", Version: "1.0", AuthorizedBy: "alex.operator"},
+		},
+	}
+
+	snapshot, err := assembleReportSnapshot(context.Background(), engagement, actions, findings, captureGaps, nil)
 	if err != nil {
 		t.Fatalf("assemble report snapshot: %v", err)
 	}
@@ -85,8 +110,14 @@ func TestAssembleReportSnapshotOrdersSectionsAndGaps(t *testing.T) {
 	if snapshot.Findings[0].Severity != "Low" || snapshot.Findings[0].Evidence[0] != "Action 1" || snapshot.Findings[0].Evidence[1] != "Action 2" {
 		t.Fatalf("finding ordering/evidence = %#v", snapshot.Findings)
 	}
-	if !contains(snapshot.KnownCaptureGaps, "raw-first or need a plugin") || !contains(snapshot.KnownCaptureGaps, "no public egress IP") {
+	if len(snapshot.KnownCaptureGaps) != 2 || snapshot.KnownCaptureGaps[0].Status != outOfBandClaimStatusPending || snapshot.KnownCaptureGaps[1].Status != outOfBandClaimStatusDismissed {
 		t.Fatalf("capture gaps = %#v", snapshot.KnownCaptureGaps)
+	}
+	if snapshot.KnownCaptureGaps[0].ObservedBy.Handle != "field-agent-7" || !strings.Contains(snapshot.KnownCaptureGaps[0].ObservedBy.AuthorizedBy, "alex.operator") {
+		t.Fatalf("pending gap attribution = %#v", snapshot.KnownCaptureGaps[0])
+	}
+	if snapshot.KnownCaptureGaps[1].Notes == "" || snapshot.KnownCaptureGaps[1].ResolvedBy == nil || snapshot.KnownCaptureGaps[1].ResolvedBy.Handle != "alex.operator" {
+		t.Fatalf("dismissed gap details = %#v", snapshot.KnownCaptureGaps[1])
 	}
 	if got := snapshot.Attribution[0].Items; len(got) != 1 || got[0] != "alex.operator" {
 		t.Fatalf("operator attribution = %#v", snapshot.Attribution[0])
@@ -147,7 +178,7 @@ func TestReportHandlerRequiresAuthAndScopesEngagement(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	chromium := filepath.Join(tmpDir, "chromium")
-	if err := os.WriteFile(chromium, []byte("#!/bin/sh\nout=\"\"\nhtml=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    --print-to-pdf=*) out=${arg#*=} ;;\n    file://*) html=${arg#file://} ;;\n  esac\ndone\ngrep -q 'Hash verified, not signed' \"$html\"\nprintf '%s' '%PDF-1.4\\n%%fake\\n%%EOF' > \"$out\"\n"), 0o755); err != nil {
+	if err := os.WriteFile(chromium, []byte("#!/bin/sh\nout=\"\"\nhtml=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    --print-to-pdf=*) out=${arg#*=} ;;\n    file://*) html=${arg#file://} ;;\n  esac\ndone\nprintf '%s\n' \"$@\" | grep -q -- '--disable-background-networking'\nprintf '%s\n' \"$@\" | grep -q -- '--no-pings'\ngrep -q 'Hash verified, not signed' \"$html\"\nprintf '%s' '%PDF-1.4\\n%%fake\\n%%EOF' > \"$out\"\n"), 0o755); err != nil {
 		t.Fatalf("write fake chromium: %v", err)
 	}
 	t.Setenv("WAYPOINT_CHROMIUM", chromium)
@@ -190,13 +221,37 @@ func TestRenderReportHTMLAndPDFEscapeHostileContent(t *testing.T) {
 			RawStderr:   "stderr payload",
 			Attribution: "10.0.0.12 → 203.0.113.26",
 		}},
-		Attribution:      []reportAttribution{{Title: "Operator", Items: []string{"alex.operator"}}},
-		KnownCaptureGaps: []string{"No capture gaps recorded in this frozen snapshot."},
+		Attribution: []reportAttribution{{Title: "Operator", Items: []string{"alex.operator"}}},
+		KnownCaptureGaps: []outOfBandClaimItem{{
+			ID:         "gap-pending",
+			ClaimKind:  "result",
+			Status:     outOfBandClaimStatusPending,
+			Reason:     "missing_captured_source_action",
+			ObservedAt: time.Date(2025, 1, 10, 8, 30, 0, 0, time.UTC),
+			ObservedBy: auditEventActor{Handle: "alex.operator", Role: "operator"},
+		}, {
+			ID:         "gap-dismissed",
+			ClaimKind:  "entity",
+			Status:     outOfBandClaimStatusDismissed,
+			Reason:     "missing_captured_source_action",
+			ObservedAt: time.Date(2025, 1, 10, 8, 20, 0, 0, time.UTC),
+			ObservedBy: auditEventActor{Handle: "field-agent-7", Kind: "ai_agent", Role: "operator", AgentName: "field-agent-7", Model: "gpt-4.1", Version: "1.0", AuthorizedBy: "alex.operator"},
+			ResolvedAt: func() *time.Time { v := time.Date(2025, 1, 10, 8, 40, 0, 0, time.UTC); return &v }(),
+			ResolvedBy: &auditEventActor{Handle: "alex.operator", Role: "operator"},
+			Notes:      "Dismissed after review.",
+		}},
 	}
 
 	html, err := renderReportHTML(snapshot)
 	if err != nil {
 		t.Fatalf("render report html: %v", err)
+	}
+	htmlAgain, err := renderReportHTML(snapshot)
+	if err != nil {
+		t.Fatalf("render report html again: %v", err)
+	}
+	if html != htmlAgain {
+		t.Fatalf("render report html is not deterministic")
 	}
 	if strings.Contains(html, "<script>alert") {
 		t.Fatalf("html escaped content leaked: %s", html)
@@ -204,10 +259,13 @@ func TestRenderReportHTMLAndPDFEscapeHostileContent(t *testing.T) {
 	if !strings.Contains(html, "&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;") {
 		t.Fatalf("html missing escaped hostile payload: %s", html)
 	}
+	if !strings.Contains(html, "pending") || !strings.Contains(html, "dismissed") {
+		t.Fatalf("html missing capture gap statuses: %s", html)
+	}
 
 	tmpDir := t.TempDir()
 	chromium := filepath.Join(tmpDir, "chromium")
-	if err := os.WriteFile(chromium, []byte("#!/bin/sh\nout=\"\"\nhtml=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    --print-to-pdf=*) out=${arg#*=} ;;\n    file://*) html=${arg#file://} ;;\n  esac\ndone\ngrep -q '&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;' \"$html\"\nprintf '%s' '%PDF-1.4\\n%%fake\\n%%EOF' > \"$out\"\n"), 0o755); err != nil {
+	if err := os.WriteFile(chromium, []byte("#!/bin/sh\nout=\"\"\nhtml=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    --print-to-pdf=*) out=${arg#*=} ;;\n    file://*) html=${arg#file://} ;;\n  esac\ndone\nprintf '%s\n' \"$@\" | grep -q -- '--disable-background-networking'\nprintf '%s\n' \"$@\" | grep -q -- '--no-pings'\ngrep -q '&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;' \"$html\"\ngrep -q 'pending' \"$html\"\ngrep -q 'dismissed' \"$html\"\nprintf '%s' '%PDF-1.4\\n%%fake\\n%%EOF' > \"$out\"\n"), 0o755); err != nil {
 		t.Fatalf("write fake chromium: %v", err)
 	}
 	t.Setenv("WAYPOINT_CHROMIUM", chromium)
@@ -218,6 +276,67 @@ func TestRenderReportHTMLAndPDFEscapeHostileContent(t *testing.T) {
 	}
 	if !strings.HasPrefix(string(pdf), "%PDF-1.4") {
 		t.Fatalf("pdf prefix = %q", pdf[:min(len(pdf), 16)])
+	}
+}
+
+func TestLoadFrozenReportSnapshotFromBundle(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WAYPOINT_EXPORT_DIR", root)
+
+	jobID := "11111111-1111-4111-8111-111111111111"
+	bundlePath := "bundle"
+	snapshot := reportSnapshot{
+		Version:     "v1",
+		Title:       "Frozen report snapshot",
+		Engagement:  "Alpha",
+		Cutoff:      "2025-01-10T09:00:00Z",
+		Scope:       []string{"corp.local"},
+		Methodology: reportMethodology(),
+		Findings: []reportFinding{{
+			Title:    "Escaping check",
+			Severity: "High",
+			Evidence: []string{"Action 1"},
+			Status:   "open",
+		}},
+		Evidence: []reportEvidence{{
+			Label:       "Action 1",
+			Command:     "ntlmrelayx",
+			Target:      "host: mail01.internal",
+			Actor:       "alex.operator",
+			Host:        "10.0.0.12",
+			Egress:      "203.0.113.26",
+			InitiatedBy: "manual",
+			ParseStatus: "raw",
+			RawStdout:   "Relay refused: SMB signing required\n<script>alert(\"x\")</script>",
+			Attribution: "10.0.0.12 → 203.0.113.26",
+		}},
+		Attribution:      []reportAttribution{{Title: "Operator", Items: []string{"alex.operator"}}},
+		KnownCaptureGaps: []outOfBandClaimItem{{ID: "gap-pending", ClaimKind: "result", Status: outOfBandClaimStatusPending}},
+	}
+	snapshotDir := filepath.Join(root, jobID, bundlePath, "report")
+	if err := os.MkdirAll(snapshotDir, 0o755); err != nil {
+		t.Fatalf("mkdir snapshot dir: %v", err)
+	}
+	raw, err := json.MarshalIndent(snapshot, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	raw = append(raw, '\n')
+	if err := os.WriteFile(filepath.Join(snapshotDir, "report-snapshot.json"), raw, 0o600); err != nil {
+		t.Fatalf("write snapshot: %v", err)
+	}
+
+	loaded, err := loadFrozenReportSnapshotFromBundle(jobID, bundlePath)
+	if err != nil {
+		t.Fatalf("load frozen snapshot: %v", err)
+	}
+	if loaded.Title != snapshot.Title || loaded.Cutoff != snapshot.Cutoff || loaded.Engagement != snapshot.Engagement {
+		t.Fatalf("loaded snapshot mismatch: %#v", loaded)
+	}
+	if html, err := renderReportHTML(loaded); err != nil {
+		t.Fatalf("render loaded snapshot: %v", err)
+	} else if strings.Contains(html, "<script>alert") || !strings.Contains(html, "&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;") {
+		t.Fatalf("loaded snapshot html not escaped: %s", html)
 	}
 }
 
