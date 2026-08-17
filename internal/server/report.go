@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,18 +32,18 @@ var (
 )
 
 type reportSnapshot struct {
-	ContractVersion  string              `json:"contractVersion,omitempty"`
-	Version          string              `json:"version"`
-	Title            string              `json:"title"`
-	Engagement       string              `json:"engagement"`
-	Cutoff           string              `json:"cutoff"`
-	Scope            []string            `json:"scope"`
-	Methodology      []string            `json:"methodology"`
-	Findings         []reportFinding     `json:"findings"`
-	Evidence         []reportEvidence    `json:"evidence"`
-	Bundle           *reportBundle       `json:"bundle,omitempty"`
-	Attribution      []reportAttribution `json:"attribution"`
-	KnownCaptureGaps []string            `json:"knownCaptureGaps"`
+	ContractVersion  string               `json:"contractVersion,omitempty"`
+	Version          string               `json:"version"`
+	Title            string               `json:"title"`
+	Engagement       string               `json:"engagement"`
+	Cutoff           string               `json:"cutoff"`
+	Scope            []string             `json:"scope"`
+	Methodology      []string             `json:"methodology"`
+	Findings         []reportFinding      `json:"findings"`
+	Evidence         []reportEvidence     `json:"evidence"`
+	Bundle           *reportBundle        `json:"bundle,omitempty"`
+	Attribution      []reportAttribution  `json:"attribution"`
+	KnownCaptureGaps []outOfBandClaimItem `json:"knownCaptureGaps"`
 }
 
 type reportBundle struct {
@@ -200,7 +201,7 @@ func reportHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
-		snapshot, err := buildReportSnapshot(ctx, db, store, engagementID)
+		snapshot, err := resolveReportSnapshot(ctx, db, store, engagementID)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				http.NotFound(w, r)
@@ -242,10 +243,14 @@ func buildReportSnapshot(ctx context.Context, db queryer, store *evidenceStore, 
 	if err != nil {
 		return reportSnapshot{}, err
 	}
-	return assembleReportSnapshot(ctx, engagement, actions, findings, store)
+	captureGaps, err := loadReportCaptureGaps(ctx, db, engagementID)
+	if err != nil {
+		return reportSnapshot{}, err
+	}
+	return assembleReportSnapshot(ctx, engagement, actions, findings, captureGaps, store)
 }
 
-func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow, actions []reportActionRow, findings []reportFindingRow, store *evidenceStore) (reportSnapshot, error) {
+func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow, actions []reportActionRow, findings []reportFindingRow, captureGaps []outOfBandClaimItem, store *evidenceStore) (reportSnapshot, error) {
 	actionLabels := map[string]string{}
 	sortedActions := append([]reportActionRow(nil), actions...)
 	sort.Slice(sortedActions, func(i, j int) bool {
@@ -285,7 +290,7 @@ func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow,
 
 	evidenceCards := buildEvidenceCards(ctx, sortedActions, actionLabels, store)
 	attribution := buildAttribution(sortedActions)
-	gaps := buildCaptureGaps(sortedActions)
+	gaps := sortReportCaptureGaps(captureGaps)
 	cutoff := engagement.UpdatedAt.UTC()
 	for _, action := range sortedActions {
 		if !action.StartedAt.IsZero() && action.StartedAt.UTC().After(cutoff) {
@@ -436,28 +441,137 @@ func buildAttribution(actions []reportActionRow) []reportAttribution {
 	}
 }
 
-func buildCaptureGaps(actions []reportActionRow) []string {
-	needsPlugin := 0
-	egOff := 0
-	for _, action := range actions {
-		if action.ParseStatus != "parsed" {
-			needsPlugin++
+func loadReportCaptureGaps(ctx context.Context, db queryer, engagementID string) ([]outOfBandClaimItem, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT DISTINCT ON (subject_id) subject_id
+		FROM audit_event
+		WHERE engagement_id = $1 AND subject_type = 'out_of_band_claim' AND type IN ('out-of-band.flagged', 'out-of-band.resolved')
+		ORDER BY subject_id, subject_revision DESC, id DESC`, engagementID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []outOfBandClaimItem
+	for rows.Next() {
+		var claimID string
+		if err := rows.Scan(&claimID); err != nil {
+			return nil, err
 		}
-		if !action.EgressPublicIP.Valid || strings.TrimSpace(action.EgressPublicIP.String) == "" {
-			egOff++
+		rows, err := loadOutOfBandClaimTimeline(ctx, db, engagementID, claimID)
+		if err != nil {
+			return nil, err
+		}
+		item, err := buildOutOfBandClaim(engagementID, rows)
+		if err != nil {
+			return nil, err
+		}
+		if item.Status == outOfBandClaimStatusLinked {
+			continue
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func sortReportCaptureGaps(gaps []outOfBandClaimItem) []outOfBandClaimItem {
+	out := append([]outOfBandClaimItem(nil), gaps...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if captureGapRank(out[i].Status) != captureGapRank(out[j].Status) {
+			return captureGapRank(out[i].Status) < captureGapRank(out[j].Status)
+		}
+		if !out[i].ObservedAt.Equal(out[j].ObservedAt) {
+			return out[i].ObservedAt.Before(out[j].ObservedAt)
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
+}
+
+func resolveReportSnapshot(ctx context.Context, db queryer, store *evidenceStore, engagementID string) (reportSnapshot, error) {
+	if db != nil {
+		if snapshot, ok, err := loadFrozenReportSnapshot(ctx, db, engagementID); err != nil {
+			return reportSnapshot{}, err
+		} else if ok {
+			return snapshot, nil
 		}
 	}
-	gaps := make([]string, 0, 2)
-	if needsPlugin > 0 {
-		gaps = append(gaps, fmt.Sprintf("%d captured action(s) remain raw-first or need a plugin; the report keeps them instead of dropping evidence.", needsPlugin))
+	return buildReportSnapshot(ctx, db, store, engagementID)
+}
+
+func loadFrozenReportSnapshot(ctx context.Context, db queryer, engagementID string) (reportSnapshot, bool, error) {
+	row := db.QueryRowContext(ctx, `
+		SELECT j.id, COALESCE(r.bundle_path::text, 'bundle')
+		FROM export_receipt r
+		JOIN export_job j ON j.id = r.export_job_id
+		WHERE r.engagement_id = $1 AND r.status = 'verified'
+		ORDER BY r.verified_at DESC, r.id DESC
+		LIMIT 1`, engagementID)
+	var jobID, bundlePath string
+	if err := row.Scan(&jobID, &bundlePath); err != nil {
+		if errors.Is(err, sql.ErrNoRows) || isMissingReportBundleError(err) {
+			return reportSnapshot{}, false, nil
+		}
+		return reportSnapshot{}, false, err
 	}
-	if egOff > 0 {
-		gaps = append(gaps, fmt.Sprintf("%d captured action(s) recorded no public egress IP, so the report does not invent one.", egOff))
+	snapshot, err := loadFrozenReportSnapshotFromBundle(jobID, bundlePath)
+	if err != nil {
+		return reportSnapshot{}, false, err
 	}
-	if len(gaps) == 0 {
-		gaps = append(gaps, "No capture gaps recorded in this frozen snapshot.")
+	return snapshot, true, nil
+}
+
+func loadFrozenReportSnapshotFromBundle(jobID, bundlePath string) (reportSnapshot, error) {
+	snapshotPath, err := frozenReportSnapshotPath(jobID, bundlePath)
+	if err != nil {
+		return reportSnapshot{}, err
 	}
-	return gaps
+	raw, err := os.ReadFile(snapshotPath)
+	if err != nil {
+		return reportSnapshot{}, fmt.Errorf("read frozen report snapshot: %w", err)
+	}
+	var snapshot reportSnapshot
+	if err := json.Unmarshal(raw, &snapshot); err != nil {
+		return reportSnapshot{}, fmt.Errorf("decode frozen report snapshot: %w", err)
+	}
+	return snapshot, nil
+}
+
+func frozenReportSnapshotPath(jobID, bundlePath string) (string, error) {
+	root := strings.TrimSpace(os.Getenv("WAYPOINT_EXPORT_DIR"))
+	if root == "" {
+		root = filepath.Join(os.TempDir(), "waypoint", "exports")
+	}
+	if strings.TrimSpace(jobID) == "" {
+		return "", fmt.Errorf("missing export job id")
+	}
+	clean := filepath.Clean("/" + filepath.ToSlash(bundlePath))
+	clean = strings.TrimPrefix(clean, "/")
+	if clean == "" || clean == "." || strings.HasPrefix(clean, "..") {
+		return "", fmt.Errorf("unsafe bundle path")
+	}
+	return filepath.Join(root, jobID, filepath.FromSlash(clean), "report", "report-snapshot.json"), nil
+}
+
+func isMissingReportBundleError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "does not exist") || strings.Contains(msg, "undefined table") || strings.Contains(msg, "relation \"export_receipt\"") || strings.Contains(msg, "relation \"export_job\"")
+}
+
+func captureGapRank(status string) int {
+	switch strings.TrimSpace(status) {
+	case outOfBandClaimStatusPending:
+		return 0
+	case outOfBandClaimStatusDismissed:
+		return 1
+	default:
+		return 2
+	}
 }
 
 func readEvidenceSnippet(ctx context.Context, store *evidenceStore, storageKey string) string {
@@ -536,12 +650,20 @@ func renderReportPDF(ctx context.Context, snapshot reportSnapshot) ([]byte, erro
 	cmd := exec.CommandContext(ctx, chromium,
 		"--headless=new",
 		"--disable-gpu",
+		"--disable-background-networking",
+		"--disable-component-update",
+		"--disable-default-apps",
+		"--disable-extensions",
+		"--disable-features=Translate,MediaRouter,OptimizationHints",
+		"--disable-sync",
+		"--disable-dev-shm-usage",
+		"--metrics-recording-only",
 		"--no-first-run",
 		"--no-default-browser-check",
-		"--disable-dev-shm-usage",
+		"--no-pings",
 		"--print-to-pdf-no-header",
 		"--print-to-pdf="+pdfPath,
-		"file://"+filepath.ToSlash(htmlPath),
+		((&url.URL{Scheme: "file", Path: filepath.ToSlash(htmlPath)}).String()),
 	)
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
 	var stderr bytes.Buffer
@@ -687,8 +809,55 @@ func severityRank(v string) int {
 	}
 }
 
+func auditActorDisplay(v any) string {
+	var actor auditEventActor
+	switch value := v.(type) {
+	case auditEventActor:
+		actor = value
+	case *auditEventActor:
+		if value == nil {
+			return ""
+		}
+		actor = *value
+	default:
+		return ""
+	}
+	if actor.Kind == "ai_agent" {
+		base := actor.Handle
+		if actor.Model != "" {
+			base += " · model " + actor.Model
+		}
+		if actor.Version != "" {
+			base += " · version " + actor.Version
+		}
+		if actor.AuthorizedBy != "" {
+			base += " · authorized by " + actor.AuthorizedBy
+		}
+		return base
+	}
+	return actor.Handle
+}
+
+func captureGapLabel(item outOfBandClaimItem) string {
+	kind := strings.TrimSpace(item.ClaimKind)
+	if kind == "" {
+		return "Capture gap"
+	}
+	return titleWord(kind) + " capture gap"
+}
+
+func captureGapSourceActionID(item outOfBandClaimItem) string {
+	if item.SourceActionID == nil {
+		return ""
+	}
+	return strings.TrimSpace(*item.SourceActionID)
+}
+
 var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap{
-	"join": strings.Join,
+	"join":                     strings.Join,
+	"captureGapLabel":          captureGapLabel,
+	"captureGapSourceActionID": captureGapSourceActionID,
+	"auditActorDisplay":        auditActorDisplay,
 }).Parse(`<!doctype html>
 <html lang="en">
 <head>
@@ -812,7 +981,7 @@ var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap
 
     <section class="section">
       <h2>Known capture gaps</h2>
-      <ul>{{range .KnownCaptureGaps}}<li>{{.}}</li>{{else}}<li>None recorded.</li>{{end}}</ul>
+      <ul>{{range .KnownCaptureGaps}}<li><strong>{{captureGapLabel .}}</strong>{{if .Status}} · {{.Status}}{{end}}{{if captureGapSourceActionID .}} · source {{captureGapSourceActionID .}}{{end}}{{if .ObservedBy.Handle}} · observed by {{auditActorDisplay .ObservedBy}}{{end}}{{if .ResolvedBy}} · resolved by {{auditActorDisplay .ResolvedBy}}{{end}}{{if .Reason}} — {{.Reason}}{{end}}{{if .Notes}} · notes: {{.Notes}}{{end}}</li>{{else}}<li>None recorded.</li>{{end}}</ul>
     </section>
   </main>
 </body>

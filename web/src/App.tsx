@@ -220,7 +220,7 @@ type ReportSnapshot = {
     attribution: string;
   }>;
   attribution: Array<{ title: string; items: string[] }>;
-  knownCaptureGaps: string[];
+  knownCaptureGaps: OutOfBandClaimItem[];
 };
 
 type GuideNote = {
@@ -523,6 +523,18 @@ function assertReportSnapshot(value: unknown): asserts value is ReportSnapshot {
   for (const key of ['scope', 'methodology', 'findings', 'evidence', 'attribution', 'knownCaptureGaps']) {
     if (!Array.isArray(value[key])) throw new Error(`report snapshot missing ${key}`);
   }
+}
+
+function formatReportCaptureGap(item: OutOfBandClaimItem): string {
+  const parts = [
+    item.claimKind ? `${item.claimKind} capture gap` : 'Capture gap',
+    item.status,
+    item.observedBy?.handle ? `observed by ${item.observedBy.handle}` : '',
+    item.resolvedBy?.handle ? `resolved by ${item.resolvedBy.handle}` : '',
+    item.reason,
+    item.notes ? `notes: ${item.notes}` : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
 }
 
 async function parseSseStream(
@@ -1427,7 +1439,7 @@ export function App() {
             </section>
             <section className="report-section">
               <h2>Known capture gaps</h2>
-              <ul>{reportSnapshot.knownCaptureGaps.map((item) => <li key={item}>{item}</li>)}</ul>
+              <ul>{reportSnapshot.knownCaptureGaps.map((item, index) => <li key={item.id || `${item.claimKind}-${item.status}-${index}`}>{formatReportCaptureGap(item)}</li>)}</ul>
             </section>
           </article>
         ) : null}
