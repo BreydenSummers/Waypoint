@@ -491,8 +491,8 @@ def verify_openapi() -> int:
             operation_ids.add(operation_id)
     required_routes = {
         "/captures", "/actors", "/actors/{actorId}", "/actors/{actorId}/rotate",
-        "/actors/{actorId}/revoke", "/actions", "/actions/{actionId}", "/entities",
-        "/entities/{entityId}", "/evidence/{evidenceId}", "/evidence/{evidenceId}/content",
+        "/actors/{actorId}/revoke", "/actions", "/actions/needs-plugin", "/actions/{actionId}",
+        "/entities", "/entities/{entityId}", "/evidence/{evidenceId}", "/evidence/{evidenceId}/content",
         "/audit-events", "/events", "/out-of-band-claims", "/out-of-band-claims/{claimId}",
         "/out-of-band-claims/{claimId}/resolve", "/mcp", "/exports", "/exports/{exportId}",
         "/exports/{exportId}/cancel", "/exports/{exportId}/report-snapshot",
@@ -517,7 +517,7 @@ def verify_openapi() -> int:
     protocol_error_ref = mcp_responses.get("400", {}).get("content", {}).get("application/json", {}).get("schema", {}).get("$ref")
     if protocol_error_ref != "#/components/schemas/McpMessage":
         raise VerificationFailure("MCP protocol errors must use JSON-RPC rather than REST problem bodies")
-    for route in ("/actions", "/actors", "/entities", "/audit-events", "/out-of-band-claims", "/exports"):
+    for route in ("/actions", "/actions/needs-plugin", "/actors", "/entities", "/audit-events", "/out-of-band-claims", "/exports"):
         parameters = openapi["paths"][route]["get"].get("parameters", [])
         refs = {item.get("$ref") for item in parameters}
         if "#/components/parameters/AfterCursor" not in refs or "#/components/parameters/PageLimit" not in refs:
