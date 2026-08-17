@@ -2,6 +2,7 @@ package server
 
 import (
 	"archive/tar"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -96,6 +98,129 @@ func TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship(t *testing.
 	if completed.State != "completed" || completed.Bundle == nil || completed.Bundle.ReceiptID == "" {
 		t.Fatalf("recovered export = %#v", completed)
 	}
+	if completed.Bundle.ArchivePath != "export-bundle.tar.gz" {
+		t.Fatalf("archive path = %q", completed.Bundle.ArchivePath)
+	}
+	archivePath := filepath.Join(exportRoot, "77777777-7777-4777-8777-777777777777", completed.Bundle.ArchivePath)
+	info, err := os.Stat(archivePath)
+	if err != nil {
+		t.Fatalf("stat export archive: %v", err)
+	}
+	if info.Size() != completed.Bundle.ArchiveByteLength {
+		t.Fatalf("archive size = %d, want %d", info.Size(), completed.Bundle.ArchiveByteLength)
+	}
+	sha, _, err := fileSHA256(archivePath)
+	if err != nil {
+		t.Fatalf("hash export archive: %v", err)
+	}
+	if sha != completed.Bundle.ArchiveSHA256 {
+		t.Fatalf("archive hash = %s, want %s", sha, completed.Bundle.ArchiveSHA256)
+	}
+	f, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatalf("open export archive: %v", err)
+	}
+	defer f.Close()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		t.Fatalf("open gzip archive: %v", err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	entries := map[string]bool{}
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("read archive entry: %v", err)
+		}
+		entries[hdr.Name] = true
+	}
+	for _, want := range []string{
+		"bundle/database/engagement.dump",
+		"bundle/evidence/evidence.tar.zst",
+		"bundle/report/frozen-report.pdf",
+		"bundle/report/report-snapshot.json",
+		"bundle/metadata/export-metadata.json",
+		"bundle/metadata/export-manifest.json",
+		"bundle/tools/verify-restore.mjs",
+		"bundle/tools/regenerate-report.mjs",
+		"bundle/instructions/restore.md",
+	} {
+		if !entries[want] {
+			t.Fatalf("archive missing %q", want)
+		}
+	}
+}
+
+func TestExportJobPreflightRejectsInsufficientCapacity(t *testing.T) {
+	if os.Getenv("WAYPOINT_TEST_PG_DSN") == "" {
+		t.Skip("WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests")
+	}
+
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	evidenceRoot := t.TempDir()
+	t.Setenv("WAYPOINT_EVIDENCE_DIR", evidenceRoot)
+	exportRootFile := filepath.Join(t.TempDir(), "exports-root")
+	if err := os.WriteFile(exportRootFile, []byte("not a directory"), 0o600); err != nil {
+		t.Fatalf("write export root file: %v", err)
+	}
+	t.Setenv("WAYPOINT_EXPORT_DIR", exportRootFile)
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	humanID := "22222222-2222-4222-8222-222222222222"
+	actorToken := "capacity-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Q3 launch', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'owner')`, humanID, engagementID, hashHex(actorToken))
+
+	h := HandlerWithDB(db)
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/exports", strings.NewReader(`{"formatVersion":"1.0.0"}`))
+	createReq.Header.Set("Authorization", "Bearer "+actorToken)
+	createReq.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	createRR := httptest.NewRecorder()
+	h.ServeHTTP(createRR, createReq)
+	if createRR.Code != http.StatusAccepted {
+		t.Fatalf("create export status = %d body=%s", createRR.Code, createRR.Body.String())
+	}
+	var created exportJobResponse
+	if err := json.Unmarshal(createRR.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		getReq := httptest.NewRequest(http.MethodGet, "/api/v1/exports/"+created.ID, nil)
+		getReq.Header.Set("Authorization", "Bearer "+actorToken)
+		getReq.Header.Set("Waypoint-Contract-Version", "1.0.0")
+		getRR := httptest.NewRecorder()
+		h.ServeHTTP(getRR, getReq)
+		if getRR.Code != http.StatusOK {
+			t.Fatalf("get export status = %d body=%s", getRR.Code, getRR.Body.String())
+		}
+		var current exportJobResponse
+		if err := json.Unmarshal(getRR.Body.Bytes(), &current); err != nil {
+			t.Fatalf("decode export response: %v", err)
+		}
+		if current.State == "failed" {
+			if current.Failure == nil || current.Failure.Code != "capacity_insufficient" || current.Failure.Retryable {
+				t.Fatalf("failed export = %#v", current)
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("export job did not fail")
 }
 
 func TestBuildExportEvidenceTarStreamsAttachmentRoles(t *testing.T) {

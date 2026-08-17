@@ -2,6 +2,7 @@ package server
 
 import (
 	"archive/tar"
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -18,12 +19,14 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	dbutil "waypoint/internal/db"
 )
 
 const exportContractVersion = "1.0.0"
+const exportArchiveFilename = "export-bundle.tar.gz"
 
 var (
 	exportJobsRoute    = regexp.MustCompile(`^/(?:api/v1/)?exports(?:/([^/]+)(?:/cancel)?)?/?$`)
@@ -227,7 +230,7 @@ func (m *exportManager) runJob(ctx context.Context, jobID string) {
 				return
 			}
 		case "preflighting":
-			if err := m.preflight(job); err != nil {
+			if err := m.preflight(ctx, job); err != nil {
 				_ = m.failJob(ctx, job, exportJobFailure{Code: exportFailureCode(err), Message: err.Error(), Retryable: exportRetryable(err)}, "export.failed", "service", "export-worker")
 				return
 			}
@@ -284,6 +287,7 @@ type exportArtifacts struct {
 	archiveByteLength  int64
 	payloads           []reportBundlePayload
 	bundleDir          string
+	archivePath        string
 	manifestPath       string
 	snapshotPath       string
 	metadataPath       string
@@ -647,11 +651,54 @@ func handleExportReceipt(w http.ResponseWriter, r *http.Request, db *sql.DB, act
 	writeJSONWithHeaders(w, http.StatusOK, exportReceiptResponseFromRow(rec), reqID)
 }
 
-func (m *exportManager) preflight(job exportJobRecord) error {
+func (m *exportManager) preflight(ctx context.Context, job exportJobRecord) error {
 	if strings.TrimSpace(job.EngagementID) == "" {
 		return errors.New("export job missing engagement")
 	}
+	if m == nil || m.db == nil {
+		return errors.New("export unavailable")
+	}
+	probe, err := os.CreateTemp(m.root, ".export-capacity-*")
+	if err != nil {
+		return fmt.Errorf("capacity insufficient: export root unavailable: %w", err)
+	}
+	probeName := probe.Name()
+	_ = probe.Close()
+	_ = os.Remove(probeName)
+
+	required, err := estimateExportFootprint(ctx, m.db, job.EngagementID)
+	if err != nil {
+		return err
+	}
+	free, err := availableExportBytes(m.root)
+	if err != nil {
+		return fmt.Errorf("capacity insufficient: export root unavailable: %w", err)
+	}
+	if free < required {
+		return fmt.Errorf("capacity insufficient: need %d bytes, have %d bytes", required, free)
+	}
 	return nil
+}
+
+func estimateExportFootprint(ctx context.Context, db queryer, engagementID string) (uint64, error) {
+	var evidenceBytes int64
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(SUM(byte_length), 0) FROM evidence WHERE engagement_id = $1`, engagementID).Scan(&evidenceBytes); err != nil {
+		return 0, err
+	}
+	const safetyMargin = 16 << 20
+	required := uint64(evidenceBytes) + safetyMargin
+	if required < safetyMargin {
+		required = safetyMargin
+	}
+	return required, nil
+}
+
+func availableExportBytes(root string) (uint64, error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(root, &stat); err != nil {
+		return 0, err
+	}
+	return uint64(stat.Bavail) * uint64(stat.Bsize), nil
 }
 
 func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord) (exportArtifacts, error) {
@@ -684,6 +731,7 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 		"regenTool":    filepath.Join(bundleDir, "tools", "regenerate-report.mjs"),
 		"instructions": filepath.Join(bundleDir, "instructions", "restore.md"),
 	}
+	archivePath := filepath.Join(m.root, job.ID, exportArchiveFilename)
 	for _, path := range paths {
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			return exportArtifacts{}, err
@@ -718,6 +766,7 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 	metadata := map[string]any{
 		"version":            "v1",
 		"bundleRoot":         "bundle",
+		"archivePath":        exportArchiveFilename,
 		"manifestPath":       "bundle/metadata/export-manifest.json",
 		"snapshotPath":       "bundle/report/report-snapshot.json",
 		"pdfPath":            "bundle/report/frozen-report.pdf",
@@ -839,7 +888,10 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 		return exportArtifacts{}, err
 	}
 	manifestSHA := sha256HexBytes(manifestBytes)
-	archiveSHA, archiveLen, err := computeExportArchiveHash(bundlePayloads, manifestBytes, bundleDir)
+	if err := writeExportArchive(archivePath, bundleDir); err != nil {
+		return exportArtifacts{}, err
+	}
+	archiveSHA, archiveLen, err := fileSHA256(archivePath)
 	if err != nil {
 		return exportArtifacts{}, err
 	}
@@ -862,6 +914,7 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 		archiveByteLength:  archiveLen,
 		payloads:           bundlePayloads,
 		bundleDir:          bundleDir,
+		archivePath:        archivePath,
 		manifestPath:       paths["manifest"],
 		snapshotPath:       paths["snapshot"],
 		metadataPath:       paths["metadata"],
@@ -884,7 +937,7 @@ func (m *exportManager) verifyArtifacts(ctx context.Context, job exportJobRecord
 	if err != nil {
 		return exportArtifacts{}, err
 	}
-	if err := verifyExportBundle(artifacts.bundleDir, artifacts.manifest, artifacts.manifestSHA256, artifacts.archiveSHA256); err != nil {
+	if err := verifyExportBundle(artifacts.bundleDir, artifacts.archivePath, artifacts.manifest, artifacts.manifestSHA256, artifacts.archiveSHA256); err != nil {
 		return exportArtifacts{}, err
 	}
 	return artifacts, nil
@@ -1136,7 +1189,7 @@ func exportJobResponseFromRow(row exportJobRecord) exportJobResponse {
 		resp.CompletedAt = row.CompletedAt.Time.UTC().Format(time.RFC3339)
 	}
 	if row.BundleArchivePath.Valid {
-		resp.Bundle = &exportJobBundle{ArchivePath: row.BundleArchivePath.String, ArchiveByteLength: row.BundleArchiveLen.Int64, ArchiveSHA256: row.BundleArchiveSHA.String, ManifestSHA256: row.BundleManifestSHA.String, ReportSnapshotID: row.BundleReportSnapID.String, ReceiptID: row.BundleReceiptID.String}
+		resp.Bundle = &exportJobBundle{ArchivePath: exportArchiveFilename, ArchiveByteLength: row.BundleArchiveLen.Int64, ArchiveSHA256: row.BundleArchiveSHA.String, ManifestSHA256: row.BundleManifestSHA.String, ReportSnapshotID: row.BundleReportSnapID.String, ReceiptID: row.BundleReceiptID.String}
 	}
 	if row.FailureCode.Valid {
 		resp.Failure = &exportJobFailure{Code: row.FailureCode.String, Message: row.FailureMessage.String, Retryable: row.FailureRetryable.Bool}
@@ -1232,6 +1285,8 @@ func exportFailureCode(err error) string {
 		return "cancelled"
 	case strings.Contains(msg, "snapshot"):
 		return "snapshot_failed"
+	case strings.Contains(msg, "capacity"):
+		return "capacity_insufficient"
 	case strings.Contains(msg, "manifest"):
 		return "archive_failed"
 	case strings.Contains(msg, "verify"):
@@ -1255,6 +1310,7 @@ func loadExportArtifacts(m *exportManager, job exportJobRecord) (exportArtifacts
 		bundlePath = job.BundleArchivePath.String
 	}
 	bundleDir := filepath.Join(m.root, job.ID, filepath.FromSlash(bundlePath))
+	archivePath := filepath.Join(m.root, job.ID, exportArchiveFilename)
 	manifestPath := filepath.Join(bundleDir, "metadata", "export-manifest.json")
 	manifestBytes, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -1271,21 +1327,18 @@ func loadExportArtifacts(m *exportManager, job exportJobRecord) (exportArtifacts
 		return exportArtifacts{}, err
 	}
 	archiveSHA := strings.TrimSpace(string(sidecarBytes))
-	manifestSHA := sha256HexBytes(manifestBytes)
-	archiveLen := int64(len(manifestBytes))
-	for _, payload := range parsed.Payloads {
-		path := filepath.Join(bundleDir, strings.TrimPrefix(payload.Path, "bundle/"))
-		info, err := os.Stat(path)
-		if err != nil {
-			return exportArtifacts{}, err
-		}
-		archiveLen += info.Size()
+	archiveLen := int64(0)
+	if info, err := os.Stat(archivePath); err != nil {
+		return exportArtifacts{}, err
+	} else {
+		archiveLen = info.Size()
 	}
+	manifestSHA := sha256HexBytes(manifestBytes)
 	cutoff := ""
 	if job.Cutoff.Valid {
 		cutoff = job.Cutoff.Time.UTC().Format(time.RFC3339)
 	}
-	return exportArtifacts{bundleDir: bundleDir, manifest: manifestBytes, manifestSHA256: manifestSHA, archiveSHA256: archiveSHA, archiveByteLength: archiveLen, payloads: parsed.Payloads, snapshotID: job.SnapshotID.String, cutoff: cutoff, receiptID: job.BundleReceiptID.String}, nil
+	return exportArtifacts{bundleDir: bundleDir, archivePath: archivePath, manifest: manifestBytes, manifestSHA256: manifestSHA, archiveSHA256: archiveSHA, archiveByteLength: archiveLen, payloads: parsed.Payloads, snapshotID: job.SnapshotID.String, cutoff: cutoff, receiptID: job.BundleReceiptID.String}, nil
 }
 
 func buildExportDump(ctx context.Context, db queryer, engagementID, snapshotID, cutoff string) ([]byte, error) {
@@ -1379,6 +1432,113 @@ func buildExportEvidenceTar(ctx context.Context, db queryer, store *evidenceStor
 	return nil
 }
 
+func writeExportArchive(archivePath, bundleDir string) (err error) {
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0o750); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(archivePath), ".export-archive-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	gz := gzip.NewWriter(tmp)
+	zw := tar.NewWriter(gz)
+	var files []string
+	if err := filepath.Walk(bundleDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == bundleDir {
+			return nil
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlink not allowed in archive: %s", path)
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("unsupported archive entry: %s", path)
+		}
+		rel, err := filepath.Rel(bundleDir, path)
+		if err != nil {
+			return err
+		}
+		files = append(files, filepath.ToSlash(filepath.Join("bundle", rel)))
+		return nil
+	}); err != nil {
+		_ = zw.Close()
+		_ = gz.Close()
+		_ = tmp.Close()
+		return err
+	}
+	sort.Strings(files)
+	for _, name := range files {
+		path := filepath.Join(filepath.FromSlash(bundleDir), strings.TrimPrefix(name, "bundle/"))
+		info, err := os.Stat(path)
+		if err != nil {
+			_ = zw.Close()
+			_ = gz.Close()
+			_ = tmp.Close()
+			return err
+		}
+		hdr := &tar.Header{Name: name, Mode: int64(info.Mode().Perm()), Size: info.Size(), ModTime: info.ModTime()}
+		if err := zw.WriteHeader(hdr); err != nil {
+			_ = zw.Close()
+			_ = gz.Close()
+			_ = tmp.Close()
+			return err
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			_ = zw.Close()
+			_ = gz.Close()
+			_ = tmp.Close()
+			return err
+		}
+		if _, err := io.Copy(zw, f); err != nil {
+			_ = f.Close()
+			_ = zw.Close()
+			_ = gz.Close()
+			_ = tmp.Close()
+			return err
+		}
+		if err := f.Close(); err != nil {
+			_ = zw.Close()
+			_ = gz.Close()
+			_ = tmp.Close()
+			return err
+		}
+	}
+	if err := zw.Close(); err != nil {
+		_ = gz.Close()
+		_ = tmp.Close()
+		return err
+	}
+	if err := gz.Close(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, archivePath); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
 func computeExportArchiveHash(payloads []reportBundlePayload, manifestBytes []byte, bundleDir string) (string, int64, error) {
 	h := sha256.New()
 	if len(manifestBytes) > 0 {
@@ -1412,7 +1572,7 @@ func computeExportArchiveHash(payloads []reportBundlePayload, manifestBytes []by
 	return hex.EncodeToString(h.Sum(nil)), total, nil
 }
 
-func verifyExportBundle(bundleDir string, manifest []byte, manifestSHA256, archiveSHA256 string) error {
+func verifyExportBundle(bundleDir, archivePath string, manifest []byte, manifestSHA256, archiveSHA256 string) error {
 	var parsed struct {
 		Version  string `json:"version"`
 		Payloads []struct {
@@ -1431,7 +1591,6 @@ func verifyExportBundle(bundleDir string, manifest []byte, manifestSHA256, archi
 	if parsed.Version != "v1" || parsed.Signatures.Version != "v1" || len(parsed.Signatures.Items) != 0 {
 		return errors.New("bundle manifest signature hook must be versioned and empty")
 	}
-	payloads := make([]reportBundlePayload, 0, len(parsed.Payloads))
 	for _, payload := range parsed.Payloads {
 		path := filepath.Join(filepath.FromSlash(bundleDir), strings.TrimPrefix(payload.Path, "bundle/"))
 		info, err := os.Stat(path)
@@ -1456,14 +1615,74 @@ func verifyExportBundle(bundleDir string, manifest []byte, manifestSHA256, archi
 		if hex.EncodeToString(h.Sum(nil)) != payload.SHA {
 			return fmt.Errorf("sha256 mismatch for %s", payload.Path)
 		}
-		payloads = append(payloads, reportBundlePayload{Path: payload.Path, Size: payload.Size, SHA256: payload.SHA})
 	}
-	archive, _, err := computeExportArchiveHash(payloads, manifest, bundleDir)
+	archive, _, err := fileSHA256(archivePath)
 	if err != nil {
 		return err
 	}
 	if archive != archiveSHA256 {
 		return errors.New("outer archive hash mismatch")
+	}
+	archiveFile, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	gz, err := gzip.NewReader(archiveFile)
+	if err != nil {
+		_ = archiveFile.Close()
+		return err
+	}
+	expected := map[string]struct{}{}
+	if err := filepath.Walk(bundleDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == bundleDir || info.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(bundleDir, path)
+		if err != nil {
+			return err
+		}
+		expected[filepath.ToSlash(filepath.Join("bundle", rel))] = struct{}{}
+		return nil
+	}); err != nil {
+		_ = gz.Close()
+		_ = archiveFile.Close()
+		return err
+	}
+	seen := map[string]struct{}{}
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			_ = gz.Close()
+			_ = archiveFile.Close()
+			return err
+		}
+		seen[hdr.Name] = struct{}{}
+		if _, ok := expected[hdr.Name]; !ok {
+			_ = gz.Close()
+			_ = archiveFile.Close()
+			return fmt.Errorf("unexpected archive entry: %s", hdr.Name)
+		}
+	}
+	for name := range expected {
+		if _, ok := seen[name]; !ok {
+			_ = gz.Close()
+			_ = archiveFile.Close()
+			return fmt.Errorf("missing archive entry: %s", name)
+		}
+	}
+	if err := gz.Close(); err != nil {
+		_ = archiveFile.Close()
+		return err
+	}
+	if err := archiveFile.Close(); err != nil {
+		return err
 	}
 	if sha256HexBytes(manifest) != manifestSHA256 {
 		return errors.New("manifest digest mismatch")
