@@ -38,8 +38,8 @@ func TestNotableAlertRuleFixtures(t *testing.T) {
 					Attributes:  map[string]any{"state": "up"},
 				}},
 			},
-			wantRules:  []string{"successful-authentication"},
-			wantDedupe: []string{"successful-authentication|alice|10.0.0.5|ssh"},
+			wantRules:  []string{"successful-auth"},
+			wantDedupe: []string{"successful-auth|alice|10.0.0.5|ssh"},
 		},
 		{
 			name: "first newly reachable segment",
@@ -55,8 +55,8 @@ func TestNotableAlertRuleFixtures(t *testing.T) {
 					Attributes:  map[string]any{"reachable": true},
 				}},
 			},
-			wantRules:  []string{"first-newly-reachable-segment"},
-			wantDedupe: []string{"first-newly-reachable-segment|10.0.0.0/24"},
+			wantRules:  []string{"first-new-segment"},
+			wantDedupe: []string{"first-new-segment|10.0.0.0/24"},
 		},
 	}
 
@@ -156,8 +156,8 @@ func TestNotableAlertSelectionIsDeterministic(t *testing.T) {
 				"zulu":  map[string]any{"success": true, "username": "zoe", "target": "10.0.0.9", "method": "rdp"},
 				"alpha": map[string]any{"success": true, "username": "alice", "target": "10.0.0.5", "method": "ssh"},
 			},
-			wantRule:   "successful-authentication",
-			wantDedupe: "successful-authentication|alice|10.0.0.5|ssh",
+			wantRule:   "successful-auth",
+			wantDedupe: "successful-auth|alice|10.0.0.5|ssh",
 		},
 		{
 			name: "reachable segment prefers stable key order",
@@ -165,8 +165,8 @@ func TestNotableAlertSelectionIsDeterministic(t *testing.T) {
 				"zulu":  map[string]any{"segment": "10.0.9.0/24", "reachable": true},
 				"alpha": map[string]any{"segment": "10.0.0.0/24", "reachable": true},
 			},
-			wantRule:   "first-newly-reachable-segment",
-			wantDedupe: "first-newly-reachable-segment|10.0.0.0/24",
+			wantRule:   "first-new-segment",
+			wantDedupe: "first-new-segment|10.0.0.0/24",
 		},
 	}
 
@@ -183,6 +183,56 @@ func TestNotableAlertSelectionIsDeterministic(t *testing.T) {
 				t.Fatalf("dedupe = %q, want %q", got[0].DedupeKey, tc.wantDedupe)
 			}
 		})
+	}
+}
+
+func TestNotableAlertsUseSystemActorForAISourceCaptures(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "33333333-3333-4333-8333-333333333333"
+	humanID := "44444444-4444-4444-8444-444444444444"
+	aiID := "55555555-5555-4555-8555-555555555555"
+	humanToken := "alert-human-token"
+	aiToken := "alert-ai-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, humanID, engagementID, hashHex(humanToken))
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role, agent_name, model, version, authorized_by) VALUES ($1, $2, 'ai_agent', 'field-agent-7', $3, 'operator', 'Synthetic Field Agent', 'synthetic', '2025.01', $4)`, aiID, engagementID, hashHex(aiToken), humanID)
+
+	ts := httptest.NewServer(HandlerWithDB(db))
+	defer ts.Close()
+
+	resp := doCaptureRequest(t, ts.Config.Handler, aiToken, "alert-ai-req", notableAlertEnvelope("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4", "10.0.2.0/24"), []byte("stdout"), []byte("stderr"))
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("capture status = %d, want %d", resp.Code, http.StatusCreated)
+	}
+	var ack captureAckResponse
+	decodeResponse(t, resp, &ack)
+
+	var actorKind, actorHandle, actorAgentName, actorModel, actorVersion, actorAuthorizedBy string
+	if err := db.QueryRowContext(ctx, `SELECT actor_kind, actor_handle, COALESCE(actor_agent_name,''), COALESCE(actor_model,''), COALESCE(actor_version,''), COALESCE(actor_authorized_by::text,'') FROM audit_event WHERE engagement_id = $1 AND type = 'alert.notable' ORDER BY id DESC LIMIT 1`, engagementID).Scan(&actorKind, &actorHandle, &actorAgentName, &actorModel, &actorVersion, &actorAuthorizedBy); err != nil {
+		t.Fatalf("load notable alert actor: %v", err)
+	}
+	if actorKind != "human" || actorHandle != "notable-alerts" || actorAgentName != "" || actorModel != "" || actorVersion != "" || actorAuthorizedBy != "" {
+		t.Fatalf("notable alert actor claims = kind:%q handle:%q agent:%q model:%q version:%q authorizedBy:%q", actorKind, actorHandle, actorAgentName, actorModel, actorVersion, actorAuthorizedBy)
+	}
+
+	sseResp := doAuditRequest(t, ts.Client(), ts.URL+"/events?after="+ack.AuditEventCursor, humanToken, "alert-ai-sse", "", ack.AuditEventCursor)
+	frame := readSSEFrame(t, sseResp.Body)
+	_ = sseResp.Body.Close()
+	if frame["event"] != "alert.notable" {
+		t.Fatalf("sse event = %q, want alert.notable", frame["event"])
+	}
+	if !strings.Contains(frame["data"], `"kind":"human"`) || !strings.Contains(frame["data"], `"handle":"notable-alerts"`) {
+		t.Fatalf("alert SSE exposed AI actor claims: %s", frame["data"])
 	}
 }
 
@@ -286,10 +336,10 @@ func notableAlertEnvelope(captureID, segment string) map[string]any {
 func assertAlertCounts(t *testing.T, db *sql.DB, engagementID string, wantAuth, wantSegment int) {
 	t.Helper()
 	var authCount, segmentCount int
-	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM audit_event WHERE engagement_id = $1 AND type = 'alert.notable' AND data->>'ruleId' = 'successful-authentication'`, engagementID).Scan(&authCount); err != nil {
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM audit_event WHERE engagement_id = $1 AND type = 'alert.notable' AND data->>'ruleId' = 'successful-auth'`, engagementID).Scan(&authCount); err != nil {
 		t.Fatalf("count auth alerts: %v", err)
 	}
-	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM audit_event WHERE engagement_id = $1 AND type = 'alert.notable' AND data->>'ruleId' = 'first-newly-reachable-segment'`, engagementID).Scan(&segmentCount); err != nil {
+	if err := db.QueryRowContext(context.Background(), `SELECT COUNT(*) FROM audit_event WHERE engagement_id = $1 AND type = 'alert.notable' AND data->>'ruleId' = 'first-new-segment'`, engagementID).Scan(&segmentCount); err != nil {
 		t.Fatalf("count segment alerts: %v", err)
 	}
 	if authCount != wantAuth || segmentCount != wantSegment {
