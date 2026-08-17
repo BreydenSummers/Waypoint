@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, symlink, unlink, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -146,3 +146,32 @@ assert.match(unsafeRegenRun.stderr, /unsafe bundle path/);
 
 const unsafeRegenerated = await readFile(unsafeOutputHtml, 'utf8').catch(() => '');
 assert.equal(unsafeRegenerated, '');
+await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+await rm(dumpPath, { force: true });
+await assert.rejects(() => verifyBundle(bundleRoot), /ENOENT/);
+await writeFile(dumpPath, 'postgres dump bytes\n', 'utf8');
+
+const extraPath = join(bundleDir, 'notes', 'unexpected.txt');
+await mkdir(join(bundleDir, 'notes'), { recursive: true });
+await writeFile(extraPath, 'unexpected file\n', 'utf8');
+await assert.rejects(() => verifyBundle(bundleRoot), /unexpected bundle file: bundle\/notes\/unexpected\.txt/);
+await rm(extraPath, { force: true });
+await rm(join(bundleDir, 'notes'), { recursive: true, force: true });
+
+const symlinkTarget = join(tempRoot, 'symlink-target.txt');
+await writeFile(symlinkTarget, 'symlink payload\n', 'utf8');
+await rm(dumpPath, { force: true });
+await symlink(symlinkTarget, dumpPath);
+await assert.rejects(() => verifyBundle(bundleRoot), /symlink not allowed: bundle\/database\/engagement\.dump/);
+await unlink(dumpPath);
+await writeFile(dumpPath, 'postgres dump bytes\n', 'utf8');
+
+await writeFile(manifestPath, JSON.stringify({
+  ...manifest,
+  payloads: manifest.payloads.map((payload) => payload.path === 'bundle/database/engagement.dump'
+    ? { ...payload, size: Number.MAX_SAFE_INTEGER + 1 }
+    : payload),
+}, null, 2), 'utf8');
+await assert.rejects(() => verifyBundle(bundleRoot), /payload size out of range/);
+await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
