@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -288,6 +289,93 @@ func TestEntityIdentityNormalizationConflictAndConcurrentDeduplication(t *testin
 	}
 }
 
+func TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "99999999-9999-4999-8999-999999999999"
+	actorID := "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	token := "entity-read-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, actorID, engagementID, hashHex(token))
+
+	sourceID := "11111111-1111-4111-8111-111111111111"
+	targetID := "22222222-2222-4222-8222-222222222222"
+	mustExec(t, db, `INSERT INTO entity (id, engagement_id, kind, key_type, key_value, attributes) VALUES ($1, $2, 'host', 'fqdn', 'alpha.local', '{"role":"source"}'::jsonb)`, sourceID, engagementID)
+	mustExec(t, db, `INSERT INTO entity (id, engagement_id, kind, key_type, key_value, attributes) VALUES ($1, $2, 'host', 'fqdn', 'beta.local', '{"role":"target"}'::jsonb)`, targetID, engagementID)
+	observationID := seedObservation(t, db, engagementID, actorID, sourceID, "alpha.local")
+
+	ts := httptest.NewServer(HandlerWithDB(db))
+	defer ts.Close()
+
+	before := doEntityReadRequest(t, ts.Client(), ts.URL+"/api/v1/entities/"+sourceID, token, "req-entity-before")
+	defer before.Body.Close()
+	if before.StatusCode != http.StatusOK {
+		t.Fatalf("entity before merge status = %d", before.StatusCode)
+	}
+	var beforeResp entityReadResponse
+	decodeHTTPResponse(t, before, &beforeResp)
+	if beforeResp.ID != sourceID || len(beforeResp.Observations) != 1 || beforeResp.Observations[0].ID != observationID {
+		t.Fatalf("entity before merge = %#v", beforeResp)
+	}
+
+	merged := doEntityMutationRequest(t, ts.Client(), ts.URL+"/api/v1/entities/merge", token, "req-entity-merge", entityMergeRequest{SourceEntityID: sourceID, TargetEntityID: targetID})
+	defer merged.Body.Close()
+	if merged.StatusCode != http.StatusOK {
+		t.Fatalf("merge status = %d", merged.StatusCode)
+	}
+
+	afterMerge := doEntityReadRequest(t, ts.Client(), ts.URL+"/api/v1/entities/"+sourceID, token, "req-entity-after-merge")
+	defer afterMerge.Body.Close()
+	if afterMerge.StatusCode != http.StatusOK {
+		t.Fatalf("entity after merge status = %d", afterMerge.StatusCode)
+	}
+	var afterMergeResp entityReadResponse
+	decodeHTTPResponse(t, afterMerge, &afterMergeResp)
+	if afterMergeResp.ID != targetID || len(afterMergeResp.Observations) != 1 || afterMergeResp.Observations[0].ID != observationID {
+		t.Fatalf("entity after merge = %#v", afterMergeResp)
+	}
+
+	page := doEntityPageRequest(t, ts.Client(), ts.URL+"/api/v1/entities?limit=10", token, "req-entity-page")
+	if page.Page.HasMore || len(page.Items) != 1 || page.Items[0].ID != targetID {
+		t.Fatalf("entity page after merge = %#v", page)
+	}
+
+	var currentSourceRev, currentTargetRev int
+	if err := db.QueryRowContext(ctx, `SELECT s.revision, t.revision FROM entity s, entity t WHERE s.id = $1 AND t.id = $2`, sourceID, targetID).Scan(&currentSourceRev, &currentTargetRev); err != nil {
+		t.Fatalf("load revisions: %v", err)
+	}
+	resplit := doEntityMutationRequest(t, ts.Client(), ts.URL+"/api/v1/entities/split", token, "req-entity-split", entitySplitRequest{EntityID: sourceID, ObservationID: observationID, ExpectedSourceRevision: intPtr(currentSourceRev), ExpectedTargetRevision: intPtr(currentTargetRev)})
+	defer resplit.Body.Close()
+	if resplit.StatusCode != http.StatusOK {
+		t.Fatalf("split status = %d", resplit.StatusCode)
+	}
+
+	afterSplit := doEntityReadRequest(t, ts.Client(), ts.URL+"/api/v1/entities/"+sourceID, token, "req-entity-after-split")
+	defer afterSplit.Body.Close()
+	if afterSplit.StatusCode != http.StatusOK {
+		t.Fatalf("entity after split status = %d", afterSplit.StatusCode)
+	}
+	var afterSplitResp entityReadResponse
+	decodeHTTPResponse(t, afterSplit, &afterSplitResp)
+	if afterSplitResp.ID != sourceID || len(afterSplitResp.Observations) != 1 || afterSplitResp.Observations[0].ID != observationID {
+		t.Fatalf("entity after split = %#v", afterSplitResp)
+	}
+
+	page = doEntityPageRequest(t, ts.Client(), ts.URL+"/api/v1/entities?limit=10", token, "req-entity-page-after-split")
+	if page.Page.HasMore || len(page.Items) != 2 {
+		t.Fatalf("entity page after split = %#v", page)
+	}
+}
+
 func TestEntityMergeConflictIsOptimisticUnderConcurrency(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
@@ -371,6 +459,37 @@ func doEntityMutationRequest(t *testing.T, client *http.Client, url, token, requ
 		t.Fatalf("do entity request: %v", err)
 	}
 	return resp
+}
+
+func doEntityReadRequest(t *testing.T, client *http.Client, url, token, requestID string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		t.Fatalf("new read request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	req.Header.Set("X-Request-ID", requestID)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("do read request: %v", err)
+	}
+	return resp
+}
+
+func doEntityPageRequest(t *testing.T, client *http.Client, url, token, requestID string) entityPageResponse {
+	t.Helper()
+	resp := doEntityReadRequest(t, client, url, token, requestID)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("entity page status = %d, body=%s", resp.StatusCode, body)
+	}
+	var page entityPageResponse
+	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
+		t.Fatalf("decode entity page: %v", err)
+	}
+	return page
 }
 
 func seedObservation(t *testing.T, db *sql.DB, engagementID, actorID, entityID, fqdn string) string {
