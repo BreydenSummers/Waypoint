@@ -135,6 +135,46 @@ type FindingItem = {
   updatedAt: string;
 };
 
+type ActorLifecycleRecord = {
+  contractVersion: string;
+  engagementId: string;
+  actor: AuditActor;
+  status: 'active' | 'revoked';
+  credentialVersion: number;
+  createdAt: string;
+  createdBy: string;
+  lastRotatedAt?: string;
+  lastRotatedBy?: string;
+  revokedAt?: string;
+  revokedBy?: string;
+  revision: number;
+};
+
+type ActorCredentialResponse = {
+  contractVersion: string;
+  actorRecord: ActorLifecycleRecord;
+  token: string;
+  issuedAt: string;
+};
+
+type OutOfBandClaimItem = {
+  contractVersion: string;
+  id: string;
+  engagementId: string;
+  claimKind: 'entity' | 'result';
+  claimedSubjectId: string;
+  sourceActionId?: string | null;
+  detectionBoundary: string;
+  reason: string;
+  status: 'pending' | 'linked' | 'dismissed';
+  observedAt: string;
+  observedBy: AuditActor;
+  resolvedAt?: string;
+  resolvedBy?: AuditActor;
+  notes?: string;
+  revision: number;
+};
+
 type FindingRevision = AuditEvent;
 
 type EvidenceItem = {
@@ -305,6 +345,10 @@ function authHeaders(token: string, requestId?: string): HeadersInit {
   return headers;
 }
 
+function revisionHeader(revision: number) {
+  return `"${revision}"`;
+}
+
 function newRequestId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -316,7 +360,11 @@ function isRecord(value: unknown): value is Record<string, any> {
 async function readProblem(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as ContractProblem;
-    return body.detail || body.title || `Request failed (${response.status})`;
+    const parts = [body.detail || body.title || `Request failed (${response.status})`];
+    if (body.fieldErrors?.length) {
+      parts.push(body.fieldErrors.map((field) => `${field.pointer}: ${field.message}`).join(' · '));
+    }
+    return parts.filter(Boolean).join(' — ');
   } catch {
     return `Request failed (${response.status})`;
   }
@@ -445,6 +493,21 @@ function buildAuditSummary(event: AuditEvent) {
   if (event.type === 'capture.accepted') {
     return `${details.phase || event.subject.type} · ${details.parseStatus || 'captured'}`;
   }
+  if (event.type === 'actor.provisioned') {
+    return `Actor provisioned · ${details.actorId || event.subject.id}`;
+  }
+  if (event.type === 'actor.credential-rotated') {
+    return `Credential rotated · v${details.credentialVersion || event.subject.revision || '?'}`;
+  }
+  if (event.type === 'actor.revoked') {
+    return `Actor revoked · ${details.actorId || event.subject.id}`;
+  }
+  if (event.type === 'out-of-band.flagged') {
+    return `Claim flagged · ${details.claimKind || event.subject.id}`;
+  }
+  if (event.type === 'out-of-band.resolved') {
+    return `Claim ${details.resolution || 'resolved'} · ${details.claimId || event.subject.id}`;
+  }
   return compactJson(details).slice(0, 120);
 }
 
@@ -542,12 +605,16 @@ export function App() {
   const [actionsStatus, setActionsStatus] = useState<ResourceStatus>('loading');
   const [entitiesStatus, setEntitiesStatus] = useState<ResourceStatus>('loading');
   const [findingsStatus, setFindingsStatus] = useState<ResourceStatus>('loading');
+  const [actorsStatus, setActorsStatus] = useState<ResourceStatus>('loading');
+  const [claimsStatus, setClaimsStatus] = useState<ResourceStatus>('loading');
   const [reportStatus, setReportStatus] = useState<ResourceStatus>('idle');
 
   const [auditError, setAuditError] = useState('');
   const [actionsError, setActionsError] = useState('');
   const [entitiesError, setEntitiesError] = useState('');
   const [findingsError, setFindingsError] = useState('');
+  const [actorsError, setActorsError] = useState('');
+  const [claimsError, setClaimsError] = useState('');
   const [reportError, setReportError] = useState('');
 
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -555,6 +622,8 @@ export function App() {
   const [guideQuery, setGuideQuery] = useState('');
   const [entities, setEntities] = useState<EntityItem[]>([]);
   const [findings, setFindings] = useState<FindingItem[]>([]);
+  const [actors, setActors] = useState<ActorLifecycleRecord[]>([]);
+  const [claims, setClaims] = useState<OutOfBandClaimItem[]>([]);
   const [reportSnapshot, setReportSnapshot] = useState<ReportSnapshot | null>(null);
   const [reportRaw, setReportRaw] = useState('');
 
@@ -565,12 +634,20 @@ export function App() {
   const [selectedObservationId, setSelectedObservationId] = useState('');
   const [selectedFindingId, setSelectedFindingId] = useState('');
   const [selectedEvidenceId, setSelectedEvidenceId] = useState('');
+  const [selectedActorId, setSelectedActorId] = useState('');
+  const [selectedClaimId, setSelectedClaimId] = useState('');
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null);
   const [selectedEvidenceContent, setSelectedEvidenceContent] = useState('');
   const [selectedEvidenceError, setSelectedEvidenceError] = useState('');
 
   const [actionPhaseFilter, setActionPhaseFilter] = useState<'all' | PhaseId>('attacks');
   const [entityQuery, setEntityQuery] = useState('');
+  const [actorQuery, setActorQuery] = useState('');
+  const [provisionDraft, setProvisionDraft] = useState({ kind: 'human' as 'human' | 'ai_agent', handle: '', role: 'operator', agentName: '', model: '', version: '', authorizedBy: '' });
+  const [actorConflict, setActorConflict] = useState('');
+  const [actorCredential, setActorCredential] = useState<ActorCredentialResponse | null>(null);
+  const [claimResolutionDraft, setClaimResolutionDraft] = useState({ resolution: 'linked' as 'linked' | 'dismissed', sourceActionId: '', notes: '' });
+  const [claimConflict, setClaimConflict] = useState('');
   const [findingDraft, setFindingDraft] = useState({ title: '', severity: 'medium', remediation: '', status: 'open' });
   const [findingPromotionDraft, setFindingPromotionDraft] = useState({ title: '', severity: 'medium', remediation: '', status: 'open' });
   const [findingConflict, setFindingConflict] = useState('');
@@ -626,6 +703,25 @@ export function App() {
     });
   }, [entities, entityQuery]);
   const selectedEntity = useMemo(() => filteredEntities.find((entity) => entity.id === selectedEntityId) || filteredEntities[0] || null, [filteredEntities, selectedEntityId]);
+  const filteredActors = useMemo(() => {
+    const q = actorQuery.trim().toLowerCase();
+    return actors.filter((actor) => {
+      if (!q) return true;
+      return [actor.actor.handle, actor.actor.kind, actor.actor.role, actor.status, actor.actor.agentName || '', actor.actor.model || '', actor.actor.version || '', actor.actor.authorizedBy || '', actor.createdBy, actor.revision.toString()]
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    });
+  }, [actors, actorQuery]);
+  const selectedActor = useMemo(() => filteredActors.find((actor) => actor.actor.id === selectedActorId) || filteredActors[0] || null, [filteredActors, selectedActorId]);
+  const activeHumanActors = useMemo(() => actors.filter((actor) => actor.status === 'active' && actor.actor.kind === 'human'), [actors]);
+  useEffect(() => {
+    if (provisionDraft.kind !== 'ai_agent' || !activeHumanActors.length) return;
+    if (activeHumanActors.some((actor) => actor.actor.id === provisionDraft.authorizedBy)) return;
+    setProvisionDraft((draft) => ({ ...draft, authorizedBy: activeHumanActors[0].actor.id }));
+  }, [activeHumanActors, provisionDraft.authorizedBy, provisionDraft.kind]);
+  const filteredClaims = useMemo(() => claims, [claims]);
+  const selectedClaim = useMemo(() => filteredClaims.find((claim) => claim.id === selectedClaimId) || filteredClaims[0] || null, [filteredClaims, selectedClaimId]);
   const selectedFinding = useMemo(() => findings.find((finding) => finding.id === selectedFindingId) || findings[0] || null, [findings, selectedFindingId]);
   const selectedEntityObservations = selectedEntity?.observations || [];
   const selectedEvidenceRef = selectedEvidenceId && selectedAction ? [selectedAction.evidenceReferences.stdout, selectedAction.evidenceReferences.stderr].find((item) => item.id === selectedEvidenceId) || null : null;
@@ -700,6 +796,25 @@ export function App() {
     setSelectedFindingId(findings[0].id);
   }, [findings, selectedFindingId]);
 
+  useEffect(() => {
+    if (!actors.length || selectedActorId) return;
+    setSelectedActorId(actors[0].actor.id);
+  }, [actors, selectedActorId]);
+
+  useEffect(() => {
+    if (!claims.length || selectedClaimId) return;
+    setSelectedClaimId(claims[0].id);
+  }, [claims, selectedClaimId]);
+
+  useEffect(() => {
+    if (!selectedClaim) return;
+    setClaimResolutionDraft({
+      resolution: selectedClaim.status === 'dismissed' ? 'dismissed' : 'linked',
+      sourceActionId: selectedClaim.sourceActionId || selectedAction?.id || '',
+      notes: selectedClaim.notes || '',
+    });
+  }, [selectedClaim, selectedAction?.id]);
+
   const refreshAudit = async (signal?: AbortSignal) => {
     setAuditStatus('loading');
     setAuditError('');
@@ -753,6 +868,32 @@ export function App() {
     }
   };
 
+  const refreshActors = async (signal?: AbortSignal) => {
+    setActorsStatus('loading');
+    setActorConflict('');
+    try {
+      const page = await apiJson<ContractPage<ActorLifecycleRecord>>('/api/v1/actors?limit=100', token, signal);
+      setActors(page.items);
+      setActorsStatus('ready');
+    } catch (error) {
+      setActorsStatus('error');
+      setActorConflict(error instanceof Error ? error.message : 'Unable to load actors');
+    }
+  };
+
+  const refreshClaims = async (signal?: AbortSignal) => {
+    setClaimsStatus('loading');
+    setClaimConflict('');
+    try {
+      const page = await apiJson<ContractPage<OutOfBandClaimItem>>('/api/v1/out-of-band-claims?limit=100', token, signal);
+      setClaims(page.items);
+      setClaimsStatus('ready');
+    } catch (error) {
+      setClaimsStatus('error');
+      setClaimConflict(error instanceof Error ? error.message : 'Unable to load pending claims');
+    }
+  };
+
   const refreshReport = async (signal?: AbortSignal) => {
     setReportStatus('loading');
     setReportError('');
@@ -771,7 +912,14 @@ export function App() {
 
   const refreshEverything = async () => {
     const controller = new AbortController();
-    await Promise.allSettled([refreshAudit(controller.signal), refreshActions(controller.signal), refreshEntities(controller.signal), refreshFindings(controller.signal)]);
+    await Promise.allSettled([
+      refreshAudit(controller.signal),
+      refreshActions(controller.signal),
+      refreshEntities(controller.signal),
+      refreshFindings(controller.signal),
+      refreshActors(controller.signal),
+      refreshClaims(controller.signal),
+    ]);
     controller.abort();
     if (view === 'report' || activePhase === 'summit') {
       void refreshReport();
@@ -828,10 +976,15 @@ export function App() {
               void refreshActions();
               void refreshEntities();
               void refreshFindings();
+              void refreshClaims();
             } else if (event.event.startsWith('entity.')) {
               void refreshEntities();
             } else if (event.event.startsWith('finding.')) {
               void refreshFindings();
+            } else if (event.event.startsWith('actor.')) {
+              void refreshActors();
+            } else if (event.event.startsWith('out-of-band.')) {
+              void refreshClaims();
             }
           });
           backoff = 700;
@@ -1004,6 +1157,98 @@ export function App() {
       setFindingConflict('Finding saved with the authoritative revision.');
     } catch (error) {
       setFindingConflict(error instanceof Error ? error.message : 'Unable to save finding');
+    }
+  };
+
+  const issueActorCredential = async () => {
+    setActorConflict('');
+    try {
+      const response = await fetch('/api/v1/actors', {
+        method: 'POST',
+        headers: { ...authHeaders(token, newRequestId()), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: provisionDraft.kind,
+          handle: provisionDraft.handle,
+          role: provisionDraft.role,
+          agentName: provisionDraft.kind === 'ai_agent' ? provisionDraft.agentName : undefined,
+          model: provisionDraft.kind === 'ai_agent' ? provisionDraft.model : undefined,
+          version: provisionDraft.kind === 'ai_agent' ? provisionDraft.version : undefined,
+          authorizedBy: provisionDraft.kind === 'ai_agent' ? provisionDraft.authorizedBy || activeHumanActors[0]?.actor.id || '' : undefined,
+        }),
+      });
+      if (!response.ok) throw new Error(await readProblem(response));
+      const created = (await response.json()) as ActorCredentialResponse;
+      setActorCredential(created);
+      setSelectedActorId(created.actorRecord.actor.id);
+      setProvisionDraft((draft) => ({ ...draft, handle: '', agentName: '', model: '', version: '', authorizedBy: '' }));
+      void refreshActors();
+      setActorConflict(`Issued credential v${created.actorRecord.credentialVersion} for ${created.actorRecord.actor.handle}.`);
+    } catch (error) {
+      setActorConflict(error instanceof Error ? error.message : 'Unable to issue credential');
+    }
+  };
+
+  const rotateActorCredential = async (actor: ActorLifecycleRecord) => {
+    setActorConflict('');
+    try {
+      const response = await fetch(`/api/v1/actors/${actor.actor.id}/rotate`, {
+        method: 'POST',
+        headers: { ...authHeaders(token, newRequestId()), 'If-Match': revisionHeader(actor.revision) },
+      });
+      if (!response.ok) throw new Error(await readProblem(response));
+      const rotated = (await response.json()) as ActorCredentialResponse;
+      setActorCredential(rotated);
+      setSelectedActorId(rotated.actorRecord.actor.id);
+      void refreshActors();
+      setActorConflict(`Rotated ${rotated.actorRecord.actor.handle} to credential v${rotated.actorRecord.credentialVersion}.`);
+    } catch (error) {
+      setActorConflict(error instanceof Error ? error.message : 'Unable to rotate credential');
+    }
+  };
+
+  const revokeActorCredential = async (actor: ActorLifecycleRecord) => {
+    setActorConflict('');
+    try {
+      const response = await fetch(`/api/v1/actors/${actor.actor.id}/revoke`, {
+        method: 'POST',
+        headers: { ...authHeaders(token, newRequestId()), 'If-Match': revisionHeader(actor.revision) },
+      });
+      if (!response.ok) throw new Error(await readProblem(response));
+      const revoked = (await response.json()) as ActorLifecycleRecord;
+      setSelectedActorId(revoked.actor.id);
+      void refreshActors();
+      setActorConflict(`Revoked ${revoked.actor.handle} at revision ${revoked.revision}.`);
+    } catch (error) {
+      setActorConflict(error instanceof Error ? error.message : 'Unable to revoke credential');
+    }
+  };
+
+  const resolveClaim = async () => {
+    if (!selectedClaim) return;
+    setClaimConflict('');
+    try {
+      const sourceActionId = claimResolutionDraft.resolution === 'linked' ? (claimResolutionDraft.sourceActionId || selectedAction?.id || '') : undefined;
+      if (claimResolutionDraft.resolution === 'linked' && !sourceActionId) {
+        throw new Error("Can't link this claim yet — sourceActionId is required when resolution is linked.");
+      }
+      const response = await fetch(`/api/v1/out-of-band-claims/${selectedClaim.id}/resolve`, {
+        method: 'POST',
+        headers: { ...authHeaders(token, newRequestId()), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          resolution: claimResolutionDraft.resolution,
+          sourceActionId,
+          notes: claimResolutionDraft.notes || undefined,
+          expectedRevision: selectedClaim.revision,
+        }),
+      });
+      if (!response.ok) throw new Error(await readProblem(response));
+      const updated = (await response.json()) as OutOfBandClaimItem;
+      setClaims((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setSelectedClaimId(updated.id);
+      setClaimConflict(`Claim ${updated.id} resolved as ${updated.status}.`);
+      void refreshClaims();
+    } catch (error) {
+      setClaimConflict(error instanceof Error ? error.message : 'Unable to resolve claim');
     }
   };
 
@@ -1619,6 +1864,187 @@ export function App() {
                 {reportSnapshot ? <div className="live-banner review"><strong>Report</strong> Snapshot ready for preview in the Summit report view.</div> : null}
               </section>
             ) : null}
+
+            <section className="operations-shell" aria-label="Provisioning and claim review workspace">
+              <div className="panel-heading">
+                <div>
+                  <p className="guide-note-kicker">Operations</p>
+                  <h2>Provisioning and review</h2>
+                </div>
+                <p>One-time secrets are shown once, AI actors must cite an active human authorizer, and pending gaps stay visible until they are linked or dismissed.</p>
+              </div>
+
+              <div className="operations-grid">
+                <article className="operations-card">
+                  <div className="detail-head">
+                    <div>
+                      <p className="guide-note-kicker">Actor provisioning</p>
+                      <h3>Issue a one-time credential</h3>
+                    </div>
+                    <StatusPill status="review">secret once</StatusPill>
+                  </div>
+                  <div className="ops-form-grid">
+                    <label className="finding-field"><span>Kind</span><select value={provisionDraft.kind} onChange={(event) => setProvisionDraft((draft) => ({ ...draft, kind: event.target.value as 'human' | 'ai_agent', authorizedBy: event.target.value === 'human' ? '' : draft.authorizedBy }))}><option value="human">Human</option><option value="ai_agent">AI agent</option></select></label>
+                    <label className="finding-field"><span>Handle</span><input value={provisionDraft.handle} onChange={(event) => setProvisionDraft((draft) => ({ ...draft, handle: event.target.value }))} placeholder="alex.operator" /></label>
+                    <label className="finding-field"><span>Role</span><select value={provisionDraft.role} onChange={(event) => setProvisionDraft((draft) => ({ ...draft, role: event.target.value }))}><option value="owner">Owner</option><option value="operator">Operator</option><option value="viewer">Viewer</option></select></label>
+                  </div>
+                  {provisionDraft.kind === 'ai_agent' ? (
+                    <div className="ops-form-grid ops-form-grid-wide" style={{ marginTop: '10px' }}>
+                      <label className="finding-field"><span>Agent name</span><input value={provisionDraft.agentName} onChange={(event) => setProvisionDraft((draft) => ({ ...draft, agentName: event.target.value }))} placeholder="Synthetic Field Agent" /></label>
+                      <label className="finding-field"><span>Model</span><input value={provisionDraft.model} onChange={(event) => setProvisionDraft((draft) => ({ ...draft, model: event.target.value }))} placeholder="gpt-4.1" /></label>
+                      <label className="finding-field"><span>Version</span><input value={provisionDraft.version} onChange={(event) => setProvisionDraft((draft) => ({ ...draft, version: event.target.value }))} placeholder="2025.01" /></label>
+                      <label className="finding-field"><span>Authorized by</span>
+                        <select value={provisionDraft.authorizedBy} onChange={(event) => setProvisionDraft((draft) => ({ ...draft, authorizedBy: event.target.value }))}>
+                          <option value="">Pick an active human authorizer</option>
+                          {activeHumanActors.map((actor) => <option key={actor.actor.id} value={actor.actor.id}>{actor.actor.handle} · rev {actor.revision}</option>)}
+                        </select>
+                      </label>
+                      <p className="guide-note-empty ops-inline-note">AI actors need an active human operator on the hook before a credential can be issued.</p>
+                    </div>
+                  ) : null}
+                  <div className="guide-tools" style={{ marginTop: '12px' }}>
+                    <button type="button" className="primary-button" onClick={() => void issueActorCredential()} disabled={!provisionDraft.handle.trim() || (provisionDraft.kind === 'ai_agent' && !provisionDraft.authorizedBy)}>Issue one-time credential</button>
+                    <button type="button" className="secondary-link" onClick={() => setActorCredential(null)} disabled={!actorCredential}>Burn copy</button>
+                  </div>
+                  {actorConflict ? <div className="live-banner review"><strong>Credential note</strong> {actorConflict}</div> : null}
+                  {actorCredential ? (
+                    <div className="secret-token-card" aria-label="One-time credential response">
+                      <div className="panel-heading compact"><h4>One-time token</h4><p>{actorCredential.actorRecord.actor.handle} · v{actorCredential.actorRecord.credentialVersion} · issued {formatTime(actorCredential.issuedAt)}</p></div>
+                      <div className="secret-token" role="textbox" aria-readonly="true">{actorCredential.token}</div>
+                      <div className="guide-tools">
+                        <button type="button" className="secondary-link" onClick={() => void navigator.clipboard?.writeText(actorCredential.token)}>Copy token</button>
+                        <span className="guide-note-empty">Do not paste this into the audit trail or logs.</span>
+                      </div>
+                    </div>
+                  ) : <p className="guide-note-empty">The plaintext token only appears in this response once. It never returns from list or read endpoints.</p>}
+                </article>
+
+                <article className="operations-card">
+                  <div className="detail-head">
+                    <div>
+                      <p className="guide-note-kicker">Actor roster</p>
+                      <h3>Rotate or revoke live credentials</h3>
+                    </div>
+                    <StatusPill status="neutral">{actorsStatus}</StatusPill>
+                  </div>
+                  <label className="guide-search" style={{ marginTop: 0 }}>
+                    <span className="sr-only">Search actors</span>
+                    <input value={actorQuery} onChange={(event) => setActorQuery(event.target.value)} placeholder="Search handle, role, revision…" aria-label="Search actors" />
+                  </label>
+                  {actorsError ? <div className="live-banner"><strong>Actor note</strong> {actorsError}</div> : null}
+                  {!filteredActors.length && actorsStatus === 'ready' ? <EmptyState title="No actors yet" detail="Provision a credential above, then rotate or revoke it from the roster." /> : null}
+                  <div className="actor-roster">
+                    {filteredActors.map((actor) => (
+                      <button key={actor.actor.id} type="button" className={`actor-row ${selectedActor?.actor.id === actor.actor.id ? 'is-selected' : ''}`.trim()} onClick={() => setSelectedActorId(actor.actor.id)}>
+                        <div className="actor-row-top">
+                          <strong>{actor.actor.handle}</strong>
+                          <StatusPill status={actor.status === 'active' ? 'success' : 'blocked'}>{actor.status}</StatusPill>
+                        </div>
+                        <div className="actor-row-main">
+                          <span>{actor.actor.kind}{actor.actor.kind === 'ai_agent' ? ` · ${actor.actor.model}` : ''}</span>
+                          <span>role {actor.actor.role}</span>
+                        </div>
+                        <div className="actor-row-foot">
+                          <span>cred v{actor.credentialVersion}</span>
+                          <span>rev {actor.revision}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  {selectedActor ? (
+                    <div className="secret-token-card" style={{ marginTop: '12px' }}>
+                      <div className="panel-heading compact"><h4>{selectedActor.actor.handle}</h4><p>{selectedActor.actor.kind} · {selectedActor.actor.role} · {selectedActor.status}</p></div>
+                      <dl className="ops-meta-grid">
+                        <div><dt>Created by</dt><dd>{selectedActor.createdBy}</dd></div>
+                        <div><dt>Created at</dt><dd>{formatTime(selectedActor.createdAt)}</dd></div>
+                        <div><dt>Credential version</dt><dd>{selectedActor.credentialVersion}</dd></div>
+                        <div><dt>Revision</dt><dd>{selectedActor.revision}</dd></div>
+                        <div><dt>Revision gate</dt><dd>If-Match {revisionHeader(selectedActor.revision)}</dd></div>
+                        {selectedActor.actor.kind === 'ai_agent' ? <div><dt>Authorized by</dt><dd>{selectedActor.actor.authorizedBy || '—'}</dd></div> : null}
+                        {selectedActor.lastRotatedAt ? <div><dt>Last rotated</dt><dd>{formatTime(selectedActor.lastRotatedAt)}</dd></div> : null}
+                        {selectedActor.revokedAt ? <div><dt>Revoked at</dt><dd>{formatTime(selectedActor.revokedAt)}</dd></div> : null}
+                      </dl>
+                      <div className="guide-tools">
+                        <button type="button" className="primary-button" onClick={() => void rotateActorCredential(selectedActor)} disabled={selectedActor.status !== 'active'}>Rotate credential</button>
+                        <button type="button" className="secondary-link" onClick={() => void revokeActorCredential(selectedActor)} disabled={selectedActor.status !== 'active'}>Revoke credential</button>
+                      </div>
+                    </div>
+                  ) : <EmptyState title="No actor selected" detail="Provision a credential above, then choose a record to rotate or revoke it." />}
+                </article>
+              </div>
+
+              <article className="operations-card operations-card-wide">
+                <div className="detail-head">
+                  <div>
+                    <p className="guide-note-kicker">Claim review</p>
+                    <h3>Pending out-of-band claims</h3>
+                  </div>
+                  <StatusPill status={claimsStatus === 'ready' ? 'review' : 'neutral'}>{claimsStatus}</StatusPill>
+                </div>
+                <p className="workspace-lede">Best-effort claims stay visible until they are linked to a captured action or explicitly dismissed; resolved gaps remain in the trail for audit.</p>
+                {claimsError ? <div className="live-banner"><strong>Claim note</strong> {claimsError}</div> : null}
+                {!filteredClaims.length && claimsStatus === 'ready' ? <EmptyState title="No pending claims" detail="Best-effort claim review is clear for now." /> : null}
+                <div className="claim-review-layout">
+                  <div className="claim-review-list">
+                    {filteredClaims.map((claim) => (
+                      <button key={claim.id} type="button" className={`claim-row ${selectedClaim?.id === claim.id ? 'is-selected' : ''}`.trim()} onClick={() => setSelectedClaimId(claim.id)}>
+                        <div className="claim-row-top">
+                          <strong>{claim.claimKind} · {claim.claimedSubjectId.slice(0, 8)}…</strong>
+                          <StatusPill status={claim.status === 'pending' ? 'review' : claim.status === 'linked' ? 'success' : 'blocked'}>{claim.status}</StatusPill>
+                        </div>
+                        <div className="claim-row-main">
+                          <span>{claim.reason}</span>
+                          <span>boundary {claim.detectionBoundary}</span>
+                        </div>
+                        <div className="claim-row-foot">
+                          <span>{formatTime(claim.observedAt)}</span>
+                          <span>action {claim.sourceActionId || 'not captured'}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="claim-review-detail">
+                    {selectedClaim ? (
+                      <>
+                        <div className="detail-head">
+                          <div>
+                            <p className="guide-note-kicker">Selected claim</p>
+                            <h4>{selectedClaim.claimKind} · {selectedClaim.id}</h4>
+                          </div>
+                          <StatusPill status={selectedClaim.status === 'pending' ? 'review' : selectedClaim.status === 'linked' ? 'success' : 'blocked'}>{selectedClaim.status}</StatusPill>
+                        </div>
+                        <dl className="ops-meta-grid">
+                          <div><dt>Claimed subject</dt><dd>{selectedClaim.claimedSubjectId}</dd></div>
+                          <div><dt>Observed by</dt><dd>{selectedClaim.observedBy.handle}</dd></div>
+                          <div><dt>Observed at</dt><dd>{formatTime(selectedClaim.observedAt)}</dd></div>
+                          <div><dt>Boundary</dt><dd>{selectedClaim.detectionBoundary}</dd></div>
+                          <div><dt>Source action</dt><dd>{selectedClaim.sourceActionId || 'missing'}</dd></div>
+                          <div><dt>Revision</dt><dd>{selectedClaim.revision}</dd></div>
+                        </dl>
+                        {selectedClaim.status === 'pending' ? (
+                          <>
+                            <div className="finding-editor-grid" style={{ marginTop: '12px' }}>
+                              <label className="finding-field"><span>Resolution</span><select value={claimResolutionDraft.resolution} onChange={(event) => setClaimResolutionDraft((draft) => ({ ...draft, resolution: event.target.value as 'linked' | 'dismissed' }))}><option value="linked">Link to captured action</option><option value="dismissed">Dismiss visibly</option></select></label>
+                              <label className="finding-field"><span>Source action</span><input value={claimResolutionDraft.sourceActionId} onChange={(event) => setClaimResolutionDraft((draft) => ({ ...draft, sourceActionId: event.target.value }))} placeholder={selectedAction?.id || 'Choose a captured action'} disabled={claimResolutionDraft.resolution === 'dismissed'} /></label>
+                              <label className="finding-field finding-field-wide"><span>Notes</span><textarea value={claimResolutionDraft.notes} onChange={(event) => setClaimResolutionDraft((draft) => ({ ...draft, notes: event.target.value }))} placeholder="Explain why the gap is linked or dismissed." /></label>
+                            </div>
+                            <div className="guide-tools">
+                              <button type="button" className="secondary-link" onClick={() => setClaimResolutionDraft((draft) => ({ ...draft, sourceActionId: selectedAction?.id || draft.sourceActionId }))} disabled={!selectedAction}>Use selected attack</button>
+                              <button type="button" className="primary-button" onClick={() => void resolveClaim()}>Resolve claim</button>
+                            </div>
+                          </>
+                        ) : <p className="guide-note-empty">This claim is already resolved; the review view keeps the gap visible for audit purposes.</p>}
+                        <dl className="ops-meta-grid" style={{ marginTop: '12px' }}>
+                          <div><dt>Detection boundary</dt><dd>{selectedClaim.detectionBoundary}</dd></div>
+                          <div><dt>Reason</dt><dd>{selectedClaim.reason}</dd></div>
+                        </dl>
+                        {claimConflict ? <div className="live-banner review"><strong>Review note</strong> {claimConflict}</div> : null}
+                      </>
+                    ) : <EmptyState title="No claim selected" detail="Choose a pending gap to link it to a captured action or dismiss it plainly." />}
+                  </div>
+                </div>
+              </article>
+            </section>
 
             <div className="workspace-footer">
               <a className="secondary-link" href={phasePath(engagementId, waypointOrder[Math.max(0, activeIndex - 1)])} onClick={(event) => { event.preventDefault(); const prev = waypointOrder[Math.max(0, activeIndex - 1)]; setActivePhase(prev); navigateToPhase(engagementId, prev); }}>Back to {phaseNames[waypointOrder[Math.max(0, activeIndex - 1)]]}</a>
