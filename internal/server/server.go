@@ -48,6 +48,8 @@ func handler(db *sql.DB) http.Handler {
 	mux.HandleFunc("/claims/review", outOfBandReviewHandler(db, "rest"))
 	mux.HandleFunc("/api/v1/mcp/review", outOfBandReviewHandler(db, "mcp"))
 	mux.HandleFunc("/mcp/review", outOfBandReviewHandler(db, "mcp"))
+	mux.HandleFunc("/api/v1/entities", entityReadHandler(db))
+	mux.HandleFunc("/api/v1/entities/", entityReadHandler(db))
 	mux.HandleFunc("/api/v1/entities/merge", mergeEntityHandler(db))
 	mux.HandleFunc("/api/v1/entities/split", splitEntityHandler(db))
 	mux.HandleFunc("/api/v1/findings", findingsHandler(db))
