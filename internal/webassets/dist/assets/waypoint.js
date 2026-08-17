@@ -1,4 +1,4 @@
-const sourceHash = "d2602b8b4bc90f5ac5bd0da7c1df23d9ab66af43bc70ed7666b1d9653d3de88a";
+const sourceHash = "a216bc927851d9b008561a6f024393f548cd8fa763e1b3a908f4d30f7e109d40";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -77,6 +77,15 @@ const state = {
   claims: [],
   reportSnapshot: null,
   reportRaw: '',
+  exportJobs: [],
+  exportJobsStatus: 'loading',
+  exportJobsError: '',
+  selectedExportJobId: '',
+  selectedExportJobError: '',
+  selectedExportReceipt: null,
+  selectedTeardownAuthorization: null,
+  summitActionError: '',
+  summitRequestNote: '',
   guideQuery: '',
   entityQuery: '',
   actorQuery: '',
@@ -115,6 +124,8 @@ const state = {
   streamCursor: null,
   evidenceAbort: null,
   exportAbort: null,
+  exportPollTimer: null,
+  exportPollAbort: null,
   renderCount: 0,
 };
 
@@ -181,6 +192,84 @@ function reportPdfPath(engagementId) {
   return `${reportPath(engagementId)}.pdf`;
 }
 
+function exportsPath() {
+  return '/api/v1/exports';
+}
+
+function exportJobPath(jobId) {
+  return `/api/v1/exports/${jobId}`;
+}
+
+function exportCancelPath(jobId) {
+  return `/api/v1/exports/${jobId}/cancel`;
+}
+
+function exportReceiptPath(receiptId) {
+  return `/api/v1/export-receipts/${receiptId}`;
+}
+
+function exportReportPdfPath(jobId) {
+  return `/api/v1/exports/${jobId}/report.pdf`;
+}
+
+function exportBundlePath(jobId) {
+  return `/api/v1/exports/${jobId}/bundle`;
+}
+
+function teardownAuthorizationsPath() {
+  return '/api/v1/teardown-authorizations';
+}
+
+function teardownAuthorizationPath(authorizationId) {
+  return `/api/v1/teardown-authorizations/${authorizationId}`;
+}
+
+function teardownAuthorizationConsumePath(authorizationId) {
+  return `/api/v1/teardown-authorizations/${authorizationId}/consume`;
+}
+
+function describeExportStage(stage) {
+  switch (stage) {
+    case 'queued':
+      return 'Queued for server handling';
+    case 'capacity_preflight':
+      return 'Checking server capacity';
+    case 'snapshot':
+      return 'Freezing the live snapshot';
+    case 'archive':
+      return 'Assembling the bundle';
+    case 'verification':
+      return 'Verifying the bytes';
+    case 'complete':
+      return 'Export complete';
+    default:
+      return 'Awaiting server progress';
+  }
+}
+
+function exportStatusClass(state) {
+  switch (state) {
+    case 'completed':
+      return 'verified';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'canceled';
+    case 'queued':
+    case 'preflighting':
+    case 'running':
+    case 'verifying':
+    case 'cancel_requested':
+      return 'preflight';
+    default:
+      return 'idle';
+  }
+}
+
+function revisionHeader(revision) {
+  return `W/"rev-${revision}"`;
+}
+
 function pushPath(path) {
   window.history.pushState({}, '', path);
 }
@@ -210,6 +299,13 @@ async function readProblem(response) {
 
 async function apiJson(path, token, signal) {
   const response = await fetch(path, { headers: authHeaders(token, newRequestId()), cache: 'no-store', signal });
+  if (!response.ok) throw new Error(await readProblem(response));
+  return await response.json();
+}
+
+async function apiJsonPost(path, token, body, signal) {
+  const headers = { ...authHeaders(token, newRequestId()), 'Content-Type': 'application/json' };
+  const response = await fetch(path, { method: 'POST', headers, cache: 'no-store', body: body === undefined ? undefined : JSON.stringify(body), signal });
   if (!response.ok) throw new Error(await readProblem(response));
   return await response.json();
 }
@@ -457,6 +553,19 @@ function selectedClaim() {
   return state.claims.find((claim) => claim.id === state.selectedClaimId) || state.claims[0] || null;
 }
 
+function selectedExportJob() {
+  return state.exportJobs.find((job) => job.id === state.selectedExportJobId) || state.exportJobs[0] || null;
+}
+
+function selectedExportReceipt(job) {
+  if (!job || !job.bundle || !job.bundle.receiptId) return null;
+  return state.selectedExportReceipt && state.selectedExportReceipt.exportJobId === job.id ? state.selectedExportReceipt : null;
+}
+
+function selectedTeardownAuthorization(job) {
+  return state.selectedTeardownAuthorization && state.selectedTeardownAuthorization.exportJobId === job?.id ? state.selectedTeardownAuthorization : null;
+}
+
 function activeHumanActors() {
   return state.actors.filter((actor) => actor.status === 'active' && actor.actor.kind === 'human');
 }
@@ -640,6 +749,19 @@ function setSelectedFindingId(id) {
   render();
 }
 
+function setSelectedExportJobId(id) {
+  state.selectedExportJobId = id;
+  state.selectedExportJobError = '';
+  const job = selectedExportJob();
+  if (job && job.bundle && job.bundle.receiptId) {
+    void refreshExportReceipt(job);
+  } else {
+    state.selectedExportReceipt = null;
+    state.selectedTeardownAuthorization = null;
+  }
+  render();
+}
+
 function setSelectedObservationId(id) {
   state.selectedObservationId = id;
   render();
@@ -800,6 +922,80 @@ async function refreshReport(signal) {
   render();
 }
 
+async function refreshExportJobs(signal) {
+  state.exportJobsStatus = 'loading';
+  state.exportJobsError = '';
+  render();
+  try {
+    const page = await apiJson(`${exportsPath()}?limit=25`, state.token, signal);
+    state.exportJobs = Array.isArray(page.items) ? page.items : [];
+    if (!state.selectedExportJobId && state.exportJobs.length) {
+      state.selectedExportJobId = state.exportJobs[0].id;
+    }
+    state.exportJobsStatus = 'ready';
+    state.selectedExportJobError = '';
+    const job = selectedExportJob();
+    if (job && job.bundle && job.bundle.receiptId) {
+      await refreshExportReceipt(job, signal);
+    } else {
+      state.selectedExportReceipt = null;
+      state.selectedTeardownAuthorization = null;
+    }
+  } catch (error) {
+    state.exportJobsStatus = 'error';
+    state.exportJobsError = error instanceof Error ? error.message : 'Unable to load export jobs';
+  }
+  render();
+}
+
+async function refreshExportReceipt(job, signal) {
+  if (!job || !job.bundle || !job.bundle.receiptId) {
+    state.selectedExportReceipt = null;
+    return;
+  }
+  try {
+    const receipt = await apiJson(exportReceiptPath(job.bundle.receiptId), state.token, signal);
+    state.selectedExportReceipt = receipt;
+    state.selectedExportJobError = '';
+  } catch (error) {
+    state.selectedExportReceipt = null;
+    state.selectedExportJobError = error instanceof Error ? error.message : 'Unable to load verified receipt';
+  }
+  render();
+}
+
+async function refreshTeardownAuthorization(authorizationId, signal) {
+  try {
+    const auth = await apiJson(teardownAuthorizationPath(authorizationId), state.token, signal);
+    state.selectedTeardownAuthorization = auth;
+    state.summitActionError = '';
+  } catch (error) {
+    state.selectedTeardownAuthorization = null;
+    state.summitActionError = error instanceof Error ? error.message : 'Unable to load teardown authorization';
+  }
+  render();
+}
+
+function syncExportPolling() {
+  const shouldPoll = state.view === 'trail' && state.activePhase === 'summit' && Boolean(state.token);
+  if (shouldPoll && !state.exportPollTimer) {
+    const controller = new AbortController();
+    state.exportPollAbort = controller;
+    const tick = () => {
+      if (!controller.signal.aborted) void refreshExportJobs(controller.signal);
+    };
+    tick();
+    state.exportPollTimer = window.setInterval(tick, 3500);
+    return;
+  }
+  if (!shouldPoll && state.exportPollTimer) {
+    window.clearInterval(state.exportPollTimer);
+    state.exportPollTimer = null;
+    state.exportPollAbort?.abort();
+    state.exportPollAbort = null;
+  }
+}
+
 async function refreshEverything() {
   const controller = new AbortController();
   await Promise.allSettled([
@@ -809,11 +1005,13 @@ async function refreshEverything() {
     refreshFindings(controller.signal),
     refreshActors(controller.signal),
     refreshClaims(controller.signal),
+    refreshExportJobs(controller.signal),
   ]);
   controller.abort();
-  if (state.view === 'report' || state.activePhase === 'summit') {
+  if (state.view === 'report') {
     void refreshReport();
   }
+  syncExportPolling();
   startStream();
 }
 
@@ -856,6 +1054,8 @@ function startStream() {
             void refreshFindings();
           } else if (event.event.startsWith('actor.')) {
             void refreshActors();
+          } else if (event.event.startsWith('export.')) {
+            void refreshExportJobs();
           } else if (event.event.startsWith('out-of-band.')) {
             void refreshClaims();
           }
@@ -1050,61 +1250,117 @@ async function startSummitExport() {
   state.exportAbort?.abort();
   const controller = new AbortController();
   state.exportAbort = controller;
-  state.summitReceipt = null;
-  state.summitError = '';
-  state.summitStatus = 'preflight';
-  state.summitProgress = 10;
-  state.summitStep = 'Freezing the live report snapshot.';
+  state.summitActionError = '';
+  state.selectedExportJobError = '';
+  state.summitRequestNote = 'Submitting a persisted export job to the server.';
   render();
   try {
-    const raw = state.reportRaw || await apiText(reportJsonPath(state.engagementId), state.token, controller.signal);
-    const parsed = state.reportSnapshot || JSON.parse(raw);
-    void parsed;
-    state.summitProgress = 28;
-    state.summitStep = 'Streaming the PDF artifact.';
-    state.summitStatus = 'exporting';
-    render();
-    const response = await fetch(reportPdfPath(state.engagementId), { headers: authHeaders(state.token, newRequestId()), cache: 'no-store', signal: controller.signal });
-    if (!response.ok) throw new Error(await readProblem(response));
-    const pdfBytes = await readStreamBytes(response, controller.signal, (loaded, total) => {
-      const ratio = total ? loaded / total : 0.5;
-      state.summitProgress = Math.min(84, 30 + Math.round(ratio * 54));
-      state.summitStep = `Streaming the PDF artifact (${loaded.toLocaleString()} bytes).`;
-      render();
-    });
-    if (pdfBytes[0] !== 0x25 || pdfBytes[1] !== 0x50 || pdfBytes[2] !== 0x44 || pdfBytes[3] !== 0x46) {
-      throw new Error('report PDF did not start with a PDF signature');
-    }
-    state.summitStatus = 'verifying';
-    state.summitProgress = 90;
-    state.summitStep = 'Verifying the hash manifest and signature hook.';
-    render();
-    state.summitReceipt = {
-      verifiedAt: new Date().toISOString(),
-      snapshotHash: await sha256Hex(raw),
-      pdfSha256: await sha256Hex(pdfBytes),
-      manifestHash: 'hash verified, not signed',
-      note: 'Hash verified, not signed. The signature hook remains empty.',
-    };
-    state.summitStatus = 'verified';
-    state.summitProgress = 100;
-    state.summitStep = 'Receipt verified and teardown is now guarded.';
-    render();
+    const created = await apiJsonPost(exportsPath(), state.token, { formatVersion: apiVersion }, controller.signal);
+    state.selectedExportJobId = created.id;
+    state.summitRequestNote = `Export job ${created.id} queued by ${created.requestedBy.handle}.`;
+    await refreshExportJobs(controller.signal);
   } catch (error) {
     if (controller.signal.aborted) {
-      state.summitStatus = 'canceled';
-      state.summitProgress = 0;
-      state.summitStep = 'Export canceled before teardown was armed.';
-      state.summitError = 'Export canceled. The live trail stayed intact.';
+      state.summitActionError = 'Export request canceled before the server accepted it.';
+      state.summitRequestNote = 'The live trail stayed intact.';
     } else {
-      state.summitStatus = 'failed';
-      state.summitProgress = 0;
-      state.summitStep = 'Recovery needed before the next export can run.';
-      state.summitError = error instanceof Error ? error.message : 'Export verification failed';
+      state.summitActionError = error instanceof Error ? error.message : 'Unable to start export job';
+      state.summitRequestNote = 'Export request failed.';
     }
     render();
   } finally {
     state.exportAbort = null;
+  }
+}
+
+async function cancelSelectedExport() {
+  const job = selectedExportJob();
+  if (!job) return;
+  state.summitActionError = '';
+  render();
+  try {
+    const response = await fetch(exportCancelPath(job.id), {
+      method: 'POST',
+      headers: { ...authHeaders(state.token, newRequestId()), 'If-Match': revisionHeader(job.revision) },
+      cache: 'no-store',
+    });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const updated = await response.json();
+    state.exportJobs = state.exportJobs.map((item) => (item.id === updated.id ? updated : item));
+    state.selectedExportJobId = updated.id;
+    state.summitRequestNote = `Cancellation requested for ${updated.id}.`;
+    await refreshExportJobs();
+  } catch (error) {
+    state.summitActionError = error instanceof Error ? error.message : 'Unable to cancel export job';
+    render();
+  }
+}
+
+async function requestTeardownAuthorization() {
+  const job = selectedExportJob();
+  const receipt = selectedExportReceipt(job);
+  if (!job || !receipt) return;
+  state.summitActionError = '';
+  render();
+  try {
+    const auth = await apiJsonPost(teardownAuthorizationsPath(), state.token, {
+      receiptId: receipt.id,
+      bundlePath: receipt.bundlePath,
+      archiveSha256: receipt.archiveSha256,
+      manifestSha256: receipt.manifestSha256,
+      confirmation: 'destroy verified engagement data',
+    });
+    state.selectedTeardownAuthorization = auth;
+    state.summitRequestNote = `Teardown authorization ${auth.id} is ${auth.status}.`;
+    render();
+  } catch (error) {
+    state.summitActionError = error instanceof Error ? error.message : 'Unable to authorize teardown';
+    render();
+  }
+}
+
+async function consumeTeardownAuthorization() {
+  const auth = selectedTeardownAuthorization(selectedExportJob());
+  if (!auth) return;
+  state.summitActionError = '';
+  render();
+  try {
+    const consumed = await apiJsonPost(teardownAuthorizationConsumePath(auth.id), state.token, undefined);
+    state.selectedTeardownAuthorization = consumed;
+    state.summitRequestNote = `Teardown authorization ${consumed.id} consumed by the server.`;
+    render();
+  } catch (error) {
+    state.summitActionError = error instanceof Error ? error.message : 'Unable to consume teardown authorization';
+    render();
+  }
+}
+
+async function openVerifiedArtifact(kind) {
+  const job = selectedExportJob();
+  if (!job || !job.bundle) return;
+  state.summitActionError = '';
+  render();
+  try {
+    const path = kind === 'pdf' ? exportReportPdfPath(job.id) : exportBundlePath(job.id);
+    const response = await fetch(path, { headers: authHeaders(state.token, newRequestId()), cache: 'no-store' });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    if (kind === 'pdf') {
+      const previewWindow = window.open('', '_blank', 'noopener');
+      if (!previewWindow) throw new Error('Unable to open the verified PDF preview');
+      previewWindow.location.href = url;
+      previewWindow.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+    } else {
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = job.bundle.archivePath;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  } catch (error) {
+    state.summitActionError = error instanceof Error ? error.message : 'Unable to open verified artifact';
+    render();
   }
 }
 
@@ -1771,37 +2027,121 @@ function renderFindingsWorkspace() {
 }
 
 function renderSummitWorkspace() {
+  const job = selectedExportJob();
+  const receipt = selectedExportReceipt(job);
+  const auth = selectedTeardownAuthorization(job);
+  const selectedExportStatus = job?.state || (state.exportJobsStatus === 'loading' ? 'loading' : 'idle');
+  const selectedExportProgress = job?.progress?.percent ?? 0;
+  const selectedExportStage = job ? describeExportStage(job.progress.stage) : 'Ready to start export';
+  const selectedExportFailure = job?.failure?.message || '';
+  const summitDownloadReady = Boolean(job?.state === 'completed' && job.bundle && receipt && receipt.status === 'verified');
+  const summitCanAuthorize = Boolean(receipt && receipt.status === 'verified' && receipt.bundlePath && receipt.archiveSha256 && receipt.manifestSha256);
+  const summitCanConsume = Boolean(auth && auth.status === 'authorized');
   return `
     <section class="summit-flow" aria-label="Summit export and teardown flow">
       <div class="summit-status">
-        <span class="status-chip ${state.summitStatus}">${escapeHtml(state.summitStatus)}</span>
-        <div class="export-meter" role="progressbar" aria-label="Export progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${state.summitProgress}"><span style="width:${state.summitProgress}%"></span></div>
-        <p class="summit-step">${escapeHtml(state.summitStep)}</p>
-        <p>${state.summitStatus === 'verified' ? 'Hash verified, not signed. The teardown guard is available.' : 'The report snapshot comes from the authoritative API before any wipe can happen.'}</p>
-        ${state.summitError ? `<p class="summit-error">${escapeHtml(state.summitError)}</p>` : ''}
+        <span class="status-chip ${exportStatusClass(selectedExportStatus)}">${escapeHtml(selectedExportStatus)}</span>
+        <div class="export-meter" role="progressbar" aria-label="Export progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${selectedExportProgress}"><span style="width:${selectedExportProgress}%"></span></div>
+        <p class="summit-step">${escapeHtml(selectedExportStage)}</p>
+        <p>${job ? `Server job ${escapeHtml(job.id)} · updated ${escapeHtml(formatTime(job.updatedAt))}` : 'The server owns export jobs, receipts, and teardown authorization.'}</p>
+        ${state.summitRequestNote ? `<p class="summit-note">${escapeHtml(state.summitRequestNote)}</p>` : ''}
+        ${selectedExportFailure ? `<p class="summit-error">${escapeHtml(selectedExportFailure)}</p>` : ''}
+        ${state.selectedExportJobError ? `<p class="summit-error">${escapeHtml(state.selectedExportJobError)}</p>` : ''}
+        ${state.summitActionError ? `<p class="summit-error">${escapeHtml(state.summitActionError)}</p>` : ''}
       </div>
       <div class="summit-controls">
-        <button type="button" class="primary-button" data-action="run-export" ${state.summitStatus === 'preflight' || state.summitStatus === 'exporting' || state.summitStatus === 'verifying' ? 'disabled' : ''}>${state.summitStatus === 'verified' ? 'Re-run export verification' : 'Run live export preflight'}</button>
-        <button type="button" class="secondary-link" data-action="cancel-export" ${state.summitStatus !== 'preflight' && state.summitStatus !== 'exporting' && state.summitStatus !== 'verifying' ? 'disabled' : ''}>Cancel export</button>
+        <button type="button" class="primary-button" data-action="run-export" ${state.exportAbort ? 'disabled' : ''}>Start export job</button>
+        <button type="button" class="secondary-link" data-action="refresh-export-jobs" ${state.exportJobsStatus === 'loading' ? 'disabled' : ''}>Refresh jobs</button>
+        <button type="button" class="secondary-link" data-action="cancel-export" ${!job || job.state === 'completed' || job.state === 'failed' || job.state === 'cancelled' ? 'disabled' : ''}>Cancel selected job</button>
+        <button type="button" class="secondary-link" data-action="open-verified-pdf" ${!summitDownloadReady ? 'disabled' : ''}>Open verified PDF</button>
+        <button type="button" class="secondary-link" data-action="download-verified-bundle" ${!summitDownloadReady ? 'disabled' : ''}>Download verified bundle</button>
       </div>
-      ${state.summitStatus === 'verified' && state.summitReceipt ? `
-        <article class="receipt-card" aria-label="Verified export receipt">
-          <div class="panel-heading compact"><h3>Receipt verified</h3><p>Capture stayed live while the bundle froze. Hash verified, not signed.</p></div>
-          <dl class="receipt-grid">
-            <div><dt>Verified</dt><dd>${escapeHtml(state.summitReceipt.verifiedAt)}</dd></div>
-            <div><dt>Snapshot hash</dt><dd class="report-snippet">${escapeHtml(state.summitReceipt.snapshotHash)}</dd></div>
-            <div><dt>PDF hash</dt><dd class="report-snippet">${escapeHtml(state.summitReceipt.pdfSha256)}</dd></div>
-            <div><dt>Manifest</dt><dd>${escapeHtml(state.summitReceipt.manifestHash)}</dd></div>
-            <div><dt>Note</dt><dd>${escapeHtml(state.summitReceipt.note)}</dd></div>
-          </dl>
-        </article>` : ''}
-      <article class="break-glass-panel" aria-label="Break-glass teardown guard">
-        <div class="panel-heading compact"><h3>Break-glass teardown</h3><p>Export receipt required before the live box can be destroyed.</p></div>
-        <label class="break-glass-toggle"><input type="checkbox" data-action="toggle-teardown" ${state.teardownArmed ? 'checked' : ''}><span>Arm the teardown guard</span></label>
-        <label class="break-glass-input"><span>Type WIPE NOW to confirm</span><input value="${escapeHtml(state.destroyPhrase)}" data-action="destroy-phrase" placeholder="WIPE NOW" /></label>
-        <button type="button" class="danger-button" data-action="destroy-instance" ${!state.summitReceipt || !state.teardownArmed || state.destroyPhrase.trim().toUpperCase() !== 'WIPE NOW' || state.destroyed ? 'disabled' : ''}>${state.destroyed ? 'Teardown queued' : 'Destroy disposable instance'}</button>
-        <p class="summit-warning">${state.destroyed ? 'Break-glass was used after receipt verification. Nothing else should run here.' : 'Guard remains fogged until the verified receipt and break-glass phrase are in place.'}</p>
-      </article>
+      <section class="summit-dashboard" aria-label="Persisted export jobs and receipts">
+        <article class="summit-job-list">
+          <div class="panel-heading compact">
+            <h3>Persisted export jobs</h3>
+            <p>Reconnectable server state, newest first.</p>
+          </div>
+          ${state.exportJobsStatus === 'error' ? `<div class="live-banner"><strong>Export jobs</strong> ${escapeHtml(state.exportJobsError)}</div>` : ''}
+          ${!state.exportJobs.length && state.exportJobsStatus === 'ready' ? '<div class="guide-note-empty">Start a server-owned export job from this Summit waypoint.</div>' : ''}
+          <div class="revision-list">
+            ${state.exportJobs.map((item) => `
+              <button type="button" class="attack-row-button ${job && job.id === item.id ? 'is-selected' : ''}" data-action="select-export-job" data-id="${item.id}">
+                <div class="attack-row-top">
+                  <strong>${escapeHtml(item.id)}</strong>
+                  ${renderBadge(exportStatusClass(item.state))}
+                </div>
+                <div class="attack-row-main">
+                  <div class="attack-field"><strong>Stage</strong><span>${escapeHtml(describeExportStage(item.progress.stage))}</span></div>
+                  <div class="attack-field"><strong>Progress</strong><span>${item.progress.percent}%</span></div>
+                  <div class="attack-field"><strong>Receipt</strong><span>${escapeHtml(item.bundle?.receiptId || 'pending')}</span></div>
+                  <div class="attack-field"><strong>Updated</strong><span>${escapeHtml(formatTime(item.updatedAt))}</span></div>
+                </div>
+                <div class="attack-row-foot">
+                  <span>${escapeHtml(item.requestedBy.handle)}</span>
+                  <span>${escapeHtml(item.bundle?.archivePath || item.formatVersion)}</span>
+                </div>
+              </button>`).join('')}
+          </div>
+        </article>
+
+        <article class="summit-detail-card" aria-label="Selected export job details">
+          ${job ? `
+            <div class="detail-head">
+              <div>
+                <p class="guide-note-kicker">Selected export job</p>
+                <h3>${escapeHtml(job.id)}</h3>
+              </div>
+              ${renderBadge(exportStatusClass(job.state))}
+            </div>
+            <div class="detail-grid provenance-grid">
+              <div><dt>Requested by</dt><dd>${escapeHtml(job.requestedBy.handle)}</dd></div>
+              <div><dt>Created</dt><dd>${escapeHtml(formatTime(job.createdAt))}</dd></div>
+              <div><dt>Started</dt><dd>${job.startedAt ? escapeHtml(formatTime(job.startedAt)) : 'Waiting on server'}</dd></div>
+              <div><dt>Completed</dt><dd>${job.completedAt ? escapeHtml(formatTime(job.completedAt)) : 'Still running'}</dd></div>
+              <div><dt>Cutoff</dt><dd>${escapeHtml(job.cutoff || 'Pending')}</dd></div>
+              <div><dt>Revision</dt><dd>${job.revision}</dd></div>
+            </div>
+            <div class="receipt-grid export-receipt-grid">
+              <div><dt>Progress stage</dt><dd>${escapeHtml(selectedExportStage)}</dd></div>
+              <div><dt>Processed</dt><dd>${(job.progress.processedBytes || 0).toLocaleString()} bytes</dd></div>
+              <div><dt>Bundle path</dt><dd>${escapeHtml(job.bundle?.archivePath || 'bundle pending')}</dd></div>
+              <div><dt>Snapshot</dt><dd>${escapeHtml(job.bundle?.reportSnapshotId || job.snapshotId || 'pending')}</dd></div>
+              <div><dt>Archive SHA-256</dt><dd class="report-snippet">${escapeHtml(job.bundle?.archiveSha256 || 'waiting on archive')}</dd></div>
+              <div><dt>Manifest SHA-256</dt><dd class="report-snippet">${escapeHtml(job.bundle?.manifestSha256 || 'waiting on manifest')}</dd></div>
+            </div>
+            ${receipt ? `
+              <article class="receipt-card" aria-label="Verified export receipt" style="margin-top:12px">
+                <div class="panel-heading compact"><h3>Server receipt</h3><p>Hash verified, not signed. Verified by the server, not the browser.</p></div>
+                <dl class="receipt-grid">
+                  <div><dt>Status</dt><dd>${escapeHtml(receipt.status)}</dd></div>
+                  <div><dt>Verified</dt><dd>${escapeHtml(formatTime(receipt.verifiedAt))}</dd></div>
+                  <div><dt>Receipt</dt><dd>${escapeHtml(receipt.id)}</dd></div>
+                  <div><dt>Bundle</dt><dd>${escapeHtml(receipt.bundlePath)}</dd></div>
+                  <div><dt>Archive</dt><dd class="report-snippet">${escapeHtml(receipt.archiveSha256)}</dd></div>
+                  <div><dt>Manifest</dt><dd class="report-snippet">${escapeHtml(receipt.manifestSha256)}</dd></div>
+                </dl>
+              </article>` : ''}
+            ${auth ? `
+              <article class="break-glass-panel" aria-label="Teardown authorization" style="margin-top:12px">
+                <div class="panel-heading compact"><h3>Guarded teardown authorization</h3><p>The server will consume this one-time authorization immediately before the external wipe.</p></div>
+                <dl class="receipt-grid">
+                  <div><dt>Status</dt><dd>${escapeHtml(auth.status)}</dd></div>
+                  <div><dt>Requested</dt><dd>${escapeHtml(formatTime(auth.requestedAt))}</dd></div>
+                  <div><dt>Expires</dt><dd>${escapeHtml(formatTime(auth.expiresAt))}</dd></div>
+                  <div><dt>Authorization</dt><dd>${escapeHtml(auth.id)}</dd></div>
+                  <div><dt>Receipt</dt><dd>${escapeHtml(auth.receiptId)}</dd></div>
+                  <div><dt>Consumed</dt><dd>${auth.consumedAt ? escapeHtml(formatTime(auth.consumedAt)) : 'Not yet consumed'}</dd></div>
+                </dl>
+              </article>` : ''}
+            <div class="summit-controls" style="margin-top:12px">
+              <label class="break-glass-input"><span>Type destroy verified engagement data</span><input value="${escapeHtml(state.destroyPhrase)}" data-action="destroy-phrase" placeholder="destroy verified engagement data" /></label>
+              <button type="button" class="primary-button" data-action="authorize-teardown" ${!summitCanAuthorize || state.destroyPhrase.trim() !== 'destroy verified engagement data' ? 'disabled' : ''}>Authorize teardown</button>
+              <button type="button" class="danger-button" data-action="consume-authorization" ${!summitCanConsume ? 'disabled' : ''}>Consume authorization</button>
+            </div>
+          ` : '<div class="guide-note-empty">Run or select an export job to reveal its verified bundle, receipt, and teardown guard.</div>'}
+        </article>
+      </section>
       ${state.reportSnapshot ? '<div class="live-banner review"><strong>Report</strong> Snapshot ready for preview in the Summit report view.</div>' : ''}
     </section>`;
 }
@@ -1867,6 +2207,7 @@ function render() {
   document.documentElement.dataset.view = state.view;
   document.title = state.view === 'report' ? 'Waypoint — report snapshot' : `Waypoint — ${phaseNames[state.activePhase]}`;
   root.innerHTML = state.view === 'report' ? renderReportView() : renderTrailMap();
+  syncExportPolling();
 }
 
 async function handleSubmit(event) {
@@ -2018,16 +2359,40 @@ async function handleClick(event) {
     await startSummitExport();
     return;
   }
-  if (action === 'cancel-export') {
-    state.exportAbort?.abort();
+  if (action === 'refresh-export-jobs') {
+    await refreshExportJobs();
     return;
   }
+  if (action === 'select-export-job') {
+    setSelectedExportJobId(target.dataset.id || '');
+    return;
+  }
+  if (action === 'cancel-export') {
+    await cancelSelectedExport();
+    return;
+  }
+  if (action === 'authorize-teardown') {
+    await requestTeardownAuthorization();
+    return;
+  }
+  if (action === 'consume-authorization') {
+    await consumeTeardownAuthorization();
+    return;
+  }
+  if (action === 'open-verified-pdf') {
+    await openVerifiedArtifact('pdf');
+    return;
+  }
+  if (action === 'download-verified-bundle') {
+    await openVerifiedArtifact('bundle');
+    return;
+  }
+  if (action === 'destroy-phrase') return;
   if (action === 'toggle-teardown') {
     state.teardownArmed = target.checked;
     render();
     return;
   }
-  if (action === 'destroy-phrase') return;
   if (action === 'destroy-instance') {
     state.destroyed = true;
     render();
@@ -2041,7 +2406,26 @@ async function handleClick(event) {
     return;
   }
   if (action === 'open-pdf') {
-    window.open(reportPdfPath(state.engagementId), '_blank', 'noopener');
+    const previewWindow = window.open('', '_blank', 'noopener');
+    if (!previewWindow) {
+      state.reportError = 'Unable to open the PDF preview';
+      render();
+      return;
+    }
+
+    try {
+      state.reportError = '';
+      const response = await fetch(reportPdfPath(state.engagementId), { headers: authHeaders(state.token, newRequestId()), cache: 'no-store' });
+      if (!response.ok) throw new Error(await readProblem(response));
+      const pdfBlob = await response.blob();
+      const previewUrl = URL.createObjectURL(pdfBlob);
+      previewWindow.location.href = previewUrl;
+      previewWindow.addEventListener('load', () => URL.revokeObjectURL(previewUrl), { once: true });
+    } catch (error) {
+      previewWindow.close();
+      state.reportError = error instanceof Error ? error.message : 'Unable to open the PDF preview';
+      render();
+    }
     return;
   }
   if (action === 'go-prev') {
@@ -2140,6 +2524,7 @@ function initializeSelectionFromData() {
   if (!state.selectedFindingId && state.findings.length) state.selectedFindingId = state.findings[0].id;
   if (!state.selectedActorId && state.actors.length) state.selectedActorId = state.actors[0].actor.id;
   if (!state.selectedClaimId && state.claims.length) state.selectedClaimId = state.claims[0].id;
+  if (!state.selectedExportJobId && state.exportJobs.length) state.selectedExportJobId = state.exportJobs[0].id;
   syncProvisionAuthorizer();
   const action = selectedAction();
   if (action && !state.findingPromotionDraft.title) {

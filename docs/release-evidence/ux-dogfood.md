@@ -1,13 +1,13 @@
 # UX/accessibility dogfood evidence
 
 ## Timestamp
-- 2026-08-17T08:58:08Z
+- 2026-08-17T15:24:08Z
 
 ## Checks run
-- `go test ./...` → blocked by real-PostgreSQL gate tests (`WAYPOINT_TEST_PG_DSN` required)
-- `make smoke` → blocked because the app cannot start without a PostgreSQL service in this sandbox
+- `go test ./...` → passed
 - `cd web && npm test` → passed
 - `cd web && npm run build` → passed
+- `python3 scripts/verify-contracts.py` → passed
 - `command -v google-chrome || command -v chromium || command -v chromium-browser || command -v firefox || command -v microsoft-edge || command -v msedge || command -v safari || true` → no local browser binary
 - `node -e "try{console.log(require.resolve('playwright'));}catch(e){console.error('no playwright')}"` → no Playwright
 - `node -e "try{console.log(require.resolve('puppeteer'));}catch(e){console.error('no puppeteer')}"` → no Puppeteer
@@ -38,6 +38,10 @@
 - [ ] Keyboard-only navigation
 - [ ] Reduced-motion playback
 - [ ] Timestamped screenshots retained
+
+## Summit integration notes
+- Runtime summit flow now binds to persisted export jobs, server receipts, verified downloads, cancel/failure states, and guarded teardown authorization.
+- The source-level a11y notes below still hold, but I could not capture live screenshots or keyboard/axe output in this sandbox.
 
 ## Blocker
 This sandbox does not provide a runnable browser or a live PostgreSQL service, so I could not capture authoritative screenshots, accessibility tree output, keyboard transcript, axe report, or reduced-motion playback from the running app. The visual dogfood pass therefore remains unverified here and must be completed in a browser-enabled environment.

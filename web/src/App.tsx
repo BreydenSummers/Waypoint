@@ -223,6 +223,70 @@ type ReportSnapshot = {
   knownCaptureGaps: OutOfBandClaimItem[];
 };
 
+type ExportJob = {
+  contractVersion: string;
+  id: string;
+  engagementId: string;
+  requestedBy: AuditActor;
+  state: 'queued' | 'preflighting' | 'running' | 'verifying' | 'cancel_requested' | 'cancelled' | 'failed' | 'completed';
+  progress: { stage: string; percent: number; processedBytes?: number; estimatedTotalBytes?: number };
+  formatVersion: string;
+  retryOfJobId?: string;
+  snapshotId?: string;
+  cutoff?: string;
+  bundle?: { archivePath: string; archiveByteLength: number; archiveSha256: string; manifestSha256: string; reportSnapshotId: string; receiptId: string };
+  failure?: { code: string; message: string; retryable: boolean };
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  updatedAt: string;
+  revision: number;
+};
+
+type ExportReceipt = {
+  contractVersion: string;
+  id: string;
+  exportJobId: string;
+  engagementId: string;
+  status: 'verified' | 'invalidated';
+  bundlePath: string;
+  archiveByteLength: number;
+  archiveSha256: string;
+  manifestSha256: string;
+  cutoff: string;
+  verifiedAt: string;
+  verifiedBy: AuditActor;
+  verifierVersion: string;
+  invalidatedAt?: string;
+  invalidationReason?: string;
+  revision: number;
+};
+
+type TeardownAuthorization = {
+  contractVersion: string;
+  id: string;
+  engagementId: string;
+  receiptId: string;
+  exportJobId: string;
+  bundlePath: string;
+  archiveSha256: string;
+  manifestSha256: string;
+  requestedBy: AuditActor;
+  requestedAt: string;
+  expiresAt: string;
+  status: 'authorized' | 'consumed' | 'expired';
+  consumedAt?: string;
+};
+
+type ExportBundleDownload = {
+  archivePath: string;
+  archiveByteLength: number;
+  archiveSha256: string;
+  manifestSha256: string;
+  reportSnapshotId: string;
+  receiptId: string;
+};
+
 type GuideNote = {
   id: string;
   phase: PhaseId;
@@ -323,6 +387,96 @@ function reportPdfPath(engagementId: string) {
   return `${reportPath(engagementId)}.pdf`;
 }
 
+function exportsPath() {
+  return '/api/v1/exports';
+}
+
+function exportPath(exportId: string) {
+  return `/api/v1/exports/${exportId}`;
+}
+
+function exportCancelPath(exportId: string) {
+  return `/api/v1/exports/${exportId}/cancel`;
+}
+
+function exportReportSnapshotPath(exportId: string) {
+  return `/api/v1/exports/${exportId}/report-snapshot`;
+}
+
+function exportReportPdfPath(exportId: string) {
+  return `/api/v1/exports/${exportId}/report.pdf`;
+}
+
+function exportBundlePath(exportId: string) {
+  return `/api/v1/exports/${exportId}/bundle`;
+}
+
+function exportReceiptPath(receiptId: string) {
+  return `/api/v1/export-receipts/${receiptId}`;
+}
+
+function teardownAuthorizationsPath() {
+  return '/api/v1/teardown-authorizations';
+}
+
+function teardownAuthorizationPath(authorizationId: string) {
+  return `/api/v1/teardown-authorizations/${authorizationId}`;
+}
+
+function teardownAuthorizationConsumePath(authorizationId: string) {
+  return `/api/v1/teardown-authorizations/${authorizationId}/consume`;
+}
+
+function describeExportStage(stage?: string) {
+  switch (stage) {
+    case 'queued':
+      return 'Queued with the server';
+    case 'capacity_preflight':
+      return 'Checking bundle capacity';
+    case 'snapshot':
+      return 'Freezing the report snapshot';
+    case 'database_dump':
+      return 'Packing the database dump';
+    case 'evidence':
+      return 'Copying evidence';
+    case 'report_snapshot':
+      return 'Capturing the frozen report';
+    case 'pdf':
+      return 'Rendering the PDF';
+    case 'tools':
+      return 'Bundling restore tools';
+    case 'manifest':
+      return 'Writing the manifest';
+    case 'archive':
+      return 'Archiving the bundle';
+    case 'verification':
+      return 'Verifying the bytes';
+    case 'complete':
+      return 'Export complete';
+    default:
+      return 'Awaiting server progress';
+  }
+}
+
+function exportStatusClass(state?: string) {
+  switch (state) {
+    case 'completed':
+      return 'verified';
+    case 'failed':
+      return 'failed';
+    case 'cancelled':
+      return 'canceled';
+    case 'queued':
+    case 'preflighting':
+    case 'running':
+    case 'verifying':
+    case 'cancel_requested':
+      return 'preflight';
+    default:
+      return 'idle';
+  }
+}
+
 function pushPath(path: string) {
   window.history.pushState({}, '', path);
 }
@@ -372,6 +526,18 @@ async function readProblem(response: Response): Promise<string> {
 
 async function apiJson<T>(path: string, token: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(path, { headers: authHeaders(token, newRequestId()), cache: 'no-store', signal });
+  if (!response.ok) throw new Error(await readProblem(response));
+  return (await response.json()) as T;
+}
+
+async function apiJsonPost<T>(path: string, token: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: body === undefined ? authHeaders(token, newRequestId()) : { ...authHeaders(token, newRequestId()), 'Content-Type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal,
+    cache: 'no-store',
+  });
   if (!response.ok) throw new Error(await readProblem(response));
   return (await response.json()) as T;
 }
@@ -665,20 +831,21 @@ export function App() {
   const [findingConflict, setFindingConflict] = useState('');
   const [entityConflict, setEntityConflict] = useState('');
   const [promotionConflict, setPromotionConflict] = useState('');
-  const [summitStatus, setSummitStatus] = useState<'idle' | 'preflight' | 'exporting' | 'verifying' | 'verified' | 'failed' | 'canceled'>('idle');
-  const [summitProgress, setSummitProgress] = useState(0);
-  const [summitStep, setSummitStep] = useState('Ready to preflight the bundle.');
-  const [summitError, setSummitError] = useState('');
-  const [summitReceipt, setSummitReceipt] = useState<null | { verifiedAt: string; snapshotHash: string; pdfSha256: string; manifestHash: string; note: string }>(null);
-  const [teardownArmed, setTeardownArmed] = useState(false);
+  const [exportJobs, setExportJobs] = useState<ExportJob[]>([]);
+  const [exportJobsStatus, setExportJobsStatus] = useState<ResourceStatus>('loading');
+  const [exportJobsError, setExportJobsError] = useState('');
+  const [selectedExportJobId, setSelectedExportJobId] = useState('');
+  const [selectedExportJobError, setSelectedExportJobError] = useState('');
+  const [selectedExportReceipt, setSelectedExportReceipt] = useState<ExportReceipt | null>(null);
+  const [selectedTeardownAuthorization, setSelectedTeardownAuthorization] = useState<TeardownAuthorization | null>(null);
+  const [summitActionError, setSummitActionError] = useState('');
+  const [summitRequestNote, setSummitRequestNote] = useState('');
   const [destroyPhrase, setDestroyPhrase] = useState('');
-  const [destroyed, setDestroyed] = useState(false);
 
   const streamAbortRef = useRef<AbortController | null>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
   const evidenceAbortRef = useRef<AbortController | null>(null);
   const reportAbortRef = useRef<AbortController | null>(null);
-  const streamCursorRef = useRef<string | null>(null);
 
   const activeIndex = waypointOrder.indexOf(activePhase);
   const waypoints = useMemo(
@@ -737,6 +904,38 @@ export function App() {
   const selectedFinding = useMemo(() => findings.find((finding) => finding.id === selectedFindingId) || findings[0] || null, [findings, selectedFindingId]);
   const selectedEntityObservations = selectedEntity?.observations || [];
   const selectedEvidenceRef = selectedEvidenceId && selectedAction ? [selectedAction.evidenceReferences.stdout, selectedAction.evidenceReferences.stderr].find((item) => item.id === selectedEvidenceId) || null : null;
+  const exportJobsSorted = useMemo(
+    () => [...exportJobs].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : a.id < b.id ? 1 : -1)),
+    [exportJobs],
+  );
+  const selectedExportJob = useMemo(
+    () => exportJobsSorted.find((job) => job.id === selectedExportJobId) || exportJobsSorted[0] || null,
+    [exportJobsSorted, selectedExportJobId],
+  );
+  const selectedExportJobStatus = selectedExportJob?.state || (exportJobsStatus === 'loading' ? 'loading' : 'idle');
+  const selectedExportProgress = selectedExportJob?.progress.percent ?? 0;
+  const selectedExportStage = selectedExportJob ? describeExportStage(selectedExportJob.progress.stage) : 'Ready to start export';
+  const selectedExportFailure = selectedExportJob?.failure?.message || '';
+  const summitReceipt = selectedExportJob?.bundle?.receiptId && selectedExportReceipt?.exportJobId === selectedExportJob.id ? selectedExportReceipt : null;
+  const summitAuthorization = selectedTeardownAuthorization?.exportJobId === selectedExportJob?.id ? selectedTeardownAuthorization : null;
+  const summitDownloadReady = Boolean(selectedExportJob?.state === 'completed' && selectedExportJob.bundle && selectedExportReceipt?.status === 'verified');
+  const summitCanAuthorize = Boolean(summitReceipt && summitReceipt.status === 'verified' && summitReceipt.bundlePath && summitReceipt.archiveSha256 && summitReceipt.manifestSha256);
+  const summitCanConsume = Boolean(summitAuthorization && summitAuthorization.status === 'authorized');
+
+  useEffect(() => {
+    if (!selectedExportJob) {
+      setSelectedExportReceipt(null);
+      setSelectedTeardownAuthorization(null);
+      setSelectedExportJobError('');
+      return;
+    }
+    setSelectedExportJobError('');
+    void refreshExportReceipt(selectedExportJob);
+    if (selectedTeardownAuthorization && selectedTeardownAuthorization.exportJobId !== selectedExportJob.id) {
+      setSelectedTeardownAuthorization(null);
+    }
+  }, [selectedExportJob?.id, selectedExportJob?.bundle?.receiptId]);
+
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -771,14 +970,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (view !== 'trail') return;
-    setDestroyed(false);
-    if (activePhase !== 'summit') {
-      setTeardownArmed(false);
-      setDestroyPhrase('');
-      setSummitReceipt(null);
-    }
-  }, [activePhase, view]);
+    if (activePhase !== 'summit') return;
+    setSummitRequestNote('');
+    setSummitActionError('');
+  }, [activePhase]);
 
   useEffect(() => {
     if (selectedAction && selectedAction.id !== selectedActionId) setSelectedActionId(selectedAction.id);
@@ -922,7 +1117,47 @@ export function App() {
     }
   };
 
-  const refreshEverything = async () => {
+  const refreshExportJobs = async (signal?: AbortSignal) => {
+    setExportJobsStatus('loading');
+    setExportJobsError('');
+    try {
+      const page = await apiJson<ContractPage<ExportJob>>(`${exportsPath()}?limit=25`, token, signal);
+      setExportJobs(page.items);
+      setExportJobsStatus('ready');
+      if (!selectedExportJobId && page.items[0]?.id) {
+        setSelectedExportJobId(page.items[0].id);
+      }
+    } catch (error) {
+      setExportJobsStatus('error');
+      setExportJobsError(error instanceof Error ? error.message : 'Unable to load export jobs');
+    }
+  };
+
+  const refreshExportReceipt = async (job: ExportJob, signal?: AbortSignal) => {
+    if (!job.bundle?.receiptId) {
+      setSelectedExportReceipt(null);
+      return;
+    }
+    try {
+      const receipt = await apiJson<ExportReceipt>(exportReceiptPath(job.bundle.receiptId), token, signal);
+      setSelectedExportReceipt(receipt);
+    } catch (error) {
+      setSelectedExportReceipt(null);
+      setSelectedExportJobError(error instanceof Error ? error.message : 'Unable to load verified receipt');
+    }
+  };
+
+  const refreshTeardownAuthorization = async (authorizationId: string, signal?: AbortSignal) => {
+    try {
+      const auth = await apiJson<TeardownAuthorization>(teardownAuthorizationPath(authorizationId), token, signal);
+      setSelectedTeardownAuthorization(auth);
+    } catch (error) {
+      setSelectedTeardownAuthorization(null);
+      setSummitActionError(error instanceof Error ? error.message : 'Unable to load teardown authorization');
+    }
+  };
+
+  const refreshSummitState = async () => {
     const controller = new AbortController();
     await Promise.allSettled([
       refreshAudit(controller.signal),
@@ -931,9 +1166,10 @@ export function App() {
       refreshFindings(controller.signal),
       refreshActors(controller.signal),
       refreshClaims(controller.signal),
+      refreshExportJobs(controller.signal),
     ]);
     controller.abort();
-    if (view === 'report' || activePhase === 'summit') {
+    if (view === 'report') {
       void refreshReport();
     }
   };
@@ -942,7 +1178,7 @@ export function App() {
     if (!token) return;
     const controller = new AbortController();
     void (async () => {
-      await refreshEverything();
+      await refreshSummitState();
       if (streamAbortRef.current) streamAbortRef.current.abort();
       streamAbortRef.current = controller;
       let cursor = streamCursorRef.current;
@@ -997,6 +1233,8 @@ export function App() {
               void refreshActors();
             } else if (event.event.startsWith('out-of-band.')) {
               void refreshClaims();
+            } else if (event.event.startsWith('export.')) {
+              void refreshExportJobs();
             }
           });
           backoff = 700;
@@ -1064,56 +1302,99 @@ export function App() {
     exportAbortRef.current?.abort();
     const controller = new AbortController();
     exportAbortRef.current = controller;
-    setSummitReceipt(null);
-    setSummitError('');
-    setSummitStatus('preflight');
-    setSummitProgress(10);
-    setSummitStep('Freezing the live report snapshot.');
+    setSummitActionError('');
+    setSelectedExportJobError('');
+    setSummitRequestNote('Submitting a persisted export job to the server.');
     try {
-      const raw = reportRaw || (await apiText(reportJsonPath(engagementId), token, controller.signal));
-      const parsed = reportSnapshot || JSON.parse(raw);
-      assertReportSnapshot(parsed);
-      setSummitProgress(28);
-      setSummitStep('Streaming the PDF artifact.');
-      setSummitStatus('exporting');
-      const response = await fetch(reportPdfPath(engagementId), { headers: authHeaders(token, newRequestId()), cache: 'no-store', signal: controller.signal });
-      if (!response.ok) throw new Error(await readProblem(response));
-      const pdfBytes = await readStreamBytes(response, controller.signal, (loaded, total) => {
-        const ratio = total ? loaded / total : 0.5;
-        setSummitProgress(Math.min(84, 30 + Math.round(ratio * 54)));
-        setSummitStep(`Streaming the PDF artifact (${loaded.toLocaleString()} bytes).`);
-      });
-      if (pdfBytes[0] !== 0x25 || pdfBytes[1] !== 0x50 || pdfBytes[2] !== 0x44 || pdfBytes[3] !== 0x46) {
-        throw new Error('report PDF did not start with a PDF signature');
-      }
-      setSummitStatus('verifying');
-      setSummitProgress(90);
-      setSummitStep('Verifying the hash manifest and signature hook.');
-      const receipt = {
-        verifiedAt: new Date().toISOString(),
-        snapshotHash: await sha256Hex(raw),
-        pdfSha256: await sha256Hex(pdfBytes),
-        manifestHash: 'hash verified, not signed',
-        note: 'Hash verified, not signed. The signature hook remains empty.',
-      };
-      setSummitReceipt(receipt);
-      setSummitStatus('verified');
-      setSummitProgress(100);
-      setSummitStep('Receipt verified and teardown is now guarded.');
+      const created = await apiJsonPost<ExportJob>(exportsPath(), token, { formatVersion: apiVersion }, controller.signal);
+      setSelectedExportJobId(created.id);
+      setSummitRequestNote(`Export job ${created.id} queued by ${created.requestedBy.handle}.`);
+      await refreshExportJobs(controller.signal);
     } catch (error) {
       if (controller.signal.aborted) {
-        setSummitStatus('canceled');
-        setSummitProgress(0);
-        setSummitStep('Export canceled before teardown was armed.');
-        setSummitError('Export canceled. The live trail stayed intact.');
+        setSummitActionError('Export request canceled before the server accepted it.');
+        setSummitRequestNote('The live trail stayed intact.');
       } else {
-        setSummitStatus('failed');
-        setSummitProgress(0);
-        setSummitStep('Recovery needed before the next export can run.');
-        setSummitError(error instanceof Error ? error.message : 'Export verification failed');
+        setSummitActionError(error instanceof Error ? error.message : 'Unable to start export job');
+        setSummitRequestNote('Export request failed.');
       }
     } finally {
       exportAbortRef.current = null;
+    }
+  };
+
+  const cancelSelectedExport = async () => {
+    if (!selectedExportJob) return;
+    setSummitActionError('');
+    try {
+      const response = await fetch(exportCancelPath(selectedExportJob.id), {
+        method: 'POST',
+        headers: { ...authHeaders(token, newRequestId()), 'If-Match': revisionHeader(selectedExportJob.revision) },
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error(await readProblem(response));
+      const updated = (await response.json()) as ExportJob;
+      setExportJobs((current) => current.map((job) => (job.id === updated.id ? updated : job)));
+      setSelectedExportJobId(updated.id);
+      setSummitRequestNote(`Cancellation requested for ${updated.id}.`);
+    } catch (error) {
+      setSummitActionError(error instanceof Error ? error.message : 'Unable to cancel export job');
+    }
+  };
+
+  const requestTeardownAuthorization = async () => {
+    if (!selectedExportJob?.bundle || !selectedExportReceipt) return;
+    setSummitActionError('');
+    try {
+      const auth = await apiJsonPost<TeardownAuthorization>(teardownAuthorizationsPath(), token, {
+        receiptId: selectedExportReceipt.id,
+        bundlePath: selectedExportReceipt.bundlePath,
+        archiveSha256: selectedExportReceipt.archiveSha256,
+        manifestSha256: selectedExportReceipt.manifestSha256,
+        confirmation: 'destroy verified engagement data',
+      });
+      setSelectedTeardownAuthorization(auth);
+      setSummitRequestNote(`Teardown authorization ${auth.id} is ${auth.status}.`);
+    } catch (error) {
+      setSummitActionError(error instanceof Error ? error.message : 'Unable to authorize teardown');
+    }
+  };
+
+  const consumeTeardownAuthorization = async () => {
+    if (!summitAuthorization) return;
+    setSummitActionError('');
+    try {
+      const consumed = await apiJsonPost<TeardownAuthorization>(teardownAuthorizationConsumePath(summitAuthorization.id), token, undefined);
+      setSelectedTeardownAuthorization(consumed);
+      setSummitRequestNote(`Teardown authorization ${consumed.id} consumed by the server.`);
+    } catch (error) {
+      setSummitActionError(error instanceof Error ? error.message : 'Unable to consume teardown authorization');
+    }
+  };
+
+  const openVerifiedArtifact = async (kind: 'pdf' | 'bundle') => {
+    if (!selectedExportJob?.bundle) return;
+    setSummitActionError('');
+    try {
+      const path = kind === 'pdf' ? exportReportPdfPath(selectedExportJob.id) : exportBundlePath(selectedExportJob.id);
+      const response = await fetch(path, { headers: authHeaders(token, newRequestId()), cache: 'no-store' });
+      if (!response.ok) throw new Error(await readProblem(response));
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      if (kind === 'pdf') {
+        const previewWindow = window.open('', '_blank', 'noopener');
+        if (!previewWindow) throw new Error('Unable to open the verified PDF preview');
+        previewWindow.location.href = url;
+        previewWindow.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
+      } else {
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = selectedExportJob.bundle.archivePath;
+        anchor.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    } catch (error) {
+      setSummitActionError(error instanceof Error ? error.message : 'Unable to open verified artifact');
     }
   };
 
@@ -1863,35 +2144,115 @@ export function App() {
             {activePhase === 'summit' ? (
               <section className="summit-flow" aria-label="Summit export and teardown flow">
                 <div className="summit-status">
-                  <span className={`status-chip ${summitStatus}`}>{summitStatus}</span>
-                  <div className="export-meter" role="progressbar" aria-label="Export progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={summitProgress}><span style={{ width: `${summitProgress}%` }} /></div>
-                  <p className="summit-step">{summitStep}</p>
-                  <p>{summitStatus === 'verified' ? 'Hash verified, not signed. The teardown guard is available.' : 'The report snapshot comes from the authoritative API before any wipe can happen.'}</p>
-                  {summitError ? <p className="summit-error">{summitError}</p> : null}
+                  <span className={`status-chip ${exportStatusClass(selectedExportJobStatus)}`}>{selectedExportJobStatus}</span>
+                  <div className="export-meter" role="progressbar" aria-label="Export progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={selectedExportProgress}><span style={{ width: `${selectedExportProgress}%` }} /></div>
+                  <p className="summit-step">{selectedExportStage}</p>
+                  <p>{selectedExportJob ? `Server job ${selectedExportJob.id} · updated ${formatTime(selectedExportJob.updatedAt)}` : 'The server owns export jobs, receipts, and teardown authorization.'}</p>
+                  {summitRequestNote ? <p className="summit-note">{summitRequestNote}</p> : null}
+                  {selectedExportFailure ? <p className="summit-error">{selectedExportFailure}</p> : null}
+                  {selectedExportJobError ? <p className="summit-error">{selectedExportJobError}</p> : null}
+                  {summitActionError ? <p className="summit-error">{summitActionError}</p> : null}
                 </div>
                 <div className="summit-controls">
-                  <button type="button" className="primary-button" onClick={() => void startSummitExport()} disabled={summitStatus === 'preflight' || summitStatus === 'exporting' || summitStatus === 'verifying'}>{summitStatus === 'verified' ? 'Re-run export verification' : 'Run live export preflight'}</button>
-                  <button type="button" className="secondary-link" onClick={() => exportAbortRef.current?.abort()} disabled={summitStatus !== 'preflight' && summitStatus !== 'exporting' && summitStatus !== 'verifying'}>Cancel export</button>
+                  <button type="button" className="primary-button" onClick={() => void startSummitExport()} disabled={exportAbortRef.current !== null}>Start export job</button>
+                  <button type="button" className="secondary-link" onClick={() => void refreshExportJobs()} disabled={exportJobsStatus === 'loading'}>Refresh jobs</button>
+                  <button type="button" className="secondary-link" onClick={() => void cancelSelectedExport()} disabled={!selectedExportJob || selectedExportJob.state === 'completed' || selectedExportJob.state === 'failed' || selectedExportJob.state === 'cancelled'}>Cancel selected job</button>
+                  <button type="button" className="secondary-link" onClick={() => void openVerifiedArtifact('pdf')} disabled={!summitDownloadReady}>Open verified PDF</button>
+                  <button type="button" className="secondary-link" onClick={() => void openVerifiedArtifact('bundle')} disabled={!summitDownloadReady}>Download verified bundle</button>
                 </div>
-                {summitStatus === 'verified' && summitReceipt ? (
-                  <article className="receipt-card" aria-label="Verified export receipt">
-                    <div className="panel-heading compact"><h3>Receipt verified</h3><p>Capture stayed live while the bundle froze. Hash verified, not signed.</p></div>
-                    <dl className="receipt-grid">
-                      <div><dt>Verified</dt><dd>{summitReceipt.verifiedAt}</dd></div>
-                      <div><dt>Snapshot hash</dt><dd className="report-snippet">{summitReceipt.snapshotHash}</dd></div>
-                      <div><dt>PDF hash</dt><dd className="report-snippet">{summitReceipt.pdfSha256}</dd></div>
-                      <div><dt>Manifest</dt><dd>{summitReceipt.manifestHash}</dd></div>
-                      <div><dt>Note</dt><dd>{summitReceipt.note}</dd></div>
-                    </dl>
+
+                <section className="summit-dashboard" aria-label="Persisted export jobs and receipts">
+                  <article className="summit-job-list">
+                    <div className="panel-heading compact">
+                      <h3>Persisted export jobs</h3>
+                      <p>Reconnectable server state, newest first.</p>
+                    </div>
+                    {exportJobsStatus === 'error' ? <div className="live-banner"><strong>Export jobs</strong> {exportJobsError}</div> : null}
+                    {!exportJobs.length && exportJobsStatus === 'ready' ? <EmptyState title="No export jobs yet" detail="Start a server-owned export job from this Summit waypoint." /> : null}
+                    <div className="revision-list">
+                      {exportJobs.map((job) => (
+                        <button key={job.id} type="button" className={`attack-row-button ${selectedExportJob?.id === job.id ? 'is-selected' : ''}`.trim()} onClick={() => setSelectedExportJobId(job.id)}>
+                          <div className="attack-row-top">
+                            <strong>{job.id}</strong>
+                            <StatusPill status={exportStatusClass(job.state)}>{job.state}</StatusPill>
+                          </div>
+                          <div className="attack-row-main">
+                            <div className="attack-field"><strong>Stage</strong><span>{describeExportStage(job.progress.stage)}</span></div>
+                            <div className="attack-field"><strong>Progress</strong><span>{job.progress.percent}%</span></div>
+                            <div className="attack-field"><strong>Receipt</strong><span>{job.bundle?.receiptId || 'pending'}</span></div>
+                            <div className="attack-field"><strong>Updated</strong><span>{formatTime(job.updatedAt)}</span></div>
+                          </div>
+                          <div className="attack-row-foot">
+                            <span>{job.requestedBy.handle}</span>
+                            <span>{job.bundle?.archivePath || job.formatVersion}</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </article>
-                ) : null}
-                <article className="break-glass-panel" aria-label="Break-glass teardown guard">
-                  <div className="panel-heading compact"><h3>Break-glass teardown</h3><p>Export receipt required before the live box can be destroyed.</p></div>
-                  <label className="break-glass-toggle"><input type="checkbox" checked={teardownArmed} onChange={(event) => setTeardownArmed(event.target.checked)} /><span>Arm the teardown guard</span></label>
-                  <label className="break-glass-input"><span>Type WIPE NOW to confirm</span><input value={destroyPhrase} onChange={(event) => setDestroyPhrase(event.target.value)} placeholder="WIPE NOW" /></label>
-                  <button type="button" className="danger-button" disabled={!summitReceipt || !teardownArmed || destroyPhrase.trim().toUpperCase() !== 'WIPE NOW' || destroyed} onClick={() => setDestroyed(true)}>{destroyed ? 'Teardown queued' : 'Destroy disposable instance'}</button>
-                  <p className="summit-warning">{destroyed ? 'Break-glass was used after receipt verification. Nothing else should run here.' : 'Guard remains fogged until the verified receipt and break-glass phrase are in place.'}</p>
-                </article>
+
+                  <article className="summit-detail-card" aria-label="Selected export job details">
+                    {selectedExportJob ? (
+                      <>
+                        <div className="detail-head">
+                          <div>
+                            <p className="guide-note-kicker">Selected export job</p>
+                            <h3>{selectedExportJob.id}</h3>
+                          </div>
+                          <StatusPill status={exportStatusClass(selectedExportJob.state)}>{selectedExportJob.state}</StatusPill>
+                        </div>
+                        <div className="detail-grid provenance-grid">
+                          <div><dt>Requested by</dt><dd>{selectedExportJob.requestedBy.handle}</dd></div>
+                          <div><dt>Created</dt><dd>{formatTime(selectedExportJob.createdAt)}</dd></div>
+                          <div><dt>Started</dt><dd>{selectedExportJob.startedAt ? formatTime(selectedExportJob.startedAt) : 'Waiting on server'}</dd></div>
+                          <div><dt>Completed</dt><dd>{selectedExportJob.completedAt ? formatTime(selectedExportJob.completedAt) : 'Still running'}</dd></div>
+                          <div><dt>Cutoff</dt><dd>{selectedExportJob.cutoff || 'Pending'}</dd></div>
+                          <div><dt>Revision</dt><dd>{selectedExportJob.revision}</dd></div>
+                        </div>
+                        <div className="receipt-grid export-receipt-grid">
+                          <div><dt>Progress stage</dt><dd>{selectedExportStage}</dd></div>
+                          <div><dt>Processed</dt><dd>{selectedExportJob.progress.processedBytes?.toLocaleString() || '0'} bytes</dd></div>
+                          <div><dt>Bundle path</dt><dd>{selectedExportJob.bundle?.archivePath || 'bundle pending'}</dd></div>
+                          <div><dt>Snapshot</dt><dd>{selectedExportJob.bundle?.reportSnapshotId || selectedExportJob.snapshotId || 'pending'}</dd></div>
+                          <div><dt>Archive SHA-256</dt><dd className="report-snippet">{selectedExportJob.bundle?.archiveSha256 || 'waiting on archive'}</dd></div>
+                          <div><dt>Manifest SHA-256</dt><dd className="report-snippet">{selectedExportJob.bundle?.manifestSha256 || 'waiting on manifest'}</dd></div>
+                        </div>
+                        {selectedExportReceipt ? (
+                          <article className="receipt-card" aria-label="Verified export receipt" style={{ marginTop: '12px' }}>
+                            <div className="panel-heading compact"><h3>Server receipt</h3><p>Hash verified, not signed. Verified by the server, not the browser.</p></div>
+                            <dl className="receipt-grid">
+                              <div><dt>Status</dt><dd>{selectedExportReceipt.status}</dd></div>
+                              <div><dt>Verified</dt><dd>{formatTime(selectedExportReceipt.verifiedAt)}</dd></div>
+                              <div><dt>Receipt</dt><dd>{selectedExportReceipt.id}</dd></div>
+                              <div><dt>Bundle</dt><dd>{selectedExportReceipt.bundlePath}</dd></div>
+                              <div><dt>Archive</dt><dd className="report-snippet">{selectedExportReceipt.archiveSha256}</dd></div>
+                              <div><dt>Manifest</dt><dd className="report-snippet">{selectedExportReceipt.manifestSha256}</dd></div>
+                            </dl>
+                          </article>
+                        ) : null}
+                        {summitAuthorization ? (
+                          <article className="break-glass-panel" aria-label="Teardown authorization" style={{ marginTop: '12px' }}>
+                            <div className="panel-heading compact"><h3>Guarded teardown authorization</h3><p>The server will consume this one-time authorization immediately before the external wipe.</p></div>
+                            <dl className="receipt-grid">
+                              <div><dt>Status</dt><dd>{summitAuthorization.status}</dd></div>
+                              <div><dt>Requested</dt><dd>{formatTime(summitAuthorization.requestedAt)}</dd></div>
+                              <div><dt>Expires</dt><dd>{formatTime(summitAuthorization.expiresAt)}</dd></div>
+                              <div><dt>Authorization</dt><dd>{summitAuthorization.id}</dd></div>
+                              <div><dt>Receipt</dt><dd>{summitAuthorization.receiptId}</dd></div>
+                              <div><dt>Consumed</dt><dd>{summitAuthorization.consumedAt ? formatTime(summitAuthorization.consumedAt) : 'Not yet consumed'}</dd></div>
+                            </dl>
+                          </article>
+                        ) : null}
+                        <div className="summit-controls" style={{ marginTop: '12px' }}>
+                          <label className="break-glass-input"><span>Type destroy verified engagement data</span><input value={destroyPhrase} onChange={(event) => setDestroyPhrase(event.target.value)} placeholder="destroy verified engagement data" /></label>
+                          <button type="button" className="primary-button" onClick={() => void requestTeardownAuthorization()} disabled={!summitCanAuthorize || destroyPhrase.trim() !== 'destroy verified engagement data'}>Authorize teardown</button>
+                          <button type="button" className="danger-button" onClick={() => void consumeTeardownAuthorization()} disabled={!summitCanConsume}>Consume authorization</button>
+                        </div>
+                      </>
+                    ) : <EmptyState title="No export selected" detail="Run or select an export job to reveal its verified bundle, receipt, and teardown guard." />}
+                  </article>
+                </section>
+
                 {reportSnapshot ? <div className="live-banner review"><strong>Report</strong> Snapshot ready for preview in the Summit report view.</div> : null}
               </section>
             ) : null}

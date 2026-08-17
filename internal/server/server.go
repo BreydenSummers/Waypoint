@@ -79,6 +79,10 @@ func handler(db *sql.DB) http.Handler {
 	mux.HandleFunc("/exports/", exportHandler(db, store, exports))
 	mux.HandleFunc("/api/v1/export-receipts/", exportHandler(db, store, exports))
 	mux.HandleFunc("/export-receipts/", exportHandler(db, store, exports))
+	mux.HandleFunc("/api/v1/teardown-authorizations", exportHandler(db, store, exports))
+	mux.HandleFunc("/api/v1/teardown-authorizations/", exportHandler(db, store, exports))
+	mux.HandleFunc("/teardown-authorizations", exportHandler(db, store, exports))
+	mux.HandleFunc("/teardown-authorizations/", exportHandler(db, store, exports))
 	report := reportHandler(db, store)
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if reportJSONRoute.MatchString(r.URL.Path) || reportPDFRoute.MatchString(r.URL.Path) {
