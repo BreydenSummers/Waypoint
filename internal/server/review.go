@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
-	"strings"
 	"time"
 
 	dbutil "waypoint/internal/db"
@@ -114,7 +113,7 @@ func outOfBandReviewHandler(db *sql.DB, originKind string) http.HandlerFunc {
 			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, FieldErrors: []fieldError{{Pointer: "/claimId", Code: "invalid_uuid", Message: "claimId must be a UUID."}}})
 			return
 		}
-		if !strings.EqualFold(req.ClaimID, r.Header.Get("Idempotency-Key")) {
+		if req.ClaimID != r.Header.Get("Idempotency-Key") {
 			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, FieldErrors: []fieldError{{Pointer: "/claimId", Code: "idempotency_key_mismatch", Message: "Idempotency-Key must exactly match claimId."}}})
 			return
 		}

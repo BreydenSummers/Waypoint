@@ -200,6 +200,13 @@ type captureProblem struct {
 	SupportedVersions      []string     `json:"supportedVersions,omitempty"`
 }
 
+func (p *captureProblem) Error() string {
+	if p == nil {
+		return ""
+	}
+	return p.Detail
+}
+
 type fieldError struct {
 	Pointer string `json:"pointer"`
 	Code    string `json:"code"`
