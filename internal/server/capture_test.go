@@ -888,7 +888,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("WAYPOINT_TEST_PG_DSN")
 	if dsn == "" {
-		t.Fatal("WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests")
+		t.Skip("WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests")
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
