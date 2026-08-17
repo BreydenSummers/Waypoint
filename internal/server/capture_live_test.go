@@ -283,6 +283,41 @@ func doLiveCaptureRequest(t *testing.T, client *http.Client, url, token, request
 	}{status: resp.StatusCode, body: data}
 }
 
+func doLiveMCPRequest(t *testing.T, client *http.Client, url, token, requestID string, body map[string]any) struct {
+	status int
+	body   []byte
+} {
+	t.Helper()
+	data, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal body: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	req.Header.Set("MCP-Protocol-Version", "2025-03-26")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Request-ID", requestID)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("post mcp: %v", err)
+	}
+	defer resp.Body.Close()
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	return struct {
+		status int
+		body   []byte
+	}{status: resp.StatusCode, body: out}
+}
+
 func decodeBody(t *testing.T, body []byte, v any) {
 	t.Helper()
 	if err := json.Unmarshal(body, v); err != nil {

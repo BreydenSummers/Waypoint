@@ -192,18 +192,41 @@ func TestCaptureRoundTripGateG2Transcript(t *testing.T) {
 		"parsing": map[string]any{"status": "needs-plugin"},
 	}
 
-	unknownResp := doLiveCaptureRequest(t, ts.Client(), ts.URL+"/api/v1/mcp/capture", humanBToken, "req-g2-unknown", unknown, []byte("mystery\n"), []byte("warning\n"))
-	if unknownResp.status != http.StatusCreated {
+	unknownResp := doLiveMCPRequest(t, ts.Client(), ts.URL+"/mcp", humanBToken, "req-g2-unknown", map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "waypoint_ingest_capture",
+			"arguments": map[string]any{
+				"idempotencyKey": unknown["captureId"],
+				"envelope":       unknown,
+				"stdoutBase64":   "bXlzdGVyeQo=",
+				"stderrBase64":   "d2FybmluZwo=",
+			},
+		},
+	})
+	if unknownResp.status != http.StatusOK {
 		t.Fatalf("unknown capture status = %d, body=%s", unknownResp.status, unknownResp.body)
 	}
-	var unknownAck captureAckResponse
+	var unknownAck struct {
+		Result struct {
+			IsError           bool `json:"isError"`
+			StructuredContent struct {
+				Ack struct {
+					ActionID    string `json:"actionId"`
+					Idempotency string `json:"idempotency"`
+				} `json:"ack"`
+			} `json:"structuredContent"`
+		} `json:"result"`
+	}
 	decodeBody(t, unknownResp.body, &unknownAck)
-	if unknownAck.Idempotency != "created" || unknownAck.ActionID == "" {
-		t.Fatalf("unknown ack = %#v", unknownAck)
+	if unknownAck.Result.IsError || unknownAck.Result.StructuredContent.Ack.Idempotency != "created" || unknownAck.Result.StructuredContent.Ack.ActionID == "" {
+		t.Fatalf("unknown ack = %#v", unknownAck.Result)
 	}
 	unknownFrame := readSSEFrame(t, sseResp.Body)
 	assertGateSSEFrame(t, unknownFrame, gateFrameExpectation{
-		actionID:      unknownAck.ActionID,
+		actionID:      unknownAck.Result.StructuredContent.Ack.ActionID,
 		captureID:     unknown["captureId"].(string),
 		actorID:       humanBID,
 		actorKind:     "human",
@@ -215,16 +238,16 @@ func TestCaptureRoundTripGateG2Transcript(t *testing.T) {
 		sourceAgentID: "66666666-6666-4666-8666-666666666666",
 		command:       "/opt/tools/mystery-scan.exe",
 	})
-	assertActionSnapshot(t, ctx, db, unknownAck.ActionID, humanBID, "human", "manual", "needs-plugin", "", false)
-	assertActionNetworkFields(t, ctx, db, unknownAck.ActionID, gateActionExpectation{
+	assertActionSnapshot(t, ctx, db, unknownAck.Result.StructuredContent.Ack.ActionID, humanBID, "human", "manual", "needs-plugin", "", false)
+	assertActionNetworkFields(t, ctx, db, unknownAck.Result.StructuredContent.Ack.ActionID, gateActionExpectation{
 		sourceAgentID:   "66666666-6666-4666-8666-666666666666",
 		execHostIP:      "10.10.0.13",
 		egressIP:        "",
 		pivotType:       "socks_proxy",
 		wantDecisionCtx: false,
 	})
-	assertSingleResultAndObservation(t, ctx, db, unknownAck.ActionID, 0, 0)
-	assertEvidenceLinked(t, ctx, db, evidenceDir, unknownAck.ActionID, "mystery\n", "warning\n")
+	assertSingleResultAndObservation(t, ctx, db, unknownAck.Result.StructuredContent.Ack.ActionID, 0, 0)
+	assertEvidenceLinked(t, ctx, db, evidenceDir, unknownAck.Result.StructuredContent.Ack.ActionID, "mystery\n", "warning\n")
 
 	parserFailed := map[string]any{
 		"contractVersion": "1.0.0",
