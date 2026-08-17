@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir, lstat } from 'node:fs/promises';
 import { dirname, resolve, relative, posix as pathPosix } from 'node:path';
 
 import { buildReportHtml } from './report-renderer.mjs';
@@ -14,6 +14,43 @@ export function isSafeBundlePath(value) {
 
 export function bundleFilePath(root, bundlePath) {
   return resolve(root, ...bundlePath.split('/'));
+}
+
+async function readVerifiedBundleFile(root, bundlePath) {
+  const filePath = bundleFilePath(root, bundlePath);
+  const stats = await lstat(filePath);
+  if (stats.isSymbolicLink()) {
+    throw new Error(`symlink not allowed: ${bundlePath}`);
+  }
+  if (!stats.isFile()) {
+    throw new Error(`unsupported bundle entry: ${bundlePath}`);
+  }
+  return readFile(filePath);
+}
+
+async function readVerifiedJsonBundleFile(root, bundlePath) {
+  return JSON.parse((await readVerifiedBundleFile(root, bundlePath)).toString('utf8'));
+}
+
+async function collectBundleFiles(root, relativeRoot = '') {
+  const directory = relativeRoot ? bundleFilePath(root, relativeRoot) : resolve(root);
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    const entryPath = relativeRoot ? `${relativeRoot}/${entry.name}` : entry.name;
+    if (entry.isSymbolicLink()) {
+      throw new Error(`symlink not allowed: ${entryPath}`);
+    }
+    if (entry.isDirectory()) {
+      files.push(...await collectBundleFiles(root, entryPath));
+      continue;
+    }
+    if (!entry.isFile()) {
+      throw new Error(`unsupported bundle entry: ${entryPath}`);
+    }
+    files.push(entryPath);
+  }
+  return files;
 }
 
 export function sha256(bytes) {
@@ -36,11 +73,12 @@ export function deriveManifestFromSnapshot(snapshot) {
 export async function loadBundleManifest(root, manifestPath = 'bundle/metadata/export-manifest.json', snapshotPath = 'bundle/report/report-snapshot.json') {
   const manifestFile = bundleFilePath(root, manifestPath);
   try {
-    const manifest = await readJson(manifestFile);
+    const manifest = await readVerifiedJsonBundleFile(root, manifestPath);
     return { manifest, manifestPath, manifestFile, source: 'manifest' };
   } catch (err) {
+    if (err?.code !== 'ENOENT') throw err;
     const snapshotFile = bundleFilePath(root, snapshotPath);
-    const snapshot = await readJson(snapshotFile);
+    const snapshot = await readVerifiedJsonBundleFile(root, snapshotPath);
     return { manifest: deriveManifestFromSnapshot(snapshot), manifestPath: snapshotPath, manifestFile: snapshotFile, snapshot, source: 'snapshot' };
   }
 }
@@ -79,6 +117,9 @@ function validateBundleManifest(manifest) {
     if (seen.has(payload.path)) {
       throw new Error(`duplicate bundle path: ${payload.path}`);
     }
+    if (!Number.isSafeInteger(payload.size) || payload.size < 0) {
+      throw new Error(`payload size out of range for ${payload.path}`);
+    }
     seen.add(payload.path);
   }
 }
@@ -91,8 +132,7 @@ export async function computeArchiveHash(root, manifest, options = {}) {
   }
   for (const payload of canonicalizePayloadList(manifest.payloads ?? [])) {
     if (excluded.has(payload.path)) continue;
-    const filePath = bundleFilePath(root, payload.path);
-    const bytes = await readFile(filePath);
+    const bytes = await readVerifiedBundleFile(root, payload.path);
     hasher.update(payload.path);
     hasher.update('\0');
     hasher.update(bytes);
@@ -122,8 +162,7 @@ export async function verifyBundle(root, options = {}) {
     if (signal?.aborted) throw bundleAbortError(signal.reason);
     bundleProgress(onProgress, { phase: 'payload', index: index + 1, total: payloads.length, path: payload.path });
 
-    const filePath = bundleFilePath(bundleRoot, payload.path);
-    const bytes = await readFile(filePath);
+    const bytes = await readVerifiedBundleFile(bundleRoot, payload.path);
     if (Number(payload.size) !== bytes.length) {
       throw new Error(`size mismatch for ${payload.path}`);
     }
@@ -138,6 +177,15 @@ export async function verifyBundle(root, options = {}) {
     manifestBytes,
     excludedPaths: new Set([manifestPath, snapshotPath, sidecarPath]),
   });
+
+  const bundleTreeRoot = manifestPath.includes('/') ? manifestPath.slice(0, manifestPath.indexOf('/')) : '';
+  const bundleFiles = new Set(await collectBundleFiles(bundleRoot, bundleTreeRoot));
+  const expectedFiles = new Set([manifestPath, sidecarPath, ...manifest.payloads.map((payload) => payload.path)]);
+  for (const filePath of bundleFiles) {
+    if (!expectedFiles.has(filePath)) {
+      throw new Error(`unexpected bundle file: ${filePath}`);
+    }
+  }
 
   if (checkSidecar) {
     const sidecarFile = bundleFilePath(bundleRoot, sidecarPath);
@@ -211,8 +259,7 @@ export const exportBundle = finalizeBundle;
 export async function regenerateReport(root, outputPath, options = {}) {
   const bundleRoot = resolve(root ?? '.');
   const snapshotPath = options.snapshotPath ?? 'bundle/report/report-snapshot.json';
-  const snapshotFile = bundleFilePath(bundleRoot, snapshotPath);
-  const snapshot = await readJson(snapshotFile);
+  const snapshot = await readVerifiedJsonBundleFile(bundleRoot, snapshotPath);
   await verifyBundle(bundleRoot, options);
 
   const html = buildReportHtml(snapshot);
