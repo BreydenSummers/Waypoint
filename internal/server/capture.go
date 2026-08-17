@@ -1002,14 +1002,14 @@ func successfulAuthAlert(extracted map[string]any) (notableAlertCandidate, bool)
 	user := notableString(match, "user", "username", "principal", "account")
 	target := notableString(match, "target", "host", "service", "endpoint")
 	method := notableString(match, "method", "protocol", "mechanism")
-	dedupeKey := strings.ToLower(strings.TrimSpace(strings.Join([]string{"successful-authentication", user, target, method}, "|")))
+	dedupeKey := strings.ToLower(strings.TrimSpace(strings.Join([]string{"successful-auth", user, target, method}, "|")))
 	data := map[string]any{
-		"ruleId":    "successful-authentication",
+		"ruleId":    "successful-auth",
 		"ruleTitle": "Successful authentication",
 		"dedupeKey": dedupeKey,
 		"match":     match,
 	}
-	return notableAlertCandidate{RuleID: "successful-authentication", Title: "Successful authentication", DedupeKey: dedupeKey, Data: data}, true
+	return notableAlertCandidate{RuleID: "successful-auth", Title: "Successful authentication", DedupeKey: dedupeKey, Data: data}, true
 }
 
 func reachableSegmentAlert(extracted map[string]any, parsedEntities []captureParsedEntity, entities []map[string]any) (notableAlertCandidate, bool) {
@@ -1042,17 +1042,21 @@ func reachableSegmentAlert(extracted map[string]any, parsedEntities []capturePar
 		return notableAlertCandidate{}, false
 	}
 	segment := notableString(match, "segment", "cidr", "subnet", "network")
-	dedupeKey := strings.ToLower(strings.TrimSpace(strings.Join([]string{"first-newly-reachable-segment", segment}, "|")))
+	dedupeKey := strings.ToLower(strings.TrimSpace(strings.Join([]string{"first-new-segment", segment}, "|")))
 	data := map[string]any{
-		"ruleId":    "first-newly-reachable-segment",
+		"ruleId":    "first-new-segment",
 		"ruleTitle": "First newly reachable segment",
 		"dedupeKey": dedupeKey,
 		"match":     match,
 	}
-	return notableAlertCandidate{RuleID: "first-newly-reachable-segment", Title: "First newly reachable segment", DedupeKey: dedupeKey, Data: data}, true
+	return notableAlertCandidate{RuleID: "first-new-segment", Title: "First newly reachable segment", DedupeKey: dedupeKey, Data: data}, true
 }
 
 func appendNotableAlerts(ctx context.Context, tx *sql.Tx, engagementID, requestID, correlationID, actionID string, acceptedEventID int64, actor actorRecord, candidates []notableAlertCandidate) error {
+	alertActor, err := notableAlertActor(ctx, tx, engagementID)
+	if err != nil {
+		return err
+	}
 	for _, candidate := range candidates {
 		if candidate.DedupeKey == "" {
 			continue
@@ -1079,7 +1083,7 @@ func appendNotableAlerts(ctx context.Context, tx *sql.Tx, engagementID, requestI
 		if _, err := dbutil.AppendAuditEvent(ctx, tx, dbutil.AuditEventInput{
 			EngagementID:    engagementID,
 			Type:            "alert.notable",
-			Actor:           auditActorSnapshot(actor),
+			Actor:           auditActorSnapshot(alertActor),
 			Origin:          dbutil.AuditOrigin{Kind: "service", Service: "notable-alerts"},
 			Subject:         dbutil.AuditSubject{Type: "action", ID: actionID, Revision: 1},
 			RequestID:       requestID,
@@ -1092,6 +1096,19 @@ func appendNotableAlerts(ctx context.Context, tx *sql.Tx, engagementID, requestI
 		}
 	}
 	return nil
+}
+
+func notableAlertActor(ctx context.Context, tx *sql.Tx, engagementID string) (actorRecord, error) {
+	var actor actorRecord
+	if err := tx.QueryRowContext(ctx, `
+		INSERT INTO actor (engagement_id, kind, handle, token_hash, role)
+		VALUES ($1, 'human', 'notable-alerts', $2, 'operator')
+		ON CONFLICT (engagement_id, handle) DO UPDATE SET handle = EXCLUDED.handle
+		RETURNING id, engagement_id, kind, handle, role, COALESCE(agent_name,''), COALESCE(model,''), COALESCE(version,''), COALESCE(authorized_by::text,''), token_hash
+	`, engagementID, sha256Hex("waypoint:notable-alerts:"+engagementID)).Scan(&actor.ID, &actor.EngagementID, &actor.Kind, &actor.Handle, &actor.Role, &actor.AgentName, &actor.Model, &actor.Version, &actor.AuthorizedBy, &actor.TokenHash); err != nil {
+		return actor, err
+	}
+	return actor, nil
 }
 
 func findNotableMap(v any, match func(map[string]any) bool) (map[string]any, bool) {
