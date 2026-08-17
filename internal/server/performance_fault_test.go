@@ -3,7 +3,9 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -170,19 +172,25 @@ func TestReadCaptureRequestRejectsInterruptedMultipartUpload(t *testing.T) {
 	}
 }
 
-func TestReadCaptureRequestRejectsOversizedEvidenceBudget(t *testing.T) {
+func TestCaptureEnvelopeLimitMatchesSchemaCeiling(t *testing.T) {
+	if maxCaptureEnvelopeBytes != 1<<20 {
+		t.Fatalf("maxCaptureEnvelopeBytes = %d, want 1048576", maxCaptureEnvelopeBytes)
+	}
+	if maxCaptureEvidenceBytes != 10<<30 {
+		t.Fatalf("maxCaptureEvidenceBytes = %d, want 10737418240", maxCaptureEvidenceBytes)
+	}
+}
+
+func TestReadCaptureRequestRejectsOversizedEnvelope(t *testing.T) {
 	t.Setenv("WAYPOINT_EVIDENCE_DIR", t.TempDir())
 	var body bytes.Buffer
 	mw := multipart.NewWriter(&body)
-	if err := mw.WriteField("envelope", `{"captureId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1","evidence":{"stdout":{"mediaType":"text/plain","byteLength":33554432,"sha256":"<ignored>"},"stderr":{"mediaType":"text/plain","byteLength":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}}}`); err != nil {
+	payload := `{"captureId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1","evidence":{"stdout":{"mediaType":"text/plain","byteLength":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},"stderr":{"mediaType":"text/plain","byteLength":0,"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}}}` + strings.Repeat(" ", int(maxCaptureEnvelopeBytes))
+	if err := mw.WriteField("envelope", payload); err != nil {
 		t.Fatalf("write envelope: %v", err)
 	}
-	stdout, err := mw.CreateFormField("stdout")
-	if err != nil {
-		t.Fatalf("create stdout field: %v", err)
-	}
-	if _, err := io.CopyN(stdout, zeroReader{}, 33<<20); err != nil {
-		t.Fatalf("seed oversized stdout: %v", err)
+	if err := mw.WriteField("stdout", ""); err != nil {
+		t.Fatalf("write stdout: %v", err)
 	}
 	if err := mw.WriteField("stderr", ""); err != nil {
 		t.Fatalf("write stderr: %v", err)
@@ -195,7 +203,61 @@ func TestReadCaptureRequestRejectsOversizedEvidenceBudget(t *testing.T) {
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 
 	if _, err := readCaptureRequest(req, newEvidenceStore()); err == nil {
-		t.Fatal("expected oversized evidence upload to be rejected")
+		t.Fatal("expected oversized envelope upload to be rejected")
+	}
+}
+
+func TestCopyEvidenceStreamRejectsOverLimit(t *testing.T) {
+	var dst bytes.Buffer
+	hasher := sha256.New()
+	written, err := copyEvidenceStream(context.Background(), &dst, hasher, io.LimitReader(zeroReader{}, 2), 1, "/evidence/stdout")
+	if err == nil {
+		t.Fatal("expected oversized evidence stream to be rejected")
+	}
+	if written != 0 {
+		t.Fatalf("written = %d, want 0", written)
+	}
+}
+
+func TestUpsertEvidenceRejectsImmutableMetadataChanges(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "99999999-9999-4999-8999-999999999998"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+
+	sha := hashHex("same bytes")
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	if _, err := upsertEvidence(ctx, tx, engagementID, "stdout", "text/plain", sha, int64(len("same bytes"))); err != nil {
+		t.Fatalf("seed evidence: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit seed evidence: %v", err)
+	}
+
+	tx, err = db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin conflict tx: %v", err)
+	}
+	defer tx.Rollback()
+	if _, err := upsertEvidence(ctx, tx, engagementID, "stdout", "application/octet-stream", sha, int64(len("same bytes"))); err == nil {
+		t.Fatal("expected immutable evidence metadata conflict")
+	} else {
+		var pb captureRequestProblem
+		if !errors.As(err, &pb) || pb.problem.Code != "evidence_metadata_conflict" {
+			t.Fatalf("unexpected error: %#v", err)
+		}
 	}
 }
 

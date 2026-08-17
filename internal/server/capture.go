@@ -177,7 +177,8 @@ type captureRequest struct {
 	Stderr   captureEvidenceBytes
 }
 
-const maxCaptureEvidenceBytes int64 = 32 << 20
+const maxCaptureEnvelopeBytes int64 = 1 << 20
+const maxCaptureEvidenceBytes int64 = 10 << 30
 
 type captureEvidenceBytes struct {
 	digest     string
@@ -374,11 +375,21 @@ func captureHandler(db *sql.DB, store *evidenceStore, originKind string) http.Ha
 
 		stdoutID, err := upsertEvidence(r.Context(), tx, actor.EngagementID, "stdout", req.Envelope.Evidence.Stdout.MediaType, req.Envelope.Evidence.Stdout.SHA256, req.Envelope.Evidence.Stdout.ByteLength)
 		if err != nil {
+			if pb, ok := err.(captureRequestProblem); ok {
+				pb.problem.RequestID = reqID
+				writeProblem(w, pb.problem)
+				return
+			}
 			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "persist stdout evidence failed"})
 			return
 		}
 		stderrID, err := upsertEvidence(r.Context(), tx, actor.EngagementID, "stderr", req.Envelope.Evidence.Stderr.MediaType, req.Envelope.Evidence.Stderr.SHA256, req.Envelope.Evidence.Stderr.ByteLength)
 		if err != nil {
+			if pb, ok := err.(captureRequestProblem); ok {
+				pb.problem.RequestID = reqID
+				writeProblem(w, pb.problem)
+				return
+			}
 			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "persist stderr evidence failed"})
 			return
 		}
@@ -516,7 +527,7 @@ func readCaptureRequest(r *http.Request, store *evidenceStore) (captureRequest, 
 		seen[name] = true
 		switch name {
 		case "envelope":
-			data, err := io.ReadAll(part)
+			data, err := readLimitedMultipartPart(part, maxCaptureEnvelopeBytes, "/envelope")
 			_ = part.Close()
 			if err != nil {
 				return out, err
@@ -865,8 +876,13 @@ func upsertEvidence(ctx context.Context, tx *sql.Tx, engagementID, kind, mediaTy
 		if !errors.Is(err, sql.ErrNoRows) {
 			return "", err
 		}
-		if err := tx.QueryRowContext(ctx, `SELECT id FROM evidence WHERE engagement_id = $1 AND kind = $2 AND sha256 = $3`, engagementID, kind, sha).Scan(&id); err != nil {
+		var existingByteLength int64
+		var existingMediaType string
+		if err := tx.QueryRowContext(ctx, `SELECT id, byte_length, media_type FROM evidence WHERE engagement_id = $1 AND kind = $2 AND sha256 = $3`, engagementID, kind, sha).Scan(&id, &existingByteLength, &existingMediaType); err != nil {
 			return "", err
+		}
+		if existingByteLength != byteLength || existingMediaType != mediaType {
+			return "", captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "evidence_metadata_conflict", Retryable: false, Detail: "evidence metadata changed for an existing content-addressed blob."}}
 		}
 	}
 	return id, nil
