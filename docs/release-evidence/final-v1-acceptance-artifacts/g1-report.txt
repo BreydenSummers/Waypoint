@@ -1,0 +1,7 @@
+COMMAND: python3 scripts/g1-foundation-report.py --output /tmp/waypoint-g1-final.md
+
+WAYPOINT_TEST_PG_DSN is required to generate the G1 report
+
+EXIT_CODE: 2
+STARTED_AT: 2026-08-17T09:21:28Z
+ENDED_AT: 2026-08-17T09:21:28Z

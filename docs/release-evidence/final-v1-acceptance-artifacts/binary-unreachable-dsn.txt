@@ -1,0 +1,7 @@
+COMMAND: env WAYPOINT_ADDR=127.0.0.1:18081 WAYPOINT_DB_DSN=postgres://waypoint:waypoint@127.0.0.1:1/waypoint\?sslmode=disable ./bin/waypoint
+
+2026/08/17 03:23:22 ping postgres: dial tcp 127.0.0.1:1: connect: connection refused
+
+EXIT_CODE: 1
+STARTED_AT: 2026-08-17T09:23:22Z
+ENDED_AT: 2026-08-17T09:23:22Z

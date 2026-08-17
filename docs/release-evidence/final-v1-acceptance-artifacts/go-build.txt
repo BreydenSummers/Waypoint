@@ -1,0 +1,6 @@
+COMMAND: go build -o /tmp/waypoint-final-g5-bin/waypoint ./cmd/waypoint
+
+
+EXIT_CODE: 0
+STARTED_AT: 2026-08-17T09:21:26Z
+ENDED_AT: 2026-08-17T09:21:27Z

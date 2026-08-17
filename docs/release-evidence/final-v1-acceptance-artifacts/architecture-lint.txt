@@ -1,0 +1,7 @@
+COMMAND: python3 scripts/lint-architecture.py
+
+architecture lint passed (9 ADRs, 9 scope rules, 159 claim-surface files)
+
+EXIT_CODE: 0
+STARTED_AT: 2026-08-17T09:26:38Z
+ENDED_AT: 2026-08-17T09:26:39Z

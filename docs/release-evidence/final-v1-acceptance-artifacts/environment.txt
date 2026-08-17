@@ -1,0 +1,30 @@
+run_at=2026-08-17T09:20:54Z
+pwd=/workspace
+Linux waypoint 6.12.94+deb13-cloud-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.94-1 (2026-06-20) x86_64 GNU/Linux
+uid=1000(breyden) gid=1000(breyden) groups=1000(breyden),65534(nogroup)
+go version go1.24.4 linux/amd64
+v22.23.2
+10.9.8
+Python 3.13.5
+Docker version 26.1.5+dfsg1, build a72d7cd
+Docker Compose version 2.26.1-4
+WAYPOINT_TEST_PG_DSN=unset
+WAYPOINT_DB_DSN=unset
+psql=absent
+postgres=absent
+initdb=absent
+pg_dump=absent
+pg_restore=absent
+pg_isready=absent
+google-chrome=absent
+chromium=absent
+chromium-browser=absent
+firefox=absent
+microsoft-edge=absent
+msedge=absent
+safari=absent
+qemu-system-x86_64=/usr/bin/qemu-system-x86_64
+node_module_playwright=absent
+node_module_puppeteer=absent
+node_module_selenium-webdriver=absent
+node_module_axe-core=absent

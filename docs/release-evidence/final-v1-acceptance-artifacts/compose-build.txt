@@ -1,0 +1,7 @@
+COMMAND: docker compose -f compose.yml build --no-cache
+
+Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+
+EXIT_CODE: 1
+STARTED_AT: 2026-08-17T09:21:27Z
+ENDED_AT: 2026-08-17T09:21:27Z

@@ -1,0 +1,75 @@
+COMMAND: npm --prefix web test
+
+
+> test
+> node --test scripts/report-renderer.test.mjs scripts/bundle-tools.test.mjs scripts/bundle-export.test.mjs scripts/g3-workspaces.test.mjs && node --no-warnings scripts/check.mjs
+
+TAP version 13
+# Subtest: finalizeBundle preflight produces no files and emits progress
+ok 1 - finalizeBundle preflight produces no files and emits progress
+  ---
+  duration_ms: 48.746239
+  type: 'test'
+  ...
+# Subtest: finalizeBundle can recover after cancellation and verifies the archive hash
+ok 2 - finalizeBundle can recover after cancellation and verifies the archive hash
+  ---
+  duration_ms: 46.990727
+  type: 'test'
+  ...
+# Subtest: export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
+ok 3 - export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
+  ---
+  duration_ms: 87.236496
+  type: 'test'
+  ...
+# Subtest: scripts/bundle-tools.test.mjs
+ok 2 - scripts/bundle-tools.test.mjs
+  ---
+  duration_ms: 453.16094
+  type: 'test'
+  ...
+# Subtest: G3 shell keeps recon/attacks/findings non-linear and accessible
+ok 5 - G3 shell keeps recon/attacks/findings non-linear and accessible
+  ---
+  duration_ms: 7.759272
+  type: 'test'
+  ...
+# Subtest: G3 styling retains artifact surfaces in light, dark, desktop, and mobile variants
+ok 6 - G3 styling retains artifact surfaces in light, dark, desktop, and mobile variants
+  ---
+  duration_ms: 4.574682
+  type: 'test'
+  ...
+# Subtest: G3 performance fixture keeps the 100k-action budget focused and bounded
+ok 7 - G3 performance fixture keeps the 100k-action budget focused and bounded
+  ---
+  duration_ms: 2.606595
+  type: 'test'
+  ...
+# Subtest: web build output is reproducible and matches the embedded assets
+ok 8 - web build output is reproducible and matches the embedded assets
+  ---
+  duration_ms: 17.643283
+  type: 'test'
+  ...
+# Subtest: scripts/report-renderer.test.mjs
+ok 4 - scripts/report-renderer.test.mjs
+  ---
+  duration_ms: 70.097292
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 473.168504
+web skeleton, bundle manifest, and report fixture check passed
+
+EXIT_CODE: 0
+STARTED_AT: 2026-08-17T09:21:25Z
+ENDED_AT: 2026-08-17T09:21:26Z

@@ -1,0 +1,100 @@
+COMMAND: focused final acceptance source and artifact inventory
+
+## Core-side collector/platform artifact inventory
+./AGENTS.md
+
+## Export implementation markers
+651:func (m *exportManager) preflight(job exportJobRecord) error {
+694:	dumpBytes, err := buildExportDump(reportCtx, tx, job.EngagementID, snapshotID, cutoff)
+702:	evidenceBytes, err := buildExportEvidenceTar(reportCtx, tx, m.store, job.EngagementID)
+838:	archiveSHA, archiveLen, err := computeExportArchiveHash(bundlePayloads, manifestBytes, bundleDir)
+1286:func buildExportDump(ctx context.Context, db queryer, engagementID, snapshotID, cutoff string) ([]byte, error) {
+1303:func buildExportEvidenceTar(ctx context.Context, db queryer, store *evidenceStore, engagementID string) ([]byte, error) {
+1348:func computeExportArchiveHash(payloads []reportBundlePayload, manifestBytes []byte, bundleDir string) (string, int64, error) {
+1402:	archive, _, err := computeExportArchiveHash(payloads, manifest, bundleDir)
+
+## Digest-as-bearer branch
+func lookupActor(ctx context.Context, db queryer, token string) (actorRecord, error) {
+	cands := []string{sha256Hex(token)}
+	if isHexSHA256(token) {
+		cands = append([]string{strings.ToLower(token)}, cands...)
+	}
+	var a actorRecord
+	err := db.QueryRowContext(ctx, `SELECT id, engagement_id, kind, handle, role, COALESCE(agent_name,''), COALESCE(model,''), COALESCE(version,''), COALESCE(authorized_by::text,''), token_hash FROM actor WHERE token_hash = ANY($1) AND revoked_at IS NULL LIMIT 1`, stringArray(cands)).Scan(&a.ID, &a.EngagementID, &a.Kind, &a.Handle, &a.Role, &a.AgentName, &a.Model, &a.Version, &a.AuthorizedBy, &a.TokenHash)
+	return a, err
+}
+
+## Egress startup/config implementation search (empty is a defect)
+
+## Browser-local Summit authority markers
+  const startSummitExport = async () => {
+    exportAbortRef.current?.abort();
+    const controller = new AbortController();
+    exportAbortRef.current = controller;
+    setSummitReceipt(null);
+    setSummitError('');
+    setSummitStatus('preflight');
+    setSummitProgress(10);
+    setSummitStep('Freezing the live report snapshot.');
+    try {
+      const raw = reportRaw || (await apiText(reportJsonPath(engagementId), token, controller.signal));
+      const parsed = reportSnapshot || JSON.parse(raw);
+      assertReportSnapshot(parsed);
+      setSummitProgress(28);
+      setSummitStep('Streaming the PDF artifact.');
+      setSummitStatus('exporting');
+      const response = await fetch(reportPdfPath(engagementId), { headers: authHeaders(token, newRequestId()), cache: 'no-store', signal: controller.signal });
+      if (!response.ok) throw new Error(await readProblem(response));
+      const pdfBytes = await readStreamBytes(response, controller.signal, (loaded, total) => {
+        const ratio = total ? loaded / total : 0.5;
+        setSummitProgress(Math.min(84, 30 + Math.round(ratio * 54)));
+        setSummitStep(`Streaming the PDF artifact (${loaded.toLocaleString()} bytes).`);
+      });
+      if (pdfBytes[0] !== 0x25 || pdfBytes[1] !== 0x50 || pdfBytes[2] !== 0x44 || pdfBytes[3] !== 0x46) {
+        throw new Error('report PDF did not start with a PDF signature');
+      }
+      setSummitStatus('verifying');
+      setSummitProgress(90);
+      setSummitStep('Verifying the hash manifest and signature hook.');
+      const receipt = {
+        verifiedAt: new Date().toISOString(),
+        snapshotHash: await sha256Hex(raw),
+        pdfSha256: await sha256Hex(pdfBytes),
+        manifestHash: 'hash verified, not signed',
+        note: 'Hash verified, not signed. The signature hook remains empty.',
+      };
+      setSummitReceipt(receipt);
+      setSummitStatus('verified');
+      setSummitProgress(100);
+      setSummitStep('Receipt verified and teardown is now guarded.');
+    } catch (error) {
+      if (controller.signal.aborted) {
+        setSummitStatus('canceled');
+        setSummitProgress(0);
+        setSummitStep('Export canceled before teardown was armed.');
+        setSummitError('Export canceled. The live trail stayed intact.');
+      } else {
+        setSummitStatus('failed');
+        setSummitProgress(0);
+        setSummitStep('Recovery needed before the next export can run.');
+        setSummitError(error instanceof Error ? error.message : 'Export verification failed');
+      }
+    } finally {
+      exportAbortRef.current = null;
+
+## Security control implementation search
+
+## Report snapshot claim-gap loading search
+45:	KnownCaptureGaps []string            `json:"knownCaptureGaps"`
+124:	EgressPublicIP   sql.NullString
+203:		snapshot, err := buildReportSnapshot(ctx, db, store, engagementID)
+232:func buildReportSnapshot(ctx context.Context, db queryer, store *evidenceStore, engagementID string) (reportSnapshot, error) {
+316:		KnownCaptureGaps: gaps,
+348:		if err := rows.Scan(&row.ID, &row.StartedAt, &row.EndedAt, &row.Command, &row.ArgvJSON, &row.TargetKind, &row.TargetValue, &row.ExecHostIP, &row.EgressPublicIP, &row.InitiatedBy, &row.ParseStatus, &row.ActorHandle, &row.ActorKind, &row.ActorRole, &row.AgentName, &row.Model, &row.Version, &row.AuthorizedBy, &row.StdoutStorageKey, &row.StderrStorageKey, &row.StdoutKind, &row.StderrKind, &row.StdoutSHA256, &row.StderrSHA256); err != nil {
+402:			Egress:      egressDisplay(action.EgressPublicIP),
+427:		if v := egressDisplay(action.EgressPublicIP); v != "not recorded" {
+446:		if !action.EgressPublicIP.Valid || strings.TrimSpace(action.EgressPublicIP.String) == "" {
+597:	if egress := egressDisplay(action.EgressPublicIP); egress != "not recorded" {
+815:      <ul>{{range .KnownCaptureGaps}}<li>{{.}}</li>{{else}}<li>None recorded.</li>{{end}}</ul>
+
+## Operator operations/boundary document candidates
