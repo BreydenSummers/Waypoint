@@ -40,12 +40,40 @@ type reportSnapshot struct {
 	Methodology      []string            `json:"methodology"`
 	Findings         []reportFinding     `json:"findings"`
 	Evidence         []reportEvidence    `json:"evidence"`
+	Bundle           *reportBundle       `json:"bundle,omitempty"`
 	Attribution      []reportAttribution `json:"attribution"`
 	KnownCaptureGaps []string            `json:"knownCaptureGaps"`
 }
 
+type reportBundle struct {
+	Payloads           []reportBundlePayload  `json:"payloads"`
+	OuterArchiveSHA256 string                 `json:"outerArchiveSha256"`
+	Signatures         reportBundleSignatures `json:"signatures"`
+	Restore            reportBundleRestore    `json:"restore"`
+}
+
+type reportBundlePayload struct {
+	Path       string `json:"path"`
+	Size       int64  `json:"size"`
+	ByteLength int64  `json:"byteLength,omitempty"`
+	SHA256     string `json:"sha256"`
+	Kind       string `json:"kind,omitempty"`
+}
+
+type reportBundleSignatures struct {
+	Version string   `json:"version"`
+	Items   []string `json:"items"`
+}
+
+type reportBundleRestore struct {
+	Tools          []string `json:"tools"`
+	CleanRoom      []string `json:"cleanRoom"`
+	MaliciousPaths []string `json:"maliciousPaths"`
+}
+
 type reportFinding struct {
 	Title       string   `json:"title"`
+	Summary     string   `json:"summary,omitempty"`
 	Severity    string   `json:"severity"`
 	Evidence    []string `json:"evidence"`
 	Remediation string   `json:"remediation"`
@@ -56,6 +84,7 @@ type reportFinding struct {
 
 type reportEvidence struct {
 	Label       string `json:"label"`
+	Source      string `json:"source,omitempty"`
 	Command     string `json:"command"`
 	Target      string `json:"target"`
 	Actor       string `json:"actor"`
@@ -63,8 +92,10 @@ type reportEvidence struct {
 	Egress      string `json:"egress"`
 	InitiatedBy string `json:"initiatedBy"`
 	ParseStatus string `json:"parseStatus"`
-	RawStdout   string `json:"rawStdout"`
-	RawStderr   string `json:"rawStderr"`
+	RawStdout   string `json:"rawStdout,omitempty"`
+	RawStderr   string `json:"rawStderr,omitempty"`
+	RawSnippet  string `json:"rawSnippet,omitempty"`
+	Note        string `json:"note,omitempty"`
 	Attribution string `json:"attribution"`
 }
 
@@ -198,7 +229,7 @@ func reportHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 	}
 }
 
-func buildReportSnapshot(ctx context.Context, db *sql.DB, store *evidenceStore, engagementID string) (reportSnapshot, error) {
+func buildReportSnapshot(ctx context.Context, db queryer, store *evidenceStore, engagementID string) (reportSnapshot, error) {
 	engagement, err := loadReportEngagement(ctx, db, engagementID)
 	if err != nil {
 		return reportSnapshot{}, err
@@ -233,6 +264,7 @@ func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow,
 		labels := labelsForActionIDs(finding.EvidenceJSON, actionLabels)
 		findingCards = append(findingCards, reportFinding{
 			Title:       finding.Title,
+			Summary:     finding.Title,
 			Severity:    titleWord(strings.ToLower(strings.TrimSpace(finding.Severity))),
 			Evidence:    labels,
 			Remediation: strings.TrimSpace(finding.Remediation),
@@ -279,12 +311,13 @@ func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow,
 		Methodology:      reportMethodology(),
 		Findings:         findingCards,
 		Evidence:         evidenceCards,
+		Bundle:           nil,
 		Attribution:      attribution,
 		KnownCaptureGaps: gaps,
 	}, nil
 }
 
-func loadReportEngagement(ctx context.Context, db *sql.DB, engagementID string) (reportEngagementRow, error) {
+func loadReportEngagement(ctx context.Context, db queryer, engagementID string) (reportEngagementRow, error) {
 	var row reportEngagementRow
 	if err := db.QueryRowContext(ctx, `SELECT id, name, client, scope, updated_at FROM engagement WHERE id = $1`, engagementID).Scan(&row.ID, &row.Name, &row.Client, &row.Scope, &row.UpdatedAt); err != nil {
 		return reportEngagementRow{}, err
@@ -292,7 +325,7 @@ func loadReportEngagement(ctx context.Context, db *sql.DB, engagementID string) 
 	return row, nil
 }
 
-func loadReportActions(ctx context.Context, db *sql.DB, engagementID string) ([]reportActionRow, error) {
+func loadReportActions(ctx context.Context, db queryer, engagementID string) ([]reportActionRow, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT a.id, a.started_at, a.ended_at, a.command, COALESCE(a.argv::text, '[]'), a.target_kind, a.target_value, a.exec_host_ip::text,
 		       COALESCE(a.egress_public_ip::text, ''), a.initiated_by::text, a.parse_status::text,
@@ -320,7 +353,7 @@ func loadReportActions(ctx context.Context, db *sql.DB, engagementID string) ([]
 	return out, rows.Err()
 }
 
-func loadReportFindings(ctx context.Context, db *sql.DB, engagementID string) ([]reportFindingRow, error) {
+func loadReportFindings(ctx context.Context, db queryer, engagementID string) ([]reportFindingRow, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT f.id, f.title, f.severity::text, COALESCE(array_to_json(f.affected_entity_ids)::text, '[]'), COALESCE(array_to_json(f.evidence_action_ids)::text, '[]'), f.remediation, f.status, COALESCE(f.promoted_by::text, ''), COALESCE(actor.handle, ''), f.promoted_at, f.updated_at
 		FROM finding f
@@ -351,8 +384,17 @@ func buildEvidenceCards(ctx context.Context, actions []reportActionRow, labels m
 		if action.TargetKind != "" {
 			target = strings.TrimSpace(action.TargetKind + ": " + target)
 		}
+		rawSnippet := stdout
+		if rawSnippet == "" {
+			rawSnippet = stderr
+		}
+		note := "Capture snapshot preserved as text."
+		if action.ParseStatus == "needs-plugin" || action.ParseStatus == "raw" {
+			note = "Unknown tools remain raw-first; the report keeps evidence instead of dropping it."
+		}
 		out = append(out, reportEvidence{
 			Label:       labels[action.ID],
+			Source:      commandLine(action.Command, action.ArgvJSON),
 			Command:     commandLine(action.Command, action.ArgvJSON),
 			Target:      target,
 			Actor:       actorDisplay(action),
@@ -362,6 +404,8 @@ func buildEvidenceCards(ctx context.Context, actions []reportActionRow, labels m
 			ParseStatus: action.ParseStatus,
 			RawStdout:   stdout,
 			RawStderr:   stderr,
+			RawSnippet:  rawSnippet,
+			Note:        note,
 			Attribution: attributionLine(action),
 		})
 	}
