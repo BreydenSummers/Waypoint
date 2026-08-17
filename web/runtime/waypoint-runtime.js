@@ -1,7 +1,3 @@
-const sourceHash = "b5381e847a4afa7fe2c95af8244899e50a0065ba1db696fad8dd370945df8e60";
-const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
-void sourceHash;
-void sourceStrings;
 const apiVersion = '1.0.0';
 // aria-current="step" keeps the active waypoint exposed to assistive tech.
 const defaultEngagementId = 'demo';

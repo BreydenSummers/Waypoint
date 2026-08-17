@@ -25,14 +25,14 @@ await test('G3 shell keeps recon/attacks/findings non-linear and accessible', as
   assert.match(app, /Guide's note/);
   assert.match(app, /Journey log/);
   assert.match(app, /No reviewed notes match this search\./);
-  assert.match(app, /setActiveId\(guidePhase\)/);
+  assert.match(app, /navigateToPhase\(engagementId, guidePhase\)/);
 
   assert.match(distBundle, /Journey log/);
   assert.match(distBundle, /guide-note-list/);
   assert.match(distBundle, /guide-note-empty/);
   assert.match(distBundle, /Notable alerts/);
-  assert.match(distBundle, /Optimistic conflict/);
-  assert.match(distBundle, /capture\.conflict/);
+  assert.match(distBundle, /Alerts arrive from the live SSE stream/);
+  assert.match(distBundle, /No notable alerts yet/);
   assert.match(distBundle, /waypoint-hitbox/);
   assert.match(distBundle, /aria-current="step"/);
   assert.match(distBundle, /Reviewed guide notes/);
