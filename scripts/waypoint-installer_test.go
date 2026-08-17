@@ -35,6 +35,7 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 	mustMkdirAll(t, stubDir)
 	stubLog := filepath.Join(root, "installer-calls.log")
 	mustWriteExecutable(t, filepath.Join(stubDir, "systemctl"), "#!/bin/sh\necho systemctl \"$*\" >> \"$INSTALLER_STUB_LOG\"\ncase \"$1\" in\n  is-active) echo active ;;\nesac\nexit 0\n")
+	mustWriteExecutable(t, filepath.Join(stubDir, "sudo"), "#!/bin/sh\necho sudo \"$*\" >> \"$INSTALLER_STUB_LOG\"\nwhile [ $# -gt 0 ]; do\n  case \"$1\" in\n    -n|-H|-E) shift ;;\n    -u) shift 2 ;;\n    --) shift; break ;;\n    *) break ;;\n  esac\ndone\nexec \"$@\"\n")
 	mustWriteExecutable(t, filepath.Join(stubDir, "psql"), "#!/bin/sh\necho psql \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
 	mustWriteExecutable(t, filepath.Join(stubDir, "pg_isready"), "#!/bin/sh\necho pg_isready \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
 
@@ -57,6 +58,11 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 		"WAYPOINT_INSTALL_ROOT=" + installRoot,
 		"WAYPOINT_STATE_ROOT=" + stateRoot,
 		"WAYPOINT_LOG_ROOT=" + logRoot,
+		"WAYPOINT_TLS_CERT_FILE=/etc/waypoint/tls/server.crt",
+		"WAYPOINT_TLS_KEY_FILE=/etc/waypoint/tls/server.key",
+		"WAYPOINT_EGRESS_MODE=auto",
+		"WAYPOINT_EGRESS_ENDPOINT=https://egress.waypoint.example/resolve",
+		"WAYPOINT_EGRESS_ADDRESS=198.51.100.10",
 		"",
 	}, "\n"))
 
@@ -119,6 +125,26 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 	if _, err := os.Stat(servicePath); err != nil {
 		t.Fatalf("service file missing: %v", err)
 	}
+	assertFileMode(t, filepath.Join(stateRoot, "config.env"), 0o600)
+	assertFileMode(t, filepath.Join(target, "waypoint.env"), 0o600)
+	configData, err := os.ReadFile(filepath.Join(stateRoot, "config.env"))
+	if err != nil {
+		t.Fatalf("read config.env: %v", err)
+	}
+	for _, want := range []string{"WAYPOINT_TLS_CERT_FILE=/etc/waypoint/tls/server.crt", "WAYPOINT_EGRESS_MODE=auto", "WAYPOINT_EGRESS_ADDRESS=198.51.100.10"} {
+		if !strings.Contains(string(configData), want) {
+			t.Fatalf("config.env missing %q:\n%s", want, configData)
+		}
+	}
+	waypointEnv, err := os.ReadFile(filepath.Join(target, "waypoint.env"))
+	if err != nil {
+		t.Fatalf("read waypoint.env: %v", err)
+	}
+	for _, want := range []string{"WAYPOINT_TLS_KEY_FILE=/etc/waypoint/tls/server.key", "WAYPOINT_EGRESS_ENDPOINT=https://egress.waypoint.example/resolve"} {
+		if !strings.Contains(string(waypointEnv), want) {
+			t.Fatalf("waypoint.env missing %q:\n%s", want, waypointEnv)
+		}
+	}
 
 	statePath := filepath.Join(stateRoot, "install.state")
 	stateBefore, err := os.ReadFile(statePath)
@@ -152,6 +178,12 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 			t.Fatalf("installer log missing %q:\n%s", want, installedLog)
 		}
 	}
+	bootstrapIdx := strings.Index(string(installedLog), "CREATE ROLE")
+	databaseIdx := strings.Index(string(installedLog), "CREATE DATABASE")
+	readyIdx := strings.Index(string(installedLog), "pg_isready -d postgres://waypoint:waypoint@localhost:5432/waypoint?sslmode=disable")
+	if bootstrapIdx == -1 || databaseIdx == -1 || readyIdx == -1 || bootstrapIdx > readyIdx || databaseIdx > readyIdx {
+		t.Fatalf("bootstrap did not precede configured readiness check:\n%s", installedLog)
+	}
 
 	diagnostics := runInstaller(t, scriptPath, env, workDir, "diagnostics", "--config", configPath, "--provision", provisionPath)
 	for _, want := range []string{"waypoint_service=active", "database_ready=ready", "installed_version=1.0.0"} {
@@ -168,6 +200,11 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 		"WAYPOINT_INSTALL_ROOT=" + installRoot,
 		"WAYPOINT_STATE_ROOT=" + stateRoot,
 		"WAYPOINT_LOG_ROOT=" + logRoot,
+		"WAYPOINT_TLS_CERT_FILE=/etc/waypoint/tls/server.crt",
+		"WAYPOINT_TLS_KEY_FILE=/etc/waypoint/tls/server.key",
+		"WAYPOINT_EGRESS_MODE=auto",
+		"WAYPOINT_EGRESS_ENDPOINT=https://egress.waypoint.example/resolve",
+		"WAYPOINT_EGRESS_ADDRESS=198.51.100.10",
 		"",
 	}, "\n"))
 	runInstaller(t, scriptPath, env, workDir, "upgrade", "--config", configPath, "--provision", provisionPath)
@@ -190,6 +227,11 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 		"WAYPOINT_INSTALL_ROOT=" + installRoot,
 		"WAYPOINT_STATE_ROOT=" + stateRoot,
 		"WAYPOINT_LOG_ROOT=" + logRoot,
+		"WAYPOINT_TLS_CERT_FILE=/etc/waypoint/tls/server.crt",
+		"WAYPOINT_TLS_KEY_FILE=/etc/waypoint/tls/server.key",
+		"WAYPOINT_EGRESS_MODE=auto",
+		"WAYPOINT_EGRESS_ENDPOINT=https://egress.waypoint.example/resolve",
+		"WAYPOINT_EGRESS_ADDRESS=198.51.100.10",
 		"",
 	}, "\n"))
 	failed := runInstallerExpectFailure(t, scriptPath, append(env, "WAYPOINT_INSTALLER_FAIL_AT=after_release"), workDir, "install", "--config", configPath, "--provision", provisionPath)
@@ -496,6 +538,7 @@ func setupDestroyFixtureForHost(t *testing.T, osVersion, machine string) destroy
 	mustMkdirAll(t, stubDir)
 	stubLog := filepath.Join(root, "installer-calls.log")
 	mustWriteExecutable(t, filepath.Join(stubDir, "systemctl"), "#!/bin/sh\necho systemctl \"$*\" >> \"$INSTALLER_STUB_LOG\"\ncase \"$1\" in\n  is-active) echo active ;;\nesac\nexit 0\n")
+	mustWriteExecutable(t, filepath.Join(stubDir, "sudo"), "#!/bin/sh\necho sudo \"$*\" >> \"$INSTALLER_STUB_LOG\"\nwhile [ $# -gt 0 ]; do\n  case \"$1\" in\n    -n|-H|-E) shift ;;\n    -u) shift 2 ;;\n    --) shift; break ;;\n    *) break ;;\n  esac\ndone\nexec \"$@\"\n")
 	mustWriteExecutable(t, filepath.Join(stubDir, "psql"), "#!/bin/sh\necho psql \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
 	mustWriteExecutable(t, filepath.Join(stubDir, "pg_isready"), "#!/bin/sh\necho pg_isready \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
 SCRIPT_NAME=$(basename "$0")
 MODE=""
@@ -120,6 +121,62 @@ print(host)
 PY
 }
 
+db_dsn_components() {
+  local dsn=$1
+  python3 - "$dsn" <<'PY'
+from urllib.parse import urlparse
+import sys
+
+dsn = sys.argv[1].strip()
+parsed = urlparse(dsn) if dsn else None
+host = parsed.hostname if parsed and parsed.hostname else ""
+port = str(parsed.port) if parsed and parsed.port else ""
+dbname = (parsed.path or "").lstrip("/") if parsed else ""
+user = parsed.username if parsed and parsed.username else ""
+password = parsed.password if parsed and parsed.password else ""
+print(host)
+print(port)
+print(dbname)
+print(user)
+print(password)
+PY
+}
+
+postgres_superuser_psql() {
+  if command -v sudo >/dev/null 2>&1; then
+    sudo -n -u postgres -- psql -d postgres -X -v ON_ERROR_STOP=1 "$@"
+    return $?
+  fi
+  if command -v runuser >/dev/null 2>&1; then
+    runuser -u postgres -- psql -d postgres -X -v ON_ERROR_STOP=1 "$@"
+    return $?
+  fi
+  psql -d postgres -X -v ON_ERROR_STOP=1 "$@"
+}
+
+bootstrap_local_database() {
+  local dsn dbname user password
+  local -a dsn_parts=()
+  dsn=$(cfg WAYPOINT_DB_DSN)
+  mapfile -t dsn_parts < <(db_dsn_components "$dsn")
+  dbname=${dsn_parts[2]:-}
+  user=${dsn_parts[3]:-}
+  password=${dsn_parts[4]:-}
+  [[ -n $dbname && -n $user ]] || return 0
+
+  if ! postgres_superuser_psql -tAc "SELECT 1 FROM pg_roles WHERE rolname = :'role_name'" -v role_name="$user" | grep -qx 1; then
+    postgres_superuser_psql -v role_name="$user" -v role_password="$password" -c "CREATE ROLE :\"role_name\" LOGIN PASSWORD :'role_password'"
+  else
+    postgres_superuser_psql -v role_name="$user" -v role_password="$password" -c "ALTER ROLE :\"role_name\" LOGIN PASSWORD :'role_password'"
+  fi
+
+  if ! postgres_superuser_psql -tAc "SELECT 1 FROM pg_database WHERE datname = :'db_name'" -v db_name="$dbname" | grep -qx 1; then
+    postgres_superuser_psql -v db_name="$dbname" -v db_owner="$user" -c "CREATE DATABASE :\"db_name\" OWNER :\"db_owner\""
+  else
+    postgres_superuser_psql -v db_name="$dbname" -v db_owner="$user" -c "ALTER DATABASE :\"db_name\" OWNER TO :\"db_owner\""
+  fi
+}
+
 is_local_database() {
   case $(db_host_from_dsn "$(cfg WAYPOINT_DB_DSN)") in
     ""|localhost|127.0.0.1|::1) return 0 ;;
@@ -166,6 +223,16 @@ ensure_local_postgres() {
   fi
   systemctl enable --now postgresql
   local attempt
+  for attempt in $(seq 1 30); do
+    if pg_isready -d postgres >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  if ! pg_isready -d postgres >/dev/null 2>&1; then
+    die "postgresql did not become ready"
+  fi
+  bootstrap_local_database
   for attempt in $(seq 1 30); do
     if pg_isready -d "$(cfg WAYPOINT_DB_DSN)" >/dev/null 2>&1; then
       return 0
@@ -316,6 +383,16 @@ write_atomic() {
   mv "$tmp" "$path"
 }
 
+append_optional_runtime_config() {
+  local path=$1
+  local key value
+  for key in WAYPOINT_TLS_CERT_FILE WAYPOINT_TLS_KEY_FILE WAYPOINT_TLS_CA_FILE WAYPOINT_EGRESS_MODE WAYPOINT_EGRESS_ENDPOINT WAYPOINT_EGRESS_ADDRESS; do
+    value=$(cfg "$key")
+    [[ -n $value ]] || continue
+    printf '%s=%s\n' "$key" "$value" >> "$path"
+  done
+}
+
 prepare_roots() {
   mkdir -p "$INSTALL_ROOT" "$STATE_ROOT" "$LOG_ROOT"
   mkdir -p "$INSTALL_ROOT/releases" "$STATE_ROOT/tokens" "$LOG_ROOT/installer"
@@ -446,12 +523,14 @@ WAYPOINT_PUBLIC_URL=$(cfg WAYPOINT_PUBLIC_URL)
 WAYPOINT_DB_DSN=$(cfg WAYPOINT_DB_DSN)
 WAYPOINT_PACKAGE_PATH=$package_path
 EOF
+  append_optional_runtime_config "$STATE_ROOT/config.env"
   chmod 600 "$STATE_ROOT/config.env"
   cat > "$temp_release/waypoint.env" <<EOF
 WAYPOINT_VERSION=$(cfg WAYPOINT_VERSION)
 WAYPOINT_PUBLIC_URL=$(cfg WAYPOINT_PUBLIC_URL)
 WAYPOINT_DB_DSN=$(cfg WAYPOINT_DB_DSN)
 EOF
+  append_optional_runtime_config "$temp_release/waypoint.env"
   chmod 600 "$temp_release/waypoint.env"
   cat > "$temp_release/systemd/waypoint.service" <<EOF
 [Unit]
