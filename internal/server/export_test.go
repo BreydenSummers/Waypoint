@@ -38,7 +38,7 @@ func TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship(t *testing.
 	t.Setenv("WAYPOINT_EVIDENCE_DIR", evidenceRoot)
 	t.Setenv("WAYPOINT_EXPORT_DIR", exportRoot)
 	chromium := filepath.Join(t.TempDir(), "chromium")
-	if err := os.WriteFile(chromium, []byte("#!/bin/sh\nout=\"\"\nhtml=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    --print-to-pdf=*) out=${arg#*=} ;;\n    file://*) html=${arg#file://} ;;\n  esac\ndone\ngrep -q 'Hash verified, not signed' \"$html\"\nprintf '%s' '%PDF-1.4\\n%%fake\\n%%EOF' > \"$out\"\n"), 0o755); err != nil {
+	if err := os.WriteFile(chromium, []byte("#!/bin/sh\nout=\"\"\nhtml=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    --print-to-pdf=*) out=${arg#*=} ;;&\n    file://*) html=${arg#file://} ;;&\n  esac\ndone\ngrep -q 'Hash verified, not signed' \"$html\"\nprintf '%s' '%PDF-1.4\\n%%fake\\n%%EOF' > \"$out\"\n"), 0o755); err != nil {
 		t.Fatalf("write fake chromium: %v", err)
 	}
 	t.Setenv("WAYPOINT_CHROMIUM", chromium)
@@ -221,6 +221,72 @@ func TestExportJobPreflightRejectsInsufficientCapacity(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatal("export job did not fail")
+}
+
+func TestExportTeardownAuthorizationRoundTrip(t *testing.T) {
+	if os.Getenv("WAYPOINT_TEST_PG_DSN") == "" {
+		t.Skip("WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests")
+	}
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	humanID := "22222222-2222-4222-8222-222222222222"
+	actorToken := "teardown-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Q3 launch', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'owner')`, humanID, engagementID, hashHex(actorToken))
+	mustExec(t, db, `INSERT INTO export_job (id, engagement_id, requested_by, format_version, state, progress_stage, progress_percent, processed_bytes, estimated_total_bytes, snapshot_id, cutoff, bundle_archive_path, bundle_archive_byte_length, bundle_archive_sha256, bundle_manifest_sha256, bundle_report_snapshot_id, bundle_receipt_id, created_at, started_at, completed_at, updated_at, revision) VALUES ($1, $2, $3, '1.0.0', 'completed', 'complete', 100, 10, 10, $4, now(), 'bundle', 10, $5, $6, $4, $7, now(), now(), now(), now(), 3)`, "77777777-7777-4777-8777-777777777778", engagementID, humanID, "12121212-1212-4212-8212-121212121212", strings.Repeat("1", 64), strings.Repeat("2", 64), "88888888-8888-4888-8888-888888888888")
+	mustExec(t, db, `INSERT INTO export_receipt (id, export_job_id, engagement_id, status, bundle_path, archive_byte_length, archive_sha256, manifest_sha256, cutoff, verified_at, verified_by, verifier_version, revision) VALUES ($1, $2, $3, 'verified', 'bundle', 10, $4, $5, now(), now(), $6, 'waypoint-verify/1.0.0', 1)`, "88888888-8888-4888-8888-888888888888", "77777777-7777-4777-8777-777777777778", engagementID, strings.Repeat("1", 64), strings.Repeat("2", 64), humanID)
+
+	h := HandlerWithDB(db)
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/teardown-authorizations", strings.NewReader(`{"receiptId":"88888888-8888-4888-8888-888888888888","bundlePath":"bundle","archiveSha256":"1111111111111111111111111111111111111111111111111111111111111111","manifestSha256":"2222222222222222222222222222222222222222222222222222222222222222","confirmation":"destroy verified engagement data"}`))
+	createReq.Header.Set("Authorization", "Bearer "+actorToken)
+	createReq.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	createRR := httptest.NewRecorder()
+	h.ServeHTTP(createRR, createReq)
+	if createRR.Code != http.StatusCreated {
+		t.Fatalf("create teardown authorization = %d body=%s", createRR.Code, createRR.Body.String())
+	}
+	var created teardownAuthorizationResponse
+	if err := json.Unmarshal(createRR.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode teardown authorization: %v", err)
+	}
+	if created.Status != "authorized" || created.ReceiptID != "88888888-8888-4888-8888-888888888888" {
+		t.Fatalf("created teardown authorization = %#v", created)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/teardown-authorizations/"+created.ID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+actorToken)
+	getReq.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	getRR := httptest.NewRecorder()
+	h.ServeHTTP(getRR, getReq)
+	if getRR.Code != http.StatusOK {
+		t.Fatalf("get teardown authorization = %d body=%s", getRR.Code, getRR.Body.String())
+	}
+
+	consumeReq := httptest.NewRequest(http.MethodPost, "/api/v1/teardown-authorizations/"+created.ID+"/consume", nil)
+	consumeReq.Header.Set("Authorization", "Bearer "+actorToken)
+	consumeReq.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	consumeRR := httptest.NewRecorder()
+	h.ServeHTTP(consumeRR, consumeReq)
+	if consumeRR.Code != http.StatusOK {
+		t.Fatalf("consume teardown authorization = %d body=%s", consumeRR.Code, consumeRR.Body.String())
+	}
+	var consumed teardownAuthorizationResponse
+	if err := json.Unmarshal(consumeRR.Body.Bytes(), &consumed); err != nil {
+		t.Fatalf("decode consumed teardown authorization: %v", err)
+	}
+	if consumed.Status != "consumed" || consumed.ConsumedAt == "" {
+		t.Fatalf("consumed teardown authorization = %#v", consumed)
+	}
 }
 
 func TestBuildExportEvidenceTarStreamsAttachmentRoles(t *testing.T) {

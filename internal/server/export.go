@@ -29,13 +29,25 @@ const exportContractVersion = "1.0.0"
 const exportArchiveFilename = "export-bundle.tar.gz"
 
 var (
-	exportJobsRoute    = regexp.MustCompile(`^/(?:api/v1/)?exports(?:/([^/]+)(?:/cancel)?)?/?$`)
-	exportReceiptRoute = regexp.MustCompile(`^/(?:api/v1/)?export-receipts/([^/]+)/?$`)
+	exportJobsRoute            = regexp.MustCompile(`^/(?:api/v1/)?exports(?:/([^/]+)(?:/cancel)?)?/?$`)
+	exportReceiptRoute         = regexp.MustCompile(`^/(?:api/v1/)?export-receipts/([^/]+)/?$`)
+	exportReportSnapshotRoute  = regexp.MustCompile(`^/(?:api/v1/)?exports/([^/]+)/report-snapshot/?$`)
+	exportReportPdfRoute       = regexp.MustCompile(`^/(?:api/v1/)?exports/([^/]+)/report\.pdf/?$`)
+	exportBundleRoute          = regexp.MustCompile(`^/(?:api/v1/)?exports/([^/]+)/bundle/?$`)
+	teardownAuthorizationRoute = regexp.MustCompile(`^/(?:api/v1/)?teardown-authorizations(?:/([^/]+)(?:/consume)?)?/?$`)
 )
 
 type exportRequest struct {
 	FormatVersion string `json:"formatVersion"`
 	RetryOfJobID  string `json:"retryOfJobId,omitempty"`
+}
+
+type teardownRequest struct {
+	ReceiptID      string `json:"receiptId"`
+	BundlePath     string `json:"bundlePath"`
+	ArchiveSHA256  string `json:"archiveSha256"`
+	ManifestSHA256 string `json:"manifestSha256"`
+	Confirmation   string `json:"confirmation"`
 }
 
 type exportJobPageResponse struct {
@@ -155,6 +167,38 @@ type exportReceiptRecord struct {
 	InvalidatedAt      sql.NullTime
 	InvalidationReason sql.NullString
 	Revision           int
+}
+
+type teardownAuthorizationRecord struct {
+	ID             string
+	EngagementID   string
+	ReceiptID      string
+	ExportJobID    string
+	BundlePath     string
+	ArchiveSHA256  string
+	ManifestSHA256 string
+	RequestedBy    actorRecord
+	RequestedAt    time.Time
+	ExpiresAt      time.Time
+	Status         string
+	ConsumedAt     sql.NullTime
+	Revision       int
+}
+
+type teardownAuthorizationResponse struct {
+	ContractVersion string        `json:"contractVersion"`
+	ID              string        `json:"id"`
+	EngagementID    string        `json:"engagementId"`
+	ReceiptID       string        `json:"receiptId"`
+	ExportJobID     string        `json:"exportJobId"`
+	BundlePath      string        `json:"bundlePath"`
+	ArchiveSHA256   string        `json:"archiveSha256"`
+	ManifestSHA256  string        `json:"manifestSha256"`
+	RequestedBy     actorSnapshot `json:"requestedBy"`
+	RequestedAt     string        `json:"requestedAt"`
+	ExpiresAt       string        `json:"expiresAt"`
+	Status          string        `json:"status"`
+	ConsumedAt      string        `json:"consumedAt,omitempty"`
 }
 
 type exportManager struct {
@@ -302,7 +346,7 @@ type exportArtifacts struct {
 
 func exportHandler(db *sql.DB, store *evidenceStore, mgr *exportManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if !exportJobsRoute.MatchString(r.URL.Path) && !exportReceiptRoute.MatchString(r.URL.Path) {
+		if !exportJobsRoute.MatchString(r.URL.Path) && !exportReceiptRoute.MatchString(r.URL.Path) && !exportReportSnapshotRoute.MatchString(r.URL.Path) && !exportReportPdfRoute.MatchString(r.URL.Path) && !exportBundleRoute.MatchString(r.URL.Path) && !teardownAuthorizationRoute.MatchString(r.URL.Path) {
 			return
 		}
 		reqID := requestIDFromHeader(r.Header.Get("X-Request-ID"))
@@ -322,6 +366,35 @@ func exportHandler(db *sql.DB, store *evidenceStore, mgr *exportManager) http.Ha
 		}
 		if m := exportReceiptRoute.FindStringSubmatch(r.URL.Path); m != nil {
 			handleExportReceipt(w, r, db, actor, reqID, m[1])
+			return
+		}
+		if m := exportReportSnapshotRoute.FindStringSubmatch(r.URL.Path); m != nil {
+			handleExportReportSnapshot(w, r, db, actor, reqID, m[1])
+			return
+		}
+		if m := exportReportPdfRoute.FindStringSubmatch(r.URL.Path); m != nil {
+			handleExportReportPDF(w, r, db, store, actor, reqID, m[1])
+			return
+		}
+		if m := exportBundleRoute.FindStringSubmatch(r.URL.Path); m != nil {
+			handleExportBundle(w, r, db, actor, reqID, m[1])
+			return
+		}
+		if m := teardownAuthorizationRoute.FindStringSubmatch(r.URL.Path); m != nil {
+			if m[1] == "" {
+				if r.Method == http.MethodPost {
+					handleTeardownAuthorizationCreate(w, r, db, actor, reqID)
+					return
+				}
+				w.Header().Set("Allow", http.MethodPost)
+				http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+				return
+			}
+			if strings.HasSuffix(r.URL.Path, "/consume") {
+				handleTeardownAuthorizationConsume(w, r, db, actor, reqID, m[1])
+				return
+			}
+			handleTeardownAuthorizationRead(w, r, db, actor, reqID, m[1])
 			return
 		}
 		m := exportJobsRoute.FindStringSubmatch(r.URL.Path)
@@ -649,6 +722,289 @@ func handleExportReceipt(w http.ResponseWriter, r *http.Request, db *sql.DB, act
 		return
 	}
 	writeJSONWithHeaders(w, http.StatusOK, exportReceiptResponseFromRow(rec), reqID)
+}
+
+func handleExportReportSnapshot(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, exportID string) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	job, err := loadExportJob(r.Context(), db, exportID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load export job failed"})
+		return
+	}
+	if actor.EngagementID != "" && actor.EngagementID != job.EngagementID {
+		http.NotFound(w, r)
+		return
+	}
+	if job.State != "completed" || !job.BundleReceiptID.Valid {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "completed export bundle is required before the frozen report can be read"})
+		return
+	}
+	rec, err := loadExportReceipt(r.Context(), db, job.BundleReceiptID.String)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "verified receipt is required before the frozen report can be read"})
+		return
+	}
+	if rec.Status != "verified" || rec.BundlePath != strings.TrimSpace(job.BundleArchivePath.String) {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "receipt no longer matches the export bundle"})
+		return
+	}
+	artifacts, err := loadExportArtifacts(newExportManager(db, nil), job)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: err.Error()})
+		return
+	}
+	if err := verifyExportBundle(artifacts.bundleDir, artifacts.archivePath, artifacts.manifest, artifacts.manifestSHA256, artifacts.archiveSHA256); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: err.Error()})
+		return
+	}
+	writeJSONWithHeaders(w, http.StatusOK, artifacts.snapshot, reqID)
+}
+
+func handleExportReportPDF(w http.ResponseWriter, r *http.Request, db *sql.DB, store *evidenceStore, actor actorRecord, reqID, exportID string) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	job, err := loadExportJob(r.Context(), db, exportID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load export job failed"})
+		return
+	}
+	if actor.EngagementID != "" && actor.EngagementID != job.EngagementID {
+		http.NotFound(w, r)
+		return
+	}
+	if job.State != "completed" || !job.BundleArchivePath.Valid {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "completed export bundle is required before the PDF can be downloaded"})
+		return
+	}
+	rec, err := loadExportReceipt(r.Context(), db, job.BundleReceiptID.String)
+	if err != nil || rec.Status != "verified" {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "verified receipt is required before the PDF can be downloaded"})
+		return
+	}
+	if rec.BundlePath != strings.TrimSpace(job.BundleArchivePath.String) {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "receipt no longer matches the export bundle"})
+		return
+	}
+	artifacts, err := loadExportArtifacts(newExportManager(db, store), job)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: err.Error()})
+		return
+	}
+	if err := verifyExportBundle(artifacts.bundleDir, artifacts.archivePath, artifacts.manifest, artifacts.manifestSHA256, artifacts.archiveSHA256); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: err.Error()})
+		return
+	}
+	pdfBytes, err := os.ReadFile(artifacts.pdfPath)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusNotFound), Status: http.StatusNotFound, Code: "not_found", RequestID: reqID, Retryable: false, Detail: "report PDF not found"})
+		return
+	}
+	w.Header().Set("Waypoint-Contract-Version", exportContractVersion)
+	w.Header().Set("X-Request-ID", reqID)
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", "inline; filename=report.pdf")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(pdfBytes)
+}
+
+func handleExportBundle(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, exportID string) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	job, err := loadExportJob(r.Context(), db, exportID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load export job failed"})
+		return
+	}
+	if actor.EngagementID != "" && actor.EngagementID != job.EngagementID {
+		http.NotFound(w, r)
+		return
+	}
+	if job.State != "completed" || !job.BundleReceiptID.Valid {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "completed export bundle is required before the archive can be downloaded"})
+		return
+	}
+	rec, err := loadExportReceipt(r.Context(), db, job.BundleReceiptID.String)
+	if err != nil || rec.Status != "verified" {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "verified receipt is required before the archive can be downloaded"})
+		return
+	}
+	if rec.BundlePath != strings.TrimSpace(job.BundleArchivePath.String) {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "receipt no longer matches the export bundle"})
+		return
+	}
+	artifacts, err := loadExportArtifacts(newExportManager(db, nil), job)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: err.Error()})
+		return
+	}
+	if err := verifyExportBundle(artifacts.bundleDir, artifacts.archivePath, artifacts.manifest, artifacts.manifestSHA256, artifacts.archiveSHA256); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: err.Error()})
+		return
+	}
+	bundleBytes, err := os.ReadFile(artifacts.archivePath)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusNotFound), Status: http.StatusNotFound, Code: "not_found", RequestID: reqID, Retryable: false, Detail: "export archive not found"})
+		return
+	}
+	w.Header().Set("Waypoint-Contract-Version", exportContractVersion)
+	w.Header().Set("X-Request-ID", reqID)
+	w.Header().Set("Content-Type", "application/gzip")
+	w.Header().Set("Content-Disposition", "attachment; filename=export-bundle.tar.gz")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(bundleBytes)
+}
+
+func handleTeardownAuthorizationCreate(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID string) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	if db == nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusServiceUnavailable), Status: http.StatusServiceUnavailable, Code: "service_unavailable", RequestID: reqID, Retryable: true, Detail: "teardown authorization is unavailable"})
+		return
+	}
+	var req teardownRequest
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: "read request body failed"})
+		return
+	}
+	if err := decodeStrictJSON(body, &req); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: err.Error()})
+		return
+	}
+	if req.Confirmation != "destroy verified engagement data" {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: "confirmation must be 'destroy verified engagement data'"})
+		return
+	}
+	rec, err := loadExportReceipt(r.Context(), db, req.ReceiptID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load export receipt failed"})
+		return
+	}
+	if actor.EngagementID != "" && actor.EngagementID != rec.EngagementID {
+		http.NotFound(w, r)
+		return
+	}
+	if rec.Status != "verified" || strings.TrimSpace(req.BundlePath) != rec.BundlePath || strings.TrimSpace(req.ArchiveSHA256) != rec.ArchiveSHA256 || strings.TrimSpace(req.ManifestSHA256) != rec.ManifestSHA256 {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "receipt does not match the requested teardown bundle"})
+		return
+	}
+	job, err := loadExportJob(r.Context(), db, rec.ExportJobID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load export job failed"})
+		return
+	}
+	if job.State != "completed" {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "completed export job required before teardown authorization"})
+		return
+	}
+	auth, err := persistTeardownAuthorization(r.Context(), db, actor, reqID, rec, job)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "persist teardown authorization failed"})
+		return
+	}
+	writeJSONWithHeaders(w, http.StatusCreated, teardownAuthorizationResponseFromRecord(auth), reqID)
+}
+
+func handleTeardownAuthorizationRead(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, authorizationID string) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	auth, err := loadTeardownAuthorization(r.Context(), db, authorizationID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load teardown authorization failed"})
+		return
+	}
+	if actor.EngagementID != "" && actor.EngagementID != auth.EngagementID {
+		http.NotFound(w, r)
+		return
+	}
+	if auth.Status == "authorized" && time.Now().UTC().After(auth.ExpiresAt) {
+		if expired, err := markTeardownAuthorizationExpired(r.Context(), db, auth); err == nil {
+			auth = expired
+		}
+	}
+	writeJSONWithHeaders(w, http.StatusOK, teardownAuthorizationResponseFromRecord(auth), reqID)
+}
+
+func handleTeardownAuthorizationConsume(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, authorizationID string) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", http.MethodPost)
+		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+	auth, err := loadTeardownAuthorization(r.Context(), db, authorizationID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load teardown authorization failed"})
+		return
+	}
+	if actor.EngagementID != "" && actor.EngagementID != auth.EngagementID {
+		http.NotFound(w, r)
+		return
+	}
+	if auth.Status != "authorized" {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "teardown authorization is not available for consumption"})
+		return
+	}
+	if time.Now().UTC().After(auth.ExpiresAt) {
+		if expired, err := markTeardownAuthorizationExpired(r.Context(), db, auth); err == nil {
+			auth = expired
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "teardown authorization expired"})
+		return
+	}
+	consumed, err := consumeTeardownAuthorization(r.Context(), db, auth, actor, reqID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: "teardown authorization expired"})
+			return
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "consume teardown authorization failed"})
+		return
+	}
+	writeJSONWithHeaders(w, http.StatusOK, teardownAuthorizationResponseFromRecord(consumed), reqID)
 }
 
 func (m *exportManager) preflight(ctx context.Context, job exportJobRecord) error {
@@ -1221,6 +1577,140 @@ func exportReceiptResponseFromRow(row exportReceiptRecord) exportReceiptResponse
 		resp.InvalidationReason = row.InvalidationReason.String
 	}
 	return resp
+}
+
+func teardownAuthorizationResponseFromRecord(row teardownAuthorizationRecord) teardownAuthorizationResponse {
+	resp := teardownAuthorizationResponse{
+		ContractVersion: exportContractVersion,
+		ID:              row.ID,
+		EngagementID:    row.EngagementID,
+		ReceiptID:       row.ReceiptID,
+		ExportJobID:     row.ExportJobID,
+		BundlePath:      row.BundlePath,
+		ArchiveSHA256:   row.ArchiveSHA256,
+		ManifestSHA256:  row.ManifestSHA256,
+		RequestedBy:     actorSnapshotFromRecord(row.RequestedBy),
+		RequestedAt:     row.RequestedAt.UTC().Format(time.RFC3339),
+		ExpiresAt:       row.ExpiresAt.UTC().Format(time.RFC3339),
+		Status:          row.Status,
+	}
+	if row.ConsumedAt.Valid {
+		resp.ConsumedAt = row.ConsumedAt.Time.UTC().Format(time.RFC3339)
+	}
+	return resp
+}
+
+func persistTeardownAuthorization(ctx context.Context, db *sql.DB, actor actorRecord, reqID string, receipt exportReceiptRecord, job exportJobRecord) (teardownAuthorizationRecord, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	row := tx.QueryRowContext(ctx, `
+		INSERT INTO teardown_authorization (
+			id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, revision
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'authorized', 1)
+		RETURNING id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, consumed_at, revision`, newUUID(), receipt.EngagementID, receipt.ID, job.ID, receipt.BundlePath, receipt.ArchiveSHA256, receipt.ManifestSHA256, actor.ID, now, now.Add(5*time.Minute))
+	var rec teardownAuthorizationRecord
+	if err := row.Scan(&rec.ID, &rec.EngagementID, &rec.ReceiptID, &rec.ExportJobID, &rec.BundlePath, &rec.ArchiveSHA256, &rec.ManifestSHA256, &rec.RequestedBy.ID, &rec.RequestedAt, &rec.ExpiresAt, &rec.Status, &rec.ConsumedAt, &rec.Revision); err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	rec.RequestedBy = actor
+	if err := appendTeardownAuditEvent(ctx, tx, actor, reqID, "teardown.authorized", rec.ID, rec.Revision, "rest", "", map[string]any{"receiptId": rec.ReceiptID, "bundlePath": rec.BundlePath, "archiveSha256": rec.ArchiveSHA256, "manifestSha256": rec.ManifestSHA256}); err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	return rec, nil
+}
+
+func loadTeardownAuthorization(ctx context.Context, db queryer, authorizationID string) (teardownAuthorizationRecord, error) {
+	var row teardownAuthorizationRecord
+	if err := db.QueryRowContext(ctx, `
+		SELECT id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, COALESCE(consumed_at, 'epoch'::timestamptz), revision,
+		       a.kind, a.handle, a.role, COALESCE(a.agent_name, ''), COALESCE(a.model, ''), COALESCE(a.version, ''), COALESCE(a.authorized_by::text, '')
+		FROM teardown_authorization t
+		JOIN actor a ON a.id = t.requested_by
+		WHERE t.id = $1`, authorizationID).Scan(&row.ID, &row.EngagementID, &row.ReceiptID, &row.ExportJobID, &row.BundlePath, &row.ArchiveSHA256, &row.ManifestSHA256, &row.RequestedBy.ID, &row.RequestedAt, &row.ExpiresAt, &row.Status, &row.ConsumedAt, &row.Revision, &row.RequestedBy.Kind, &row.RequestedBy.Handle, &row.RequestedBy.Role, &row.RequestedBy.AgentName, &row.RequestedBy.Model, &row.RequestedBy.Version, &row.RequestedBy.AuthorizedBy); err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	row.RequestedBy.EngagementID = row.EngagementID
+	if row.ConsumedAt.Time.Equal(time.Unix(0, 0).UTC()) {
+		row.ConsumedAt.Valid = false
+	}
+	return row, nil
+}
+
+func markTeardownAuthorizationExpired(ctx context.Context, db *sql.DB, row teardownAuthorizationRecord) (teardownAuthorizationRecord, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	defer tx.Rollback()
+	updated := tx.QueryRowContext(ctx, `
+		UPDATE teardown_authorization
+		SET status = 'expired', updated_at = now(), revision = revision + 1
+		WHERE id = $1 AND status = 'authorized'
+		RETURNING id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, COALESCE(consumed_at, 'epoch'::timestamptz), revision`, row.ID)
+	var out teardownAuthorizationRecord
+	if err := updated.Scan(&out.ID, &out.EngagementID, &out.ReceiptID, &out.ExportJobID, &out.BundlePath, &out.ArchiveSHA256, &out.ManifestSHA256, &out.RequestedBy.ID, &out.RequestedAt, &out.ExpiresAt, &out.Status, &out.ConsumedAt, &out.Revision); err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	out.RequestedBy = row.RequestedBy
+	if out.ConsumedAt.Time.Equal(time.Unix(0, 0).UTC()) {
+		out.ConsumedAt.Valid = false
+	}
+	if err := tx.Commit(); err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	return out, nil
+}
+
+func consumeTeardownAuthorization(ctx context.Context, db *sql.DB, row teardownAuthorizationRecord, actor actorRecord, reqID string) (teardownAuthorizationRecord, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	updated := tx.QueryRowContext(ctx, `
+		UPDATE teardown_authorization
+		SET status = 'consumed', consumed_at = $2, updated_at = now(), revision = revision + 1
+		WHERE id = $1 AND status = 'authorized' AND expires_at > now()
+		RETURNING id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, consumed_at, revision`, row.ID, now)
+	var out teardownAuthorizationRecord
+	if err := updated.Scan(&out.ID, &out.EngagementID, &out.ReceiptID, &out.ExportJobID, &out.BundlePath, &out.ArchiveSHA256, &out.ManifestSHA256, &out.RequestedBy.ID, &out.RequestedAt, &out.ExpiresAt, &out.Status, &out.ConsumedAt, &out.Revision); err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	out.RequestedBy = row.RequestedBy
+	out.ConsumedAt.Valid = true
+	out.ConsumedAt.Time = now
+	if err := appendTeardownAuditEvent(ctx, tx, actor, reqID, "teardown.consumed", out.ID, out.Revision, "rest", "", map[string]any{"receiptId": out.ReceiptID, "bundlePath": out.BundlePath, "archiveSha256": out.ArchiveSHA256, "manifestSha256": out.ManifestSHA256}); err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return teardownAuthorizationRecord{}, err
+	}
+	return out, nil
+}
+
+func appendTeardownAuditEvent(ctx context.Context, tx *sql.Tx, actor actorRecord, reqID, eventType, subjectID string, subjectRevision int, originKind, originService string, data map[string]any) error {
+	if tx == nil {
+		return errors.New("tx is required")
+	}
+	_, err := dbutil.AppendAuditEvent(ctx, tx, dbutil.AuditEventInput{
+		EngagementID:  actor.EngagementID,
+		Type:          eventType,
+		Actor:         dbutil.AuditActorSnapshot{ID: actor.ID, Kind: actor.Kind, Handle: actor.Handle, Role: actor.Role, AgentName: actor.AgentName, Model: actor.Model, Version: actor.Version, AuthorizedBy: actor.AuthorizedBy},
+		Origin:        dbutil.AuditOrigin{Kind: originKind, Service: originService},
+		Subject:       dbutil.AuditSubject{Type: "teardown", ID: subjectID, Revision: subjectRevision},
+		RequestID:     reqID,
+		CorrelationID: reqID,
+		Data:          data,
+	})
+	return err
 }
 
 func actorSnapshotFromRecord(actor actorRecord) actorSnapshot {
