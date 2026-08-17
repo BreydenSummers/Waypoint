@@ -65,6 +65,12 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	if got := strings.Fields(runCompose("ps", "-q", "postgres")); len(got) != 1 {
 		t.Fatalf("postgres container count = %d, want 1 (%v)", len(got), got)
 	}
+	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", "SELECT COUNT(*) FROM schema_migrations")); got != "4" {
+		t.Fatalf("schema_migrations count = %s, want 4", got)
+	}
+	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", "SELECT COUNT(*) FROM engagement")); got != "0" {
+		t.Fatalf("fresh engagement count = %s, want 0", got)
+	}
 
 	engagementID := "11111111-1111-4111-8111-111111111111"
 	token := "compose-stack-token"
@@ -126,10 +132,21 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	assertHTTPBodyContains(t, baseURL+"/engagements/demo", http.StatusOK, `id="root"`)
 
 	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", fmt.Sprintf("SELECT COUNT(*) FROM action WHERE engagement_id = '%s'", engagementID))); got != "1" {
-		t.Fatalf("post-restart action count = %s, want 1", got)
+		t.Fatalf("post-waypoint-restart action count = %s, want 1", got)
 	}
 	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", fmt.Sprintf("SELECT COUNT(*) FROM evidence WHERE engagement_id = '%s'", engagementID))); got != "2" {
-		t.Fatalf("post-restart evidence count = %s, want 2", got)
+		t.Fatalf("post-waypoint-restart evidence count = %s, want 2", got)
+	}
+
+	runCompose("restart", "postgres")
+	waitForHTTP(t, baseURL+"/readyz", http.StatusOK)
+	assertHTTPBodyContains(t, baseURL+"/engagements/demo", http.StatusOK, `id="root"`)
+
+	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", fmt.Sprintf("SELECT COUNT(*) FROM action WHERE engagement_id = '%s'", engagementID))); got != "1" {
+		t.Fatalf("post-postgres-restart action count = %s, want 1", got)
+	}
+	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", fmt.Sprintf("SELECT COUNT(*) FROM evidence WHERE engagement_id = '%s'", engagementID))); got != "2" {
+		t.Fatalf("post-postgres-restart evidence count = %s, want 2", got)
 	}
 
 	stdoutPath := filepath.Join("/var/lib/waypoint/evidence", "captures", sha256Hex(string(stdout)), "stdout")
