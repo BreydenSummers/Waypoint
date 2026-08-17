@@ -2,7 +2,6 @@ package server
 
 import (
 	"archive/tar"
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -699,11 +698,7 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 		return exportArtifacts{}, err
 	}
 
-	evidenceBytes, err := buildExportEvidenceTar(reportCtx, tx, m.store, job.EngagementID)
-	if err != nil {
-		return exportArtifacts{}, err
-	}
-	if err := os.WriteFile(paths["evidence"], evidenceBytes, 0o600); err != nil {
+	if err := buildExportEvidenceTar(reportCtx, tx, m.store, job.EngagementID, paths["evidence"]); err != nil {
 		return exportArtifacts{}, err
 	}
 
@@ -749,9 +744,18 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 		return exportArtifacts{}, err
 	}
 
+	evidenceInfo, err := os.Stat(paths["evidence"])
+	if err != nil {
+		return exportArtifacts{}, err
+	}
+	evidenceSHA, _, err := fileSHA256(paths["evidence"])
+	if err != nil {
+		return exportArtifacts{}, err
+	}
+
 	bundlePayloads := []reportBundlePayload{
 		{Path: "bundle/database/engagement.dump", Size: int64(len(dumpBytes)), ByteLength: int64(len(dumpBytes)), SHA256: sha256HexBytes(dumpBytes), Kind: "database_dump"},
-		{Path: "bundle/evidence/evidence.tar.zst", Size: int64(len(evidenceBytes)), ByteLength: int64(len(evidenceBytes)), SHA256: sha256HexBytes(evidenceBytes), Kind: "evidence"},
+		{Path: "bundle/evidence/evidence.tar.zst", Size: evidenceInfo.Size(), ByteLength: evidenceInfo.Size(), SHA256: evidenceSHA, Kind: "evidence"},
 		{Path: "bundle/report/frozen-report.pdf", Size: 0, ByteLength: 0, SHA256: strings.Repeat("0", 64), Kind: "report_pdf"},
 		{Path: "bundle/report/report-snapshot.json", Size: 0, ByteLength: 0, SHA256: strings.Repeat("0", 64), Kind: "report_snapshot"},
 		{Path: "bundle/metadata/export-metadata.json", Size: int64(len(metadataBytes)), ByteLength: int64(len(metadataBytes)), SHA256: sha256HexBytes(metadataBytes), Kind: "metadata"},
@@ -1270,11 +1274,12 @@ func loadExportArtifacts(m *exportManager, job exportJobRecord) (exportArtifacts
 	manifestSHA := sha256HexBytes(manifestBytes)
 	archiveLen := int64(len(manifestBytes))
 	for _, payload := range parsed.Payloads {
-		bytes, err := os.ReadFile(filepath.Join(bundleDir, strings.TrimPrefix(payload.Path, "bundle/")))
+		path := filepath.Join(bundleDir, strings.TrimPrefix(payload.Path, "bundle/"))
+		info, err := os.Stat(path)
 		if err != nil {
 			return exportArtifacts{}, err
 		}
-		archiveLen += int64(len(bytes))
+		archiveLen += info.Size()
 	}
 	cutoff := ""
 	if job.Cutoff.Valid {
@@ -1300,33 +1305,41 @@ func buildExportDump(ctx context.Context, db queryer, engagementID, snapshotID, 
 	return json.MarshalIndent(payload, "", "  ")
 }
 
-func buildExportEvidenceTar(ctx context.Context, db queryer, store *evidenceStore, engagementID string) ([]byte, error) {
+func buildExportEvidenceTar(ctx context.Context, db queryer, store *evidenceStore, engagementID, outputPath string) (err error) {
 	if store == nil || db == nil {
-		return nil, errors.New("evidence store unavailable")
+		return errors.New("evidence store unavailable")
 	}
 	rows, err := db.QueryContext(ctx, `SELECT storage_key FROM evidence WHERE engagement_id = $1 AND storage_key <> '' ORDER BY created_at ASC, id ASC`, engagementID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer rows.Close()
 	var keys []string
 	for rows.Next() {
 		var key string
 		if err := rows.Scan(&key); err != nil {
-			return nil, err
+			return err
 		}
 		keys = append(keys, key)
 	}
-	var buf bytes.Buffer
-	zw := tar.NewWriter(&buf)
-	defer zw.Close()
 	sort.Strings(keys)
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o750); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(outputPath), ".evidence-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	zw := tar.NewWriter(tmp)
 	for _, key := range keys {
 		path, err := safeEvidencePath(store.root, key)
-		if err != nil {
-			continue
-		}
-		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
@@ -1336,13 +1349,34 @@ func buildExportEvidenceTar(ctx context.Context, db queryer, store *evidenceStor
 		}
 		hdr := &tar.Header{Name: filepath.ToSlash(key), Mode: 0o600, Size: info.Size(), ModTime: info.ModTime()}
 		if err := zw.WriteHeader(hdr); err != nil {
-			return nil, err
+			_ = zw.Close()
+			return err
 		}
-		if _, err := zw.Write(data); err != nil {
-			return nil, err
+		blob, err := os.Open(path)
+		if err != nil {
+			continue
+		}
+		_, copyErr := io.Copy(zw, blob)
+		_ = blob.Close()
+		if copyErr != nil {
+			_ = zw.Close()
+			return copyErr
 		}
 	}
-	return buf.Bytes(), nil
+	if err = zw.Close(); err != nil {
+		return err
+	}
+	if err = tmp.Sync(); err != nil {
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	if err = os.Rename(tmpPath, outputPath); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func computeExportArchiveHash(payloads []reportBundlePayload, manifestBytes []byte, bundleDir string) (string, int64, error) {
@@ -1354,14 +1388,26 @@ func computeExportArchiveHash(payloads []reportBundlePayload, manifestBytes []by
 	paths := append([]reportBundlePayload(nil), payloads...)
 	sort.Slice(paths, func(i, j int) bool { return paths[i].Path < paths[j].Path })
 	for _, payload := range paths {
-		data, err := os.ReadFile(filepath.Join(filepath.FromSlash(bundleDir), strings.TrimPrefix(payload.Path, "bundle/")))
+		path := filepath.Join(filepath.FromSlash(bundleDir), strings.TrimPrefix(payload.Path, "bundle/"))
+		info, err := os.Stat(path)
 		if err != nil {
 			return "", 0, err
 		}
 		h.Write([]byte(payload.Path))
 		h.Write([]byte{0})
-		h.Write(data)
-		total += int64(len(data))
+		f, err := os.Open(path)
+		if err != nil {
+			return "", 0, err
+		}
+		copied, copyErr := io.Copy(h, f)
+		_ = f.Close()
+		if copyErr != nil {
+			return "", 0, copyErr
+		}
+		if copied != info.Size() {
+			return "", 0, fmt.Errorf("short read for %s", payload.Path)
+		}
+		total += copied
 	}
 	return hex.EncodeToString(h.Sum(nil)), total, nil
 }
@@ -1387,14 +1433,27 @@ func verifyExportBundle(bundleDir string, manifest []byte, manifestSHA256, archi
 	}
 	payloads := make([]reportBundlePayload, 0, len(parsed.Payloads))
 	for _, payload := range parsed.Payloads {
-		bytes, err := os.ReadFile(filepath.Join(filepath.FromSlash(bundleDir), strings.TrimPrefix(payload.Path, "bundle/")))
+		path := filepath.Join(filepath.FromSlash(bundleDir), strings.TrimPrefix(payload.Path, "bundle/"))
+		info, err := os.Stat(path)
 		if err != nil {
 			return err
 		}
-		if int64(len(bytes)) != payload.Size {
+		if info.Size() != payload.Size {
 			return fmt.Errorf("size mismatch for %s", payload.Path)
 		}
-		if sha256HexBytes(bytes) != payload.SHA {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		h := sha256.New()
+		if _, err := io.Copy(h, f); err != nil {
+			_ = f.Close()
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+		if hex.EncodeToString(h.Sum(nil)) != payload.SHA {
 			return fmt.Errorf("sha256 mismatch for %s", payload.Path)
 		}
 		payloads = append(payloads, reportBundlePayload{Path: payload.Path, Size: payload.Size, SHA256: payload.SHA})
@@ -1410,6 +1469,23 @@ func verifyExportBundle(bundleDir string, manifest []byte, manifestSHA256, archi
 		return errors.New("manifest digest mismatch")
 	}
 	return nil
+}
+
+func fileSHA256(path string) (string, int64, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", 0, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return "", 0, err
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", 0, err
+	}
+	return hex.EncodeToString(h.Sum(nil)), info.Size(), nil
 }
 
 func sha256HexBytes(b []byte) string {
