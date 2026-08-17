@@ -20,7 +20,10 @@ import (
 	"time"
 )
 
-const reportSnapshotVersion = "v1"
+const (
+	reportContractVersion = "1.0.0"
+	reportSnapshotVersion = "v1"
+)
 
 var (
 	reportJSONRoute = regexp.MustCompile(`^/api/v1/engagements/([^/]+)/summit/report(?:\.json)?$`)
@@ -28,6 +31,7 @@ var (
 )
 
 type reportSnapshot struct {
+	ContractVersion  string              `json:"contractVersion,omitempty"`
 	Version          string              `json:"version"`
 	Title            string              `json:"title"`
 	Engagement       string              `json:"engagement"`
@@ -120,10 +124,6 @@ type reportFindingRow struct {
 
 func reportHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if db == nil {
-			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusServiceUnavailable), Status: http.StatusServiceUnavailable, Code: "service_unavailable", RequestID: requestIDFromHeader(r.Header.Get("X-Request-ID")), Retryable: true, Detail: "report export is unavailable"})
-			return
-		}
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
@@ -143,6 +143,30 @@ func reportHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 			return
 		}
 
+		reqID := requestIDFromHeader(r.Header.Get("X-Request-ID"))
+		token, err := bearerToken(r.Header.Get("Authorization"))
+		if err != nil {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusUnauthorized), Status: http.StatusUnauthorized, Code: "unauthenticated", RequestID: reqID, Retryable: false, Detail: err.Error()})
+			return
+		}
+		if db == nil {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusServiceUnavailable), Status: http.StatusServiceUnavailable, Code: "service_unavailable", RequestID: reqID, Retryable: true, Detail: "report export is unavailable"})
+			return
+		}
+		actor, err := lookupActor(r.Context(), db, token)
+		if err != nil {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusUnauthorized), Status: http.StatusUnauthorized, Code: "unauthenticated", RequestID: reqID, Retryable: false, Detail: "invalid actor credential"})
+			return
+		}
+		if actor.EngagementID != "" && actor.EngagementID != engagementID {
+			http.NotFound(w, r)
+			return
+		}
+		if err := validateContractVersion(r.Header.Get("Waypoint-Contract-Version")); err != nil {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusUpgradeRequired), Status: http.StatusUpgradeRequired, Code: "unsupported_contract_version", RequestID: reqID, Retryable: false, Detail: err.Error(), SupportedVersions: []string{reportContractVersion}})
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
 		snapshot, err := buildReportSnapshot(ctx, db, store, engagementID)
@@ -151,19 +175,21 @@ func reportHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 				http.NotFound(w, r)
 				return
 			}
-			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: requestIDFromHeader(r.Header.Get("X-Request-ID")), Retryable: true, Detail: "build frozen report failed"})
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "build frozen report failed"})
 			return
 		}
 
 		switch format {
 		case "json":
+			w.Header().Set("Waypoint-Contract-Version", reportContractVersion)
 			writeJSON(w, http.StatusOK, snapshot)
 		case "pdf":
 			pdf, err := renderReportPDF(ctx, snapshot)
 			if err != nil {
-				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: requestIDFromHeader(r.Header.Get("X-Request-ID")), Retryable: true, Detail: err.Error()})
+				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: err.Error()})
 				return
 			}
+			w.Header().Set("Waypoint-Contract-Version", reportContractVersion)
 			w.Header().Set("Content-Type", "application/pdf")
 			w.Header().Set("Content-Disposition", "inline; filename=report.pdf")
 			w.WriteHeader(http.StatusOK)
@@ -244,6 +270,7 @@ func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow,
 	}
 
 	return reportSnapshot{
+		ContractVersion:  reportContractVersion,
 		Version:          reportSnapshotVersion,
 		Title:            "Frozen report snapshot",
 		Engagement:       engagement.Name,

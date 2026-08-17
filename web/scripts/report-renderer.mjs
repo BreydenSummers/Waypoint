@@ -25,8 +25,21 @@ function renderInlineList(items) {
   return items.map((item) => escapeHtml(item)).join(', ');
 }
 
+function renderCaptureGap(item) {
+  if (item && typeof item === 'object') {
+    const title = item.claimKind ? `${item.claimKind} claim` : 'Capture gap';
+    const status = item.status ? ` · ${item.status}` : '';
+    const reason = item.reason || item.notes || '';
+    const observedBy = item.observedBy?.handle || item.observedBy?.title || '';
+    const sourceActionId = item.sourceActionId ? ` · source ${item.sourceActionId}` : '';
+    return `<li><strong>${escapeHtml(title)}</strong>${escapeHtml(status)}${sourceActionId ? escapeHtml(sourceActionId) : ''}${observedBy ? ` · ${escapeHtml(observedBy)}` : ''}${reason ? ` — ${escapeHtml(reason)}` : ''}</li>`;
+  }
+  return `<li>${escapeHtml(item)}</li>`;
+}
+
 export function buildReportHtml(snapshot) {
   const bundle = snapshot?.bundle ?? {};
+  const contractVersion = snapshot?.contractVersion ?? snapshot?.version ?? 'v1';
   const signatures = bundle.signatures ?? { version: 'v1', items: [] };
   const restore = bundle.restore ?? { tools: [], cleanRoom: [], maliciousPaths: [] };
   const payloads = Array.isArray(bundle.payloads) ? bundle.payloads : [];
@@ -106,7 +119,7 @@ export function buildReportHtml(snapshot) {
     <section class="hero">
       <p class="eyebrow">Waypoint · frozen report snapshot</p>
       <h1>${escapeHtml(snapshot?.title || 'Runtime report snapshot')}</h1>
-      <p class="subtitle">Version ${escapeHtml(snapshot?.version || 'v1')} · ${escapeHtml(snapshot?.engagement || 'Unknown engagement')} · Cutoff ${escapeHtml(snapshot?.cutoff || 'unknown')}</p>
+      <p class="subtitle">Version ${escapeHtml(contractVersion)} · ${escapeHtml(snapshot?.engagement || 'Unknown engagement')} · Cutoff ${escapeHtml(snapshot?.cutoff || 'unknown')}</p>
       <div class="meta">
         <span class="pill">Hash verified, not signed</span>
         <span class="pill">Offline renderer</span>
@@ -131,8 +144,12 @@ export function buildReportHtml(snapshot) {
           <p class="badge">${escapeHtml(finding?.severity || 'Unspecified')}</p>
           <h3>${escapeHtml(finding?.title || 'Untitled finding')}</h3>
           <p>${escapeHtml(finding?.summary || '')}</p>
+          <p><strong>Status:</strong> ${escapeHtml(finding?.status || 'open')}</p>
           <p><strong>Evidence:</strong> ${renderInlineList(finding?.evidence)}</p>
+          <p><strong>Promoted by:</strong> ${escapeHtml(finding?.promotedBy || '')}</p>
+          <p><strong>Promoted at:</strong> ${escapeHtml(finding?.promotedAt || '')}</p>
           <p><strong>Remediation:</strong> ${escapeHtml(finding?.remediation || '')}</p>
+          <p><strong>Affected entities:</strong> ${renderInlineList(finding?.affectedEntityIds)}</p>
         `)}
       </div>
     </section>
@@ -142,9 +159,13 @@ export function buildReportHtml(snapshot) {
       <div class="grid">
         ${renderCards(evidence, (item) => `
           <p class="badge">${escapeHtml(item?.label || 'Evidence')}</p>
-          <p><strong>Source:</strong> ${escapeHtml(item?.source || '')}</p>
+          <p><strong>Source:</strong> ${escapeHtml(item?.source || item?.command || '')}</p>
+          <p><strong>Target:</strong> ${escapeHtml(item?.target || '')}</p>
           <p><strong>Actor:</strong> ${escapeHtml(item?.actor || '')}</p>
           <p><strong>Host:</strong> ${escapeHtml(item?.host || '')}</p>
+          <p><strong>Egress:</strong> ${escapeHtml(item?.egress || '')}</p>
+          <p><strong>Initiated by:</strong> ${escapeHtml(item?.initiatedBy || '')}</p>
+          <p><strong>Parse status:</strong> ${escapeHtml(item?.parseStatus || '')}</p>
           <p><strong>Attribution:</strong> ${escapeHtml(item?.attribution || '')}</p>
           <pre>${escapeHtml(item?.rawSnippet || '')}</pre>
           <p>${escapeHtml(item?.note || '')}</p>
@@ -226,7 +247,7 @@ export function buildReportHtml(snapshot) {
 
     <section class="section">
       <h2>Known capture gaps</h2>
-      <ul>${renderList(knownCaptureGaps)}</ul>
+      <ul>${Array.isArray(knownCaptureGaps) && knownCaptureGaps.length ? knownCaptureGaps.map((item) => renderCaptureGap(item)).join('') : '<li>None recorded.</li>'}</ul>
     </section>
   </main>
 </body>
