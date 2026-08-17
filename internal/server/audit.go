@@ -211,10 +211,16 @@ func auditEventsStreamHandler(db *sql.DB) http.HandlerFunc {
 				if !ok {
 					return
 				}
+				if !auditActorActive(ctx, db, actor.ID, actor.EngagementID) {
+					return
+				}
 				if err := writeSSEEvent(w, rc, flusher, msg.item); err != nil {
 					return
 				}
 			case <-heartbeat.C:
+				if !auditActorActive(ctx, db, actor.ID, actor.EngagementID) {
+					return
+				}
 				if err := writeSSEHeartbeat(w, rc, flusher); err != nil {
 					return
 				}

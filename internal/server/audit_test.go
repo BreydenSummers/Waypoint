@@ -351,7 +351,16 @@ func appendAuditEvents(t *testing.T, db *sql.DB, engagementID, actorID string, t
 
 func doAuditRequest(t *testing.T, client *http.Client, rawURL, token, requestID, after, lastEventID string) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		t.Fatalf("parse request url: %v", err)
+	}
+	if after != "" {
+		q := parsed.Query()
+		q.Set("after", after)
+		parsed.RawQuery = q.Encode()
+	}
+	req, err := http.NewRequest(http.MethodGet, parsed.String(), nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
