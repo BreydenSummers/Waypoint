@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS observation_engagement_observed_at_idx;
+DROP INDEX IF EXISTS entity_engagement_lineage_first_seen_idx;
+DROP INDEX IF EXISTS entity_engagement_visible_first_seen_idx;

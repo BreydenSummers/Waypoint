@@ -65,8 +65,11 @@ func TestApplyMigrationsOnRealPostgreSQL(t *testing.T) {
 		"action_engagement_execution_status_idx",
 		"action_engagement_clock_skew_status_idx",
 		"entity_identity_unique",
+		"entity_engagement_visible_first_seen_idx",
+		"entity_engagement_lineage_first_seen_idx",
 		"finding_affected_entity_ids_idx",
 		"observation_entity_observed_at_idx",
+		"observation_engagement_observed_at_idx",
 		"result_action_unique",
 		"evidence_engagement_created_at_idx",
 	})
@@ -104,8 +107,8 @@ func TestApplyMigrationsSerializesConcurrentStarters(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
 		t.Fatalf("count schema migrations: %v", err)
 	}
-	if count != 3 {
-		t.Fatalf("schema migration count = %d, want 3", count)
+	if count != 4 {
+		t.Fatalf("schema migration count = %d, want 4", count)
 	}
 }
 

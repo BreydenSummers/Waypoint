@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -24,6 +25,11 @@ type entityPageMeta struct {
 	HasMore    bool   `json:"hasMore"`
 }
 
+type entityPageCursor struct {
+	FirstSeen time.Time `json:"firstSeen"`
+	ID        string    `json:"id"`
+}
+
 type entityReadResponse struct {
 	ContractVersion string                    `json:"contractVersion"`
 	ID              string                    `json:"id"`
@@ -38,10 +44,14 @@ type entityReadResponse struct {
 }
 
 type entityObservationItem struct {
-	ID             string    `json:"id"`
-	SourceActionID string    `json:"sourceActionId"`
-	ClaimStatus    string    `json:"claimStatus"`
-	ObservedAt     time.Time `json:"observedAt"`
+	ID             string                    `json:"id"`
+	EntityID       string                    `json:"entityId,omitempty"`
+	Kind           string                    `json:"kind,omitempty"`
+	SourceActionID string                    `json:"sourceActionId,omitempty"`
+	ClaimStatus    string                    `json:"claimStatus"`
+	Identifiers    []captureEntityIdentifier `json:"identifiers,omitempty"`
+	Attributes     json.RawMessage           `json:"attributes,omitempty"`
+	ObservedAt     time.Time                 `json:"observedAt"`
 }
 
 type entityReadRow struct {
@@ -93,11 +103,30 @@ func entityReadHandler(db *sql.DB) http.HandlerFunc {
 			return
 		default:
 			parts := strings.Split(trimmed, "/")
-			if len(parts) != 1 {
-				http.NotFound(w, r)
+			if len(parts) == 1 {
+				handleEntityItem(w, r, db, actor, reqID, parts[0])
 				return
 			}
-			handleEntityItem(w, r, db, actor, reqID, parts[0])
+			if len(parts) == 2 {
+				switch parts[1] {
+				case "observations":
+					handleEntityObservations(w, r, db, actor, reqID, parts[0])
+					return
+				case "identifiers":
+					handleEntityIdentifiers(w, r, db, actor, reqID, parts[0])
+					return
+				case "lineage":
+					handleEntityLineage(w, r, db, actor, reqID, parts[0])
+					return
+				case "merge-preview":
+					handleEntityMergePreviewRead(w, r, db, actor, reqID, parts[0])
+					return
+				case "split-provenance":
+					handleEntitySplitProvenanceRead(w, r, db, actor, reqID, parts[0])
+					return
+				}
+			}
+			http.NotFound(w, r)
 		}
 	}
 }
@@ -168,36 +197,40 @@ func parseEntityPageLimit(v string) (int, *captureProblem) {
 	return n, nil
 }
 
-func parseEntityPageCursor(v string) (*int64, *captureProblem) {
+func parseEntityPageCursor(v string) (*entityPageCursor, *captureProblem) {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return nil, nil
 	}
-	cursor, pb := parseAuditCursor(v)
+	cursor, pb := decodeEntityPageCursor(v)
 	if pb != nil {
 		return nil, pb
 	}
-	return &cursor, nil
+	return cursor, nil
 }
 
-func loadEntityPage(ctx context.Context, db *sql.DB, engagementID string, after *int64, limit int) (entityPageResponse, error) {
+func loadEntityPage(ctx context.Context, db *sql.DB, engagementID string, after *entityPageCursor, limit int) (entityPageResponse, error) {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return entityPageResponse{}, err
 	}
 	defer tx.Rollback()
 
-	offset := int64(0)
+	var afterSeen any
+	var afterID any
 	if after != nil {
-		offset = *after
+		afterSeen = after.FirstSeen
+		afterID = after.ID
 	}
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id
 		FROM entity
-		WHERE engagement_id = $1 AND merged_into_entity_id IS NULL
+		WHERE engagement_id = $1
+		  AND merged_into_entity_id IS NULL
+		  AND ($2::timestamptz IS NULL OR (first_seen, id) > ($2, $3))
 		ORDER BY first_seen ASC, id ASC
-		LIMIT $2 OFFSET $3
-	`, engagementID, limit+1, offset)
+		LIMIT $4
+	`, engagementID, afterSeen, afterID, limit+1)
 	if err != nil {
 		return entityPageResponse{}, err
 	}
@@ -232,8 +265,8 @@ func loadEntityPage(ctx context.Context, db *sql.DB, engagementID string, after 
 	}
 
 	page := entityPageResponse{ContractVersion: entityReadContractVersion, Items: items, Page: entityPageMeta{HasMore: hasMore}}
-	if hasMore {
-		page.Page.NextCursor = strconv.FormatInt(offset+int64(len(items)), 10)
+	if hasMore && len(items) > 0 {
+		page.Page.NextCursor = encodeEntityPageCursor(entityPageCursor{FirstSeen: items[len(items)-1].FirstSeen, ID: items[len(items)-1].ID})
 	}
 	return page, nil
 }
@@ -317,7 +350,7 @@ func loadEntityProvenanceObservations(ctx context.Context, q queryer, engagement
 			JOIN lineage l ON e.merged_into_entity_id = l.id
 			WHERE e.engagement_id = $1
 		)
-		SELECT o.id, COALESCE(o.action_id::text, ''), o.observed_at
+		SELECT o.id, o.entity_id::text, o.kind, COALESCE(o.action_id::text, ''), o.identifiers::text, o.attributes::text, o.observed_at
 		FROM observation o
 		JOIN lineage l ON l.id = o.entity_id
 		WHERE o.engagement_id = $1
@@ -331,10 +364,19 @@ func loadEntityProvenanceObservations(ctx context.Context, q queryer, engagement
 	items := make([]entityObservationItem, 0, 8)
 	for rows.Next() {
 		var item entityObservationItem
-		if err := rows.Scan(&item.ID, &item.SourceActionID, &item.ObservedAt); err != nil {
+		var identifiers, attributes string
+		if err := rows.Scan(&item.ID, &item.EntityID, &item.Kind, &item.SourceActionID, &identifiers, &attributes, &item.ObservedAt); err != nil {
 			return nil, err
 		}
 		item.ClaimStatus = "captured"
+		if strings.TrimSpace(identifiers) != "" {
+			if err := json.Unmarshal([]byte(identifiers), &item.Identifiers); err != nil {
+				return nil, err
+			}
+		}
+		if strings.TrimSpace(attributes) != "" {
+			item.Attributes = json.RawMessage(attributes)
+		}
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
@@ -372,7 +414,11 @@ func entityIdentifiersFromRow(row entityReadRow, observations []entityObservatio
 		appendID(captureEntityIdentifier{Type: "other", Value: row.KeyValue})
 	}
 
-	_ = observations
+	for _, obs := range observations {
+		for _, id := range obs.Identifiers {
+			appendID(id)
+		}
+	}
 	return idents
 }
 
@@ -381,4 +427,21 @@ func normalizeJSONObject(b json.RawMessage) json.RawMessage {
 		return json.RawMessage(`{}`)
 	}
 	return b
+}
+
+func encodeEntityPageCursor(cursor entityPageCursor) string {
+	b, _ := json.Marshal(cursor)
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
+func decodeEntityPageCursor(v string) (*entityPageCursor, *captureProblem) {
+	b, err := base64.RawURLEncoding.DecodeString(v)
+	if err != nil {
+		return nil, &captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "cursor_invalid", Retryable: false, Detail: "cursor must be a valid page token."}
+	}
+	var cursor entityPageCursor
+	if err := json.Unmarshal(b, &cursor); err != nil || cursor.ID == "" || cursor.FirstSeen.IsZero() {
+		return nil, &captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "cursor_invalid", Retryable: false, Detail: "cursor must be a valid page token."}
+	}
+	return &cursor, nil
 }
