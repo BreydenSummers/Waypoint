@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -216,6 +217,55 @@ func TestCopyEvidenceStreamRejectsOverLimit(t *testing.T) {
 	}
 	if written != 0 {
 		t.Fatalf("written = %d, want 0", written)
+	}
+}
+
+func TestExportStreamingHelpersStayFileBounded(t *testing.T) {
+	source, err := os.ReadFile("export.go")
+	if err != nil {
+		t.Fatalf("read export source: %v", err)
+	}
+	text := string(source)
+	for _, want := range []string{
+		"io.Copy(zw, blob)",
+		"io.Copy(h, f)",
+		"os.Stat(path)",
+		"os.Rename(tmpPath, outputPath)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("export source missing %q", want)
+		}
+	}
+	for _, bad := range []string{
+		"os.ReadFile(filepath.Join(filepath.FromSlash(bundleDir), strings.TrimPrefix(payload.Path, \"bundle/\")))",
+		"bytes.Buffer",
+	} {
+		if strings.Contains(text, bad) {
+			t.Fatalf("export source still contains %q", bad)
+		}
+	}
+}
+
+func TestCopyEvidenceStreamKeeps10GiBLimitPathWithinRSSBudget(t *testing.T) {
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+
+	hasher := sha256.New()
+	const streamed = 8 << 20
+	written, err := copyEvidenceStream(context.Background(), io.Discard, hasher, io.LimitReader(zeroReader{}, streamed), maxCaptureEvidenceBytes, "/evidence/stdout")
+	if err != nil {
+		t.Fatalf("copy evidence stream: %v", err)
+	}
+	if written != streamed {
+		t.Fatalf("written = %d, want %d", written, streamed)
+	}
+
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	if delta := int64(after.HeapAlloc) - int64(before.HeapAlloc); delta > 32<<20 {
+		t.Fatalf("heap delta = %d, want <= %d", delta, 32<<20)
 	}
 }
 
