@@ -116,7 +116,12 @@ ALTER TABLE action
     );
 
 CREATE INDEX action_engagement_source_agent_kind_idx ON action (engagement_id, source_agent_kind) WHERE source_agent_kind IS NOT NULL;
+CREATE INDEX action_engagement_plugin_id_idx ON action (engagement_id, plugin_id, started_at DESC) WHERE plugin_id IS NOT NULL;
+CREATE INDEX action_engagement_exec_host_ip_idx ON action (engagement_id, exec_host_ip, started_at DESC);
+CREATE INDEX action_engagement_initiated_by_idx ON action (engagement_id, initiated_by, started_at DESC);
+CREATE INDEX actor_engagement_role_idx ON actor (engagement_id, role);
 CREATE INDEX action_engagement_exec_host_method_idx ON action (engagement_id, exec_host_method) WHERE exec_host_method IS NOT NULL;
 CREATE INDEX action_engagement_egress_mode_status_idx ON action (engagement_id, egress_mode, egress_status) WHERE egress_mode IS NOT NULL;
 CREATE INDEX action_engagement_execution_status_idx ON action (engagement_id, execution_status, started_at DESC) WHERE execution_status IS NOT NULL;
 CREATE INDEX action_engagement_clock_skew_status_idx ON action (engagement_id, clock_skew_status) WHERE clock_skew_status IS NOT NULL;
+CREATE INDEX audit_event_engagement_action_capture_idx ON audit_event (engagement_id, id DESC) WHERE subject_type = 'action' AND type = 'capture.accepted';

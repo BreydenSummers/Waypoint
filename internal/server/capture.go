@@ -1358,7 +1358,7 @@ func (a stringArray) Value() (driver.Value, error) {
 	return "{" + strings.Join([]string(a), ",") + "}", nil
 }
 
-func lookupActor(ctx context.Context, db *sql.DB, token string) (actorRecord, error) {
+func lookupActor(ctx context.Context, db queryer, token string) (actorRecord, error) {
 	cands := []string{sha256Hex(token)}
 	if isHexSHA256(token) {
 		cands = append([]string{strings.ToLower(token)}, cands...)

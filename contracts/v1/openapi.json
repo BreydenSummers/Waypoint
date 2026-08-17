@@ -622,6 +622,42 @@
             "$ref": "#/components/parameters/RequestId"
           },
           {
+            "$ref": "#/components/parameters/TechniqueFilter"
+          },
+          {
+            "$ref": "#/components/parameters/TargetFilter"
+          },
+          {
+            "$ref": "#/components/parameters/HostFilter"
+          },
+          {
+            "$ref": "#/components/parameters/ActorFilter"
+          },
+          {
+            "$ref": "#/components/parameters/ResultFilter"
+          },
+          {
+            "$ref": "#/components/parameters/InitiatedByFilter"
+          },
+          {
+            "$ref": "#/components/parameters/ProvenanceFilter"
+          },
+          {
+            "$ref": "#/components/parameters/ParseStatusFilter"
+          },
+          {
+            "$ref": "#/components/parameters/StartedAfterFilter"
+          },
+          {
+            "$ref": "#/components/parameters/StartedBeforeFilter"
+          },
+          {
+            "$ref": "#/components/parameters/EndedAfterFilter"
+          },
+          {
+            "$ref": "#/components/parameters/EndedBeforeFilter"
+          },
+          {
             "$ref": "#/components/parameters/AfterCursor"
           },
           {
@@ -2654,6 +2690,128 @@
           }
         }
       }
+    },
+    "/actions/needs-plugin": {
+      "get": {
+        "operationId": "listNeedsPluginActions",
+        "tags": [
+          "Actions"
+        ],
+        "summary": "Read needs-plugin actions in bounded keyset order",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ContractVersion"
+          },
+          {
+            "$ref": "#/components/parameters/RequestId"
+          },
+          {
+            "$ref": "#/components/parameters/TechniqueFilter"
+          },
+          {
+            "$ref": "#/components/parameters/TargetFilter"
+          },
+          {
+            "$ref": "#/components/parameters/HostFilter"
+          },
+          {
+            "$ref": "#/components/parameters/ActorFilter"
+          },
+          {
+            "$ref": "#/components/parameters/ResultFilter"
+          },
+          {
+            "$ref": "#/components/parameters/InitiatedByFilter"
+          },
+          {
+            "$ref": "#/components/parameters/ProvenanceFilter"
+          },
+          {
+            "$ref": "#/components/parameters/ParseStatusFilter"
+          },
+          {
+            "$ref": "#/components/parameters/StartedAfterFilter"
+          },
+          {
+            "$ref": "#/components/parameters/StartedBeforeFilter"
+          },
+          {
+            "$ref": "#/components/parameters/EndedAfterFilter"
+          },
+          {
+            "$ref": "#/components/parameters/EndedBeforeFilter"
+          },
+          {
+            "$ref": "#/components/parameters/AfterCursor"
+          },
+          {
+            "$ref": "#/components/parameters/PageLimit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful authoritative response",
+            "headers": {
+              "Waypoint-Contract-Version": {
+                "$ref": "#/components/headers/ContractVersion"
+              },
+              "X-Request-ID": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "401": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "412": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "413": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "426": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "428": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "507": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "description": "Every item retains the complete accepted capture envelope and event-time actor attribution. Filters may only narrow the bounded authoritative projection."
+      }
     }
   },
   "components": {
@@ -2826,6 +2984,130 @@
         "schema": {
           "type": "string",
           "pattern": "^(?=.*application/json)(?=.*text/event-stream).+$"
+        }
+      },
+      "TechniqueFilter": {
+        "name": "technique",
+        "in": "query",
+        "required": false,
+        "description": "Exact technique / parser identifier filter.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "TargetFilter": {
+        "name": "target",
+        "in": "query",
+        "required": false,
+        "description": "Exact target kind or value filter.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "HostFilter": {
+        "name": "host",
+        "in": "query",
+        "required": false,
+        "description": "Exact executing host IP filter.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "ActorFilter": {
+        "name": "actor",
+        "in": "query",
+        "required": false,
+        "description": "Exact actor handle or ID filter.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "ResultFilter": {
+        "name": "result",
+        "in": "query",
+        "required": false,
+        "description": "Execution result filter.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "InitiatedByFilter": {
+        "name": "initiatedBy",
+        "in": "query",
+        "required": false,
+        "description": "Exact initiation provenance filter.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "ProvenanceFilter": {
+        "name": "provenance",
+        "in": "query",
+        "required": false,
+        "description": "Exact provenance bucket filter.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "ParseStatusFilter": {
+        "name": "parseStatus",
+        "in": "query",
+        "required": false,
+        "description": "Exact parsing status filter.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      },
+      "StartedAfterFilter": {
+        "name": "startedAfter",
+        "in": "query",
+        "required": false,
+        "description": "Inclusive lower bound for startedAt.",
+        "schema": {
+          "$ref": "schemas/common.schema.json#/$defs/Timestamp"
+        }
+      },
+      "StartedBeforeFilter": {
+        "name": "startedBefore",
+        "in": "query",
+        "required": false,
+        "description": "Inclusive upper bound for startedAt.",
+        "schema": {
+          "$ref": "schemas/common.schema.json#/$defs/Timestamp"
+        }
+      },
+      "EndedAfterFilter": {
+        "name": "endedAfter",
+        "in": "query",
+        "required": false,
+        "description": "Inclusive lower bound for endedAt.",
+        "schema": {
+          "$ref": "schemas/common.schema.json#/$defs/Timestamp"
+        }
+      },
+      "EndedBeforeFilter": {
+        "name": "endedBefore",
+        "in": "query",
+        "required": false,
+        "description": "Inclusive upper bound for endedAt.",
+        "schema": {
+          "$ref": "schemas/common.schema.json#/$defs/Timestamp"
         }
       }
     },

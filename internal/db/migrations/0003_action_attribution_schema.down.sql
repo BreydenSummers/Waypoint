@@ -1,6 +1,11 @@
+DROP INDEX IF EXISTS audit_event_engagement_action_capture_idx;
 DROP INDEX IF EXISTS action_engagement_clock_skew_status_idx;
 DROP INDEX IF EXISTS action_engagement_execution_status_idx;
 DROP INDEX IF EXISTS action_engagement_egress_mode_status_idx;
+DROP INDEX IF EXISTS actor_engagement_role_idx;
+DROP INDEX IF EXISTS action_engagement_initiated_by_idx;
+DROP INDEX IF EXISTS action_engagement_exec_host_ip_idx;
+DROP INDEX IF EXISTS action_engagement_plugin_id_idx;
 DROP INDEX IF EXISTS action_engagement_exec_host_method_idx;
 DROP INDEX IF EXISTS action_engagement_source_agent_kind_idx;
 
