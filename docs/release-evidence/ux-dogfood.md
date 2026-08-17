@@ -1,12 +1,13 @@
 # UX/accessibility dogfood evidence
 
 ## Timestamp
-- 2026-08-12T05:41:22Z
+- 2026-08-17T08:58:08Z
 
 ## Checks run
 - `go test ./...` → blocked by real-PostgreSQL gate tests (`WAYPOINT_TEST_PG_DSN` required)
-- `cd web && npm test`
-- `cd web && npm run build`
+- `make smoke` → blocked because the app cannot start without a PostgreSQL service in this sandbox
+- `cd web && npm test` → passed
+- `cd web && npm run build` → passed
 - `command -v google-chrome || command -v chromium || command -v chromium-browser || command -v firefox || command -v microsoft-edge || command -v msedge || command -v safari || true` → no local browser binary
 - `node -e "try{console.log(require.resolve('playwright'));}catch(e){console.error('no playwright')}"` → no Playwright
 - `node -e "try{console.log(require.resolve('puppeteer'));}catch(e){console.error('no puppeteer')}"` → no Puppeteer

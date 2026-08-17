@@ -23,10 +23,11 @@ node -e "try{require('selenium-webdriver'); console.log('selenium present')}catc
 make smoke
 ```
 
-Observed:
+Observed in this gate run:
 
 - browser/automation commands are unavailable;
-- `make smoke` fails immediately because `WAYPOINT_DB_DSN is required`.
+- `make smoke` fails because the app cannot reach PostgreSQL here (`WAYPOINT_DB_DSN` missing / no DB service);
+- `cd web && npm test` and `cd web && npm run build` both pass, so the front-end bundle is current even though no browser could be driven.
 
 ## Compatibility matrix
 
