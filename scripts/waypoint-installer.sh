@@ -13,6 +13,7 @@ STATE_ROOT=""
 LOG_ROOT=""
 DRY_RUN=0
 DESTROY_FORCE=0
+ROLLBACK_VERSION=""
 
 FAIL_AT=${WAYPOINT_INSTALLER_FAIL_AT:-}
 OS_RELEASE_FILE=${WAYPOINT_INSTALLER_OS_RELEASE_FILE:-/etc/os-release}
@@ -21,6 +22,7 @@ UNAME_MACHINE=${WAYPOINT_INSTALLER_UNAME_MACHINE:-$(uname -m)}
 usage() {
   cat <<'EOF'
 Usage: waypoint-installer.sh <validate|install|upgrade|provision|diagnostics|rollback|destroy> [options]
+       waypoint-installer.sh rollback [version] [options]
 
 Options:
   --config FILE       installer env file
@@ -634,9 +636,20 @@ rollback() {
   cp -a "$current_dir/." "$backup_dir/"
   if [[ -n $version ]]; then
     local target="$INSTALL_ROOT/releases/$version"
+    local state_file="$STATE_ROOT/install.state"
+    local tmp_state
     [[ -d $target ]] || die "rollback target not found: $target"
+    if [[ -f $state_file ]]; then
+      tmp_state=$(mktemp "$STATE_ROOT/.install.state.XXXXXX")
+      awk -F= -v version="$version" 'BEGIN { OFS="=" }
+        $1=="WAYPOINT_INSTALLED_VERSION" {$0="WAYPOINT_INSTALLED_VERSION=" version}
+        {print}
+      ' "$state_file" > "$tmp_state"
+      mv "$tmp_state" "$state_file"
+    else
+      printf 'WAYPOINT_INSTALLED_VERSION=%s\n' "$version" > "$state_file"
+    fi
     ln -sfn "$target" "$INSTALL_ROOT/current"
-    printf 'WAYPOINT_INSTALLED_VERSION=%s\n' "$version" > "$STATE_ROOT/install.state"
     sync_waypoint_service
   fi
   echo "$backup_dir"
@@ -729,12 +742,17 @@ main() {
         MODE=$1
         shift
         ;;
+      *)
+        if [[ $MODE == rollback && -z $ROLLBACK_VERSION && ${1#-} == $1 ]]; then
+          ROLLBACK_VERSION=$1
+          shift
+        else
+          die "unknown argument: $1"
+        fi
+        ;;
       -h|--help)
         usage
         exit 0
-        ;;
-      *)
-        die "unknown argument: $1"
         ;;
     esac
   done
@@ -765,7 +783,7 @@ main() {
       ;;
     rollback)
       prepare_roots
-      rollback "${1:-}"
+      rollback "$ROLLBACK_VERSION"
       ;;
     destroy)
       destroy
