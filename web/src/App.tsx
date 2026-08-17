@@ -1346,7 +1346,26 @@ export function App() {
             <button type="button" className="secondary-link" onClick={() => { setView('trail'); setActivePhase('summit'); navigateToPhase(engagementId, 'summit'); }}>
               Back to Summit
             </button>
-            <button type="button" className="primary-button" onClick={() => window.open(reportPdfPath(engagementId), '_blank', 'noopener')}>
+            <button type="button" className="primary-button" onClick={async () => {
+              const previewWindow = window.open('', '_blank', 'noopener');
+              if (!previewWindow) {
+                setReportError('Unable to open the PDF preview');
+                return;
+              }
+
+              try {
+                setReportError('');
+                const response = await fetch(reportPdfPath(engagementId), { headers: authHeaders(token, newRequestId()), cache: 'no-store' });
+                if (!response.ok) throw new Error(await readProblem(response));
+                const pdfBlob = await response.blob();
+                const previewUrl = URL.createObjectURL(pdfBlob);
+                previewWindow.location.href = previewUrl;
+                previewWindow.addEventListener('load', () => URL.revokeObjectURL(previewUrl), { once: true });
+              } catch (error) {
+                previewWindow.close();
+                setReportError(error instanceof Error ? error.message : 'Unable to open the PDF preview');
+              }
+            }}>
               Open PDF artifact
             </button>
           </div>

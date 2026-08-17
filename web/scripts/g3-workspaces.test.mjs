@@ -26,6 +26,9 @@ await test('G3 shell keeps recon/attacks/findings non-linear and accessible', as
   assert.match(app, /Journey log/);
   assert.match(app, /No reviewed notes match this search\./);
   assert.match(app, /navigateToPhase\(engagementId, guidePhase\)/);
+  assert.match(app, /fetch\(reportPdfPath\(engagementId\), \{ headers: authHeaders\(token, newRequestId\(\)\), cache: 'no-store' \}\)/);
+  assert.match(app, /URL\.createObjectURL\(pdfBlob\)/);
+  assert.match(app, /setReportError\(''\)/);
 
   assert.match(distBundle, /Journey log/);
   assert.match(distBundle, /guide-note-list/);
