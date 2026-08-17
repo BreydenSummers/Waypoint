@@ -1,0 +1,45 @@
+COMMAND: make smoke
+
+npm --prefix web run build
+
+> build
+> node --no-warnings build.mjs
+
+mkdir -p bin
+go build -o bin/waypoint ./cmd/waypoint
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
+make: *** [Makefile:23: smoke] Error 1
+
+EXIT_CODE: 2
+STARTED_AT: 2026-08-17T09:21:28Z
+ENDED_AT: 2026-08-17T09:21:59Z

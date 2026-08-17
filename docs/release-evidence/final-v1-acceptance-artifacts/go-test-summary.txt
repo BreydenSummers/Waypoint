@@ -1,0 +1,52 @@
+total=102
+pass=58
+fail=39
+skip=5
+
+Failed tests:
+- waypoint/cmd/waypoint: TestOpenConfiguredDatabaseAppliesMigrations
+- waypoint/internal/db: TestActionAttributionSchemaRoundTrip
+- waypoint/internal/db: TestActorAuthorizationConstraint
+- waypoint/internal/db: TestAppendAuditEventCapturesOutOfBandReviewLifecycle
+- waypoint/internal/db: TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly
+- waypoint/internal/db: TestAppendAuditEventRedactsSensitiveMetadata
+- waypoint/internal/db: TestApplyMigrationsOnRealPostgreSQL
+- waypoint/internal/db: TestApplyMigrationsSerializesConcurrentStarters
+- waypoint/internal/db: TestAuditEventViewAndTableRemainAppendOnly
+- waypoint/internal/db: TestDatabaseProtectionsRejectMutations
+- waypoint/internal/server: TestActorLifecycleProvisionRotateRevokeAndAuthorization
+- waypoint/internal/server: TestAuditEventsCursorExpiredReturnsResyncLink
+- waypoint/internal/server: TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation
+- waypoint/internal/server: TestAuditSSEHeartbeatAndCommittedCaptureVisibility
+- waypoint/internal/server: TestCaptureAcceptsAIInitiationWithDecisionContext
+- waypoint/internal/server: TestCaptureEvidenceDeduplicatesAndSurvivesRestart
+- waypoint/internal/server: TestCaptureIngestCreatesReplaysAndRejectsChangedPayload
+- waypoint/internal/server: TestCaptureIngestRejectsDiskPressureBeforeCommitting
+- waypoint/internal/server: TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication
+- waypoint/internal/server: TestCapturePersistsEvidenceAndRecoversOrphans
+- waypoint/internal/server: TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput
+- waypoint/internal/server: TestCaptureRejectsConflictingStableEntityKinds
+- waypoint/internal/server: TestCaptureRejectsUnsupportedContractVersion
+- waypoint/internal/server: TestCaptureRoundTripGateG2Transcript
+- waypoint/internal/server: TestEntityIdentityNormalizationConflictAndConcurrentDeduplication
+- waypoint/internal/server: TestEntityMergeConflictIsOptimisticUnderConcurrency
+- waypoint/internal/server: TestEntityMergeSplitPreviewUndoAndProvenance
+- waypoint/internal/server: TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL
+- waypoint/internal/server: TestEvidenceMetadataAndContentReadsStayEngagementScoped
+- waypoint/internal/server: TestFindingPromotionRevisionsAndOperatorOnlyPromotion
+- waypoint/internal/server: TestG3AuthoritativeProvenanceJourney
+- waypoint/internal/server: TestLiveMultiActorRESTCaptureJourneys
+- waypoint/internal/server: TestMCPStandardFlowReusesCaptureService
+- waypoint/internal/server: TestNotableAlertsAreDeduplicatedAndStreamed
+- waypoint/internal/server: TestNotableAlertsUseSystemActorForAISourceCaptures
+- waypoint/internal/server: TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage
+- waypoint/internal/server: TestReconReadApisAreKeysetPaginatedAndEngagementIsolated
+- waypoint/internal/server: TestTailAuditEventsStopsWhenQueueIsFull
+- waypoint/internal/server: TestUpsertEvidenceRejectsImmutableMetadataChanges
+
+Skipped tests:
+- waypoint: TestComposeStackPersistsDBAndEvidenceAcrossRestart
+- waypoint/internal/server: TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship
+- waypoint/internal/server: TestExportJobListIsPagedAndResumable
+- waypoint/internal/server: TestExportJobRecoversAfterRestart
+- waypoint/internal/server: TestReportHandlerRequiresAuthAndScopesEngagement

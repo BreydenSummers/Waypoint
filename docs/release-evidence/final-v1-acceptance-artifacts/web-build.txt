@@ -1,0 +1,10 @@
+COMMAND: npm --prefix web run build
+
+
+> build
+> node --no-warnings build.mjs
+
+
+EXIT_CODE: 0
+STARTED_AT: 2026-08-17T09:21:26Z
+ENDED_AT: 2026-08-17T09:21:26Z

@@ -1,0 +1,7 @@
+COMMAND: parse canonical traceability and final acceptance tables; require 67 keyed PRD rows and EV-01 through EV-16
+PASS trace_rows=67 statuses={'Fail': 15, 'Pass': 7, 'Unverified': 45} evidence_keyed=67
+PASS ev_rows=16 inventory=EV-01..EV-16 evidence_keyed=16
+
+EXIT_CODE: 0
+STARTED_AT: 2026-08-17T09:26:39Z
+ENDED_AT: 2026-08-17T09:26:39Z

@@ -1,0 +1,517 @@
+COMMAND: go test -count=1 -json ./...
+
+{"Time":"2026-08-17T03:21:19.720669579-06:00","Action":"start","Package":"waypoint"}
+{"Time":"2026-08-17T03:21:19.728384242-06:00","Action":"run","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart"}
+{"Time":"2026-08-17T03:21:19.728510773-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"=== RUN   TestComposeStackPersistsDBAndEvidenceAcrossRestart\n"}
+{"Time":"2026-08-17T03:21:19.842567798-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"    compose_integration_test.go:27: docker daemon unavailable: exit status 1\n"}
+{"Time":"2026-08-17T03:21:19.842611531-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"        Client:\n"}
+{"Time":"2026-08-17T03:21:19.842621173-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"         Version:    26.1.5+dfsg1\n"}
+{"Time":"2026-08-17T03:21:19.842626709-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"         Context:    default\n"}
+{"Time":"2026-08-17T03:21:19.842633053-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"         Debug Mode: false\n"}
+{"Time":"2026-08-17T03:21:19.842637907-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"         Plugins:\n"}
+{"Time":"2026-08-17T03:21:19.842643401-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"          buildx: Docker Buildx (Docker Inc.)\n"}
+{"Time":"2026-08-17T03:21:19.842648981-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"            Version:  0.13.1+ds1\n"}
+{"Time":"2026-08-17T03:21:19.842652986-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"            Path:     /usr/libexec/docker/cli-plugins/docker-buildx\n"}
+{"Time":"2026-08-17T03:21:19.842656949-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"          compose: Docker Compose (Docker Inc.)\n"}
+{"Time":"2026-08-17T03:21:19.842661094-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"            Version:  2.26.1-4\n"}
+{"Time":"2026-08-17T03:21:19.842664939-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"            Path:     /usr/libexec/docker/cli-plugins/docker-compose\n"}
+{"Time":"2026-08-17T03:21:19.842668721-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"        \n"}
+{"Time":"2026-08-17T03:21:19.842672597-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"        Server:\n"}
+{"Time":"2026-08-17T03:21:19.842676452-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"        ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?\n"}
+{"Time":"2026-08-17T03:21:19.842682009-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"        errors pretty printing info\n"}
+{"Time":"2026-08-17T03:21:19.842790051-06:00","Action":"output","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Output":"--- SKIP: TestComposeStackPersistsDBAndEvidenceAcrossRestart (0.12s)\n"}
+{"Time":"2026-08-17T03:21:19.84373693-06:00","Action":"skip","Package":"waypoint","Test":"TestComposeStackPersistsDBAndEvidenceAcrossRestart","Elapsed":0.12}
+{"Time":"2026-08-17T03:21:19.843763376-06:00","Action":"run","Package":"waypoint","Test":"TestComposeDeploymentFilesCoverOneStepDeployment"}
+{"Time":"2026-08-17T03:21:19.843778524-06:00","Action":"output","Package":"waypoint","Test":"TestComposeDeploymentFilesCoverOneStepDeployment","Output":"=== RUN   TestComposeDeploymentFilesCoverOneStepDeployment\n"}
+{"Time":"2026-08-17T03:21:19.843787365-06:00","Action":"output","Package":"waypoint","Test":"TestComposeDeploymentFilesCoverOneStepDeployment","Output":"--- PASS: TestComposeDeploymentFilesCoverOneStepDeployment (0.00s)\n"}
+{"Time":"2026-08-17T03:21:19.843792248-06:00","Action":"pass","Package":"waypoint","Test":"TestComposeDeploymentFilesCoverOneStepDeployment","Elapsed":0}
+{"Time":"2026-08-17T03:21:19.843796735-06:00","Action":"run","Package":"waypoint","Test":"TestComposeConfigValidatesWhenDockerComposeIsAvailable"}
+{"Time":"2026-08-17T03:21:19.843800599-06:00","Action":"output","Package":"waypoint","Test":"TestComposeConfigValidatesWhenDockerComposeIsAvailable","Output":"=== RUN   TestComposeConfigValidatesWhenDockerComposeIsAvailable\n"}
+{"Time":"2026-08-17T03:21:20.074550004-06:00","Action":"start","Package":"waypoint/cmd/waypoint"}
+{"Time":"2026-08-17T03:21:20.074671471-06:00","Action":"start","Package":"waypoint/internal/db"}
+{"Time":"2026-08-17T03:21:20.078839982-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestRedactAuditData"}
+{"Time":"2026-08-17T03:21:20.078873353-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestRedactAuditData","Output":"=== RUN   TestRedactAuditData\n"}
+{"Time":"2026-08-17T03:21:20.079243435-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestRedactAuditData","Output":"--- PASS: TestRedactAuditData (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.079274338-06:00","Action":"run","Package":"waypoint/cmd/waypoint","Test":"TestOpenConfiguredDatabaseAppliesMigrations"}
+{"Time":"2026-08-17T03:21:20.07928067-06:00","Action":"output","Package":"waypoint/cmd/waypoint","Test":"TestOpenConfiguredDatabaseAppliesMigrations","Output":"=== RUN   TestOpenConfiguredDatabaseAppliesMigrations\n"}
+{"Time":"2026-08-17T03:21:20.079339878-06:00","Action":"output","Package":"waypoint/cmd/waypoint","Test":"TestOpenConfiguredDatabaseAppliesMigrations","Output":"    main_test.go:16: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.079354965-06:00","Action":"output","Package":"waypoint/cmd/waypoint","Test":"TestOpenConfiguredDatabaseAppliesMigrations","Output":"--- FAIL: TestOpenConfiguredDatabaseAppliesMigrations (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.079363569-06:00","Action":"fail","Package":"waypoint/cmd/waypoint","Test":"TestOpenConfiguredDatabaseAppliesMigrations","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.079398954-06:00","Action":"run","Package":"waypoint/cmd/waypoint","Test":"TestOpenConfiguredDatabaseRequiresDSN"}
+{"Time":"2026-08-17T03:21:20.079404317-06:00","Action":"output","Package":"waypoint/cmd/waypoint","Test":"TestOpenConfiguredDatabaseRequiresDSN","Output":"=== RUN   TestOpenConfiguredDatabaseRequiresDSN\n"}
+{"Time":"2026-08-17T03:21:20.079411051-06:00","Action":"output","Package":"waypoint/cmd/waypoint","Test":"TestOpenConfiguredDatabaseRequiresDSN","Output":"--- PASS: TestOpenConfiguredDatabaseRequiresDSN (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.079415541-06:00","Action":"pass","Package":"waypoint/cmd/waypoint","Test":"TestOpenConfiguredDatabaseRequiresDSN","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.079419898-06:00","Action":"output","Package":"waypoint/cmd/waypoint","Output":"FAIL\n"}
+{"Time":"2026-08-17T03:21:20.079476492-06:00","Action":"pass","Package":"waypoint/internal/db","Test":"TestRedactAuditData","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.079513607-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCapturesOutOfBandReviewLifecycle"}
+{"Time":"2026-08-17T03:21:20.079519299-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCapturesOutOfBandReviewLifecycle","Output":"=== RUN   TestAppendAuditEventCapturesOutOfBandReviewLifecycle\n"}
+{"Time":"2026-08-17T03:21:20.079664057-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCapturesOutOfBandReviewLifecycle","Output":"    audit_test.go:35: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.079722838-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCapturesOutOfBandReviewLifecycle","Output":"--- FAIL: TestAppendAuditEventCapturesOutOfBandReviewLifecycle (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.079756374-06:00","Action":"fail","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCapturesOutOfBandReviewLifecycle","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.079882881-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestValidateAuditEventInputRejectsIncompleteAIActor"}
+{"Time":"2026-08-17T03:21:20.079896738-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestValidateAuditEventInputRejectsIncompleteAIActor","Output":"=== RUN   TestValidateAuditEventInputRejectsIncompleteAIActor\n"}
+{"Time":"2026-08-17T03:21:20.079904659-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestValidateAuditEventInputRejectsIncompleteAIActor","Output":"--- PASS: TestValidateAuditEventInputRejectsIncompleteAIActor (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.079909558-06:00","Action":"pass","Package":"waypoint/internal/db","Test":"TestValidateAuditEventInputRejectsIncompleteAIActor","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.079914578-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestAppendAuditEventRedactsSensitiveMetadata"}
+{"Time":"2026-08-17T03:21:20.079918258-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAppendAuditEventRedactsSensitiveMetadata","Output":"=== RUN   TestAppendAuditEventRedactsSensitiveMetadata\n"}
+{"Time":"2026-08-17T03:21:20.079942499-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAppendAuditEventRedactsSensitiveMetadata","Output":"    audit_test.go:139: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.079953627-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAppendAuditEventRedactsSensitiveMetadata","Output":"--- FAIL: TestAppendAuditEventRedactsSensitiveMetadata (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.079958181-06:00","Action":"fail","Package":"waypoint/internal/db","Test":"TestAppendAuditEventRedactsSensitiveMetadata","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.079970631-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly"}
+{"Time":"2026-08-17T03:21:20.079974406-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly","Output":"=== RUN   TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly\n"}
+{"Time":"2026-08-17T03:21:20.079978435-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly","Output":"    audit_test.go:214: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.079883533-06:00","Action":"output","Package":"waypoint/cmd/waypoint","Output":"FAIL\twaypoint/cmd/waypoint\t0.005s\n"}
+{"Time":"2026-08-17T03:21:20.079994686-06:00","Action":"fail","Package":"waypoint/cmd/waypoint","Elapsed":0.005}
+{"Time":"2026-08-17T03:21:20.080006262-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly","Output":"--- FAIL: TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.080012311-06:00","Action":"fail","Package":"waypoint/internal/db","Test":"TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.080016615-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestAuditEventViewAndTableRemainAppendOnly"}
+{"Time":"2026-08-17T03:21:20.080020242-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAuditEventViewAndTableRemainAppendOnly","Output":"=== RUN   TestAuditEventViewAndTableRemainAppendOnly\n"}
+{"Time":"2026-08-17T03:21:20.080034196-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAuditEventViewAndTableRemainAppendOnly","Output":"    audit_test.go:311: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.080039595-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestAuditEventViewAndTableRemainAppendOnly","Output":"--- FAIL: TestAuditEventViewAndTableRemainAppendOnly (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.080043623-06:00","Action":"fail","Package":"waypoint/internal/db","Test":"TestAuditEventViewAndTableRemainAppendOnly","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.080047768-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestApplyMigrationsOnRealPostgreSQL"}
+{"Time":"2026-08-17T03:21:20.080051496-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestApplyMigrationsOnRealPostgreSQL","Output":"=== RUN   TestApplyMigrationsOnRealPostgreSQL\n"}
+{"Time":"2026-08-17T03:21:20.080070026-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestApplyMigrationsOnRealPostgreSQL","Output":"    migrations_test.go:37: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.08014174-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestApplyMigrationsOnRealPostgreSQL","Output":"--- FAIL: TestApplyMigrationsOnRealPostgreSQL (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.080173131-06:00","Action":"fail","Package":"waypoint/internal/db","Test":"TestApplyMigrationsOnRealPostgreSQL","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.080219067-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestApplyMigrationsSerializesConcurrentStarters"}
+{"Time":"2026-08-17T03:21:20.080225834-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestApplyMigrationsSerializesConcurrentStarters","Output":"=== RUN   TestApplyMigrationsSerializesConcurrentStarters\n"}
+{"Time":"2026-08-17T03:21:20.080287474-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestApplyMigrationsSerializesConcurrentStarters","Output":"    migrations_test.go:84: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.080349983-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestApplyMigrationsSerializesConcurrentStarters","Output":"--- FAIL: TestApplyMigrationsSerializesConcurrentStarters (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.080404884-06:00","Action":"fail","Package":"waypoint/internal/db","Test":"TestApplyMigrationsSerializesConcurrentStarters","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.080435636-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestDatabaseProtectionsRejectMutations"}
+{"Time":"2026-08-17T03:21:20.080441251-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestDatabaseProtectionsRejectMutations","Output":"=== RUN   TestDatabaseProtectionsRejectMutations\n"}
+{"Time":"2026-08-17T03:21:20.080515067-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestDatabaseProtectionsRejectMutations","Output":"    migrations_test.go:121: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.080574073-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestDatabaseProtectionsRejectMutations","Output":"--- FAIL: TestDatabaseProtectionsRejectMutations (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.080602114-06:00","Action":"fail","Package":"waypoint/internal/db","Test":"TestDatabaseProtectionsRejectMutations","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.080651367-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestActorAuthorizationConstraint"}
+{"Time":"2026-08-17T03:21:20.080658407-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestActorAuthorizationConstraint","Output":"=== RUN   TestActorAuthorizationConstraint\n"}
+{"Time":"2026-08-17T03:21:20.080718239-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestActorAuthorizationConstraint","Output":"    migrations_test.go:186: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.080813046-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestActorAuthorizationConstraint","Output":"--- FAIL: TestActorAuthorizationConstraint (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.080822702-06:00","Action":"fail","Package":"waypoint/internal/db","Test":"TestActorAuthorizationConstraint","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.080827343-06:00","Action":"run","Package":"waypoint/internal/db","Test":"TestActionAttributionSchemaRoundTrip"}
+{"Time":"2026-08-17T03:21:20.080831206-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestActionAttributionSchemaRoundTrip","Output":"=== RUN   TestActionAttributionSchemaRoundTrip\n"}
+{"Time":"2026-08-17T03:21:20.080973636-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestActionAttributionSchemaRoundTrip","Output":"    migrations_test.go:211: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.080987218-06:00","Action":"output","Package":"waypoint/internal/db","Test":"TestActionAttributionSchemaRoundTrip","Output":"--- FAIL: TestActionAttributionSchemaRoundTrip (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.080992063-06:00","Action":"fail","Package":"waypoint/internal/db","Test":"TestActionAttributionSchemaRoundTrip","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.08099631-06:00","Action":"output","Package":"waypoint/internal/db","Output":"FAIL\n"}
+{"Time":"2026-08-17T03:21:20.084529297-06:00","Action":"output","Package":"waypoint/internal/db","Output":"FAIL\twaypoint/internal/db\t0.010s\n"}
+{"Time":"2026-08-17T03:21:20.084580918-06:00","Action":"fail","Package":"waypoint/internal/db","Elapsed":0.01}
+{"Time":"2026-08-17T03:21:20.256581372-06:00","Action":"output","Package":"waypoint","Test":"TestComposeConfigValidatesWhenDockerComposeIsAvailable","Output":"--- PASS: TestComposeConfigValidatesWhenDockerComposeIsAvailable (0.41s)\n"}
+{"Time":"2026-08-17T03:21:20.256648618-06:00","Action":"pass","Package":"waypoint","Test":"TestComposeConfigValidatesWhenDockerComposeIsAvailable","Elapsed":0.41}
+{"Time":"2026-08-17T03:21:20.256657372-06:00","Action":"output","Package":"waypoint","Output":"PASS\n"}
+{"Time":"2026-08-17T03:21:20.261076395-06:00","Action":"output","Package":"waypoint","Output":"ok  \twaypoint\t0.540s\n"}
+{"Time":"2026-08-17T03:21:20.261111194-06:00","Action":"pass","Package":"waypoint","Elapsed":0.54}
+{"Time":"2026-08-17T03:21:20.465980284-06:00","Action":"start","Package":"waypoint/internal/server"}
+{"Time":"2026-08-17T03:21:20.466124335-06:00","Action":"start","Package":"waypoint/internal/webassets"}
+{"Time":"2026-08-17T03:21:20.468122481-06:00","Action":"run","Package":"waypoint/internal/webassets","Test":"TestEmbeddedAssetsMatchDeterministicWebBuild"}
+{"Time":"2026-08-17T03:21:20.468147587-06:00","Action":"output","Package":"waypoint/internal/webassets","Test":"TestEmbeddedAssetsMatchDeterministicWebBuild","Output":"=== RUN   TestEmbeddedAssetsMatchDeterministicWebBuild\n"}
+{"Time":"2026-08-17T03:21:20.469878729-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestActionListQueryIsKeysetBoundedAndFilterable"}
+{"Time":"2026-08-17T03:21:20.469904255-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActionListQueryIsKeysetBoundedAndFilterable","Output":"=== RUN   TestActionListQueryIsKeysetBoundedAndFilterable\n"}
+{"Time":"2026-08-17T03:21:20.469978668-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActionListQueryIsKeysetBoundedAndFilterable","Output":"--- PASS: TestActionListQueryIsKeysetBoundedAndFilterable (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.469989707-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestActionListQueryIsKeysetBoundedAndFilterable","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.469995688-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestActionListTimeParsingRejectsBadTimestamp"}
+{"Time":"2026-08-17T03:21:20.470037431-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActionListTimeParsingRejectsBadTimestamp","Output":"=== RUN   TestActionListTimeParsingRejectsBadTimestamp\n"}
+{"Time":"2026-08-17T03:21:20.470046735-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActionListTimeParsingRejectsBadTimestamp","Output":"--- PASS: TestActionListTimeParsingRejectsBadTimestamp (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.47005127-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestActionListTimeParsingRejectsBadTimestamp","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470055733-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestActionHandlerWithoutDatabaseIsUnavailable"}
+{"Time":"2026-08-17T03:21:20.470059393-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActionHandlerWithoutDatabaseIsUnavailable","Output":"=== RUN   TestActionHandlerWithoutDatabaseIsUnavailable\n"}
+{"Time":"2026-08-17T03:21:20.470208269-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActionHandlerWithoutDatabaseIsUnavailable","Output":"--- PASS: TestActionHandlerWithoutDatabaseIsUnavailable (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470218422-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestActionHandlerWithoutDatabaseIsUnavailable","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470223271-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestActionHandlerRejectsMissingAuthorizationBeforeQuerying"}
+{"Time":"2026-08-17T03:21:20.470227011-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActionHandlerRejectsMissingAuthorizationBeforeQuerying","Output":"=== RUN   TestActionHandlerRejectsMissingAuthorizationBeforeQuerying\n"}
+{"Time":"2026-08-17T03:21:20.470242536-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActionHandlerRejectsMissingAuthorizationBeforeQuerying","Output":"--- PASS: TestActionHandlerRejectsMissingAuthorizationBeforeQuerying (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470247298-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestActionHandlerRejectsMissingAuthorizationBeforeQuerying","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470251709-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestActorLifecycleProvisionRotateRevokeAndAuthorization"}
+{"Time":"2026-08-17T03:21:20.470268741-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActorLifecycleProvisionRotateRevokeAndAuthorization","Output":"=== RUN   TestActorLifecycleProvisionRotateRevokeAndAuthorization\n"}
+{"Time":"2026-08-17T03:21:20.470305785-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActorLifecycleProvisionRotateRevokeAndAuthorization","Output":"    actor_test.go:12: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470316174-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestActorLifecycleProvisionRotateRevokeAndAuthorization","Output":"--- FAIL: TestActorLifecycleProvisionRotateRevokeAndAuthorization (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.47032082-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestActorLifecycleProvisionRotateRevokeAndAuthorization","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470329894-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestResolveSSECursor"}
+{"Time":"2026-08-17T03:21:20.470333974-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor","Output":"=== RUN   TestResolveSSECursor\n"}
+{"Time":"2026-08-17T03:21:20.470338469-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/empty"}
+{"Time":"2026-08-17T03:21:20.470343081-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/empty","Output":"=== RUN   TestResolveSSECursor/empty\n"}
+{"Time":"2026-08-17T03:21:20.470349673-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/empty","Output":"--- PASS: TestResolveSSECursor/empty (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470387895-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/empty","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470397031-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/after"}
+{"Time":"2026-08-17T03:21:20.470401114-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/after","Output":"=== RUN   TestResolveSSECursor/after\n"}
+{"Time":"2026-08-17T03:21:20.470409411-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/after","Output":"--- PASS: TestResolveSSECursor/after (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470413629-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/after","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.47041744-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/last-event-id"}
+{"Time":"2026-08-17T03:21:20.470421127-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/last-event-id","Output":"=== RUN   TestResolveSSECursor/last-event-id\n"}
+{"Time":"2026-08-17T03:21:20.470425322-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/last-event-id","Output":"--- PASS: TestResolveSSECursor/last-event-id (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470429449-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/last-event-id","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470434007-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/matching_pair"}
+{"Time":"2026-08-17T03:21:20.470467857-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/matching_pair","Output":"=== RUN   TestResolveSSECursor/matching_pair\n"}
+{"Time":"2026-08-17T03:21:20.470475003-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/matching_pair","Output":"--- PASS: TestResolveSSECursor/matching_pair (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470479371-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/matching_pair","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470486886-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/mismatch"}
+{"Time":"2026-08-17T03:21:20.470490555-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/mismatch","Output":"=== RUN   TestResolveSSECursor/mismatch\n"}
+{"Time":"2026-08-17T03:21:20.470495816-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/mismatch","Output":"--- PASS: TestResolveSSECursor/mismatch (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470499968-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/mismatch","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470503786-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/invalid_after"}
+{"Time":"2026-08-17T03:21:20.470507286-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/invalid_after","Output":"=== RUN   TestResolveSSECursor/invalid_after\n"}
+{"Time":"2026-08-17T03:21:20.4705115-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/invalid_after","Output":"--- PASS: TestResolveSSECursor/invalid_after (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470515507-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestResolveSSECursor/invalid_after","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470549756-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestResolveSSECursor","Output":"--- PASS: TestResolveSSECursor (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470556385-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestResolveSSECursor","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470565344-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestParseAuditCursorCanonical"}
+{"Time":"2026-08-17T03:21:20.470570435-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestParseAuditCursorCanonical","Output":"=== RUN   TestParseAuditCursorCanonical\n"}
+{"Time":"2026-08-17T03:21:20.470575175-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestParseAuditCursorCanonical","Output":"--- PASS: TestParseAuditCursorCanonical (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470579121-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestParseAuditCursorCanonical","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470583238-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation"}
+{"Time":"2026-08-17T03:21:20.470587209-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation","Output":"=== RUN   TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation\n"}
+{"Time":"2026-08-17T03:21:20.470591301-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation","Output":"    audit_test.go:21: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.4706289-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation","Output":"--- FAIL: TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470638821-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470643319-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestAuditEventsCursorExpiredReturnsResyncLink"}
+{"Time":"2026-08-17T03:21:20.470647141-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditEventsCursorExpiredReturnsResyncLink","Output":"=== RUN   TestAuditEventsCursorExpiredReturnsResyncLink\n"}
+{"Time":"2026-08-17T03:21:20.470651331-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditEventsCursorExpiredReturnsResyncLink","Output":"    audit_test.go:105: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470656557-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditEventsCursorExpiredReturnsResyncLink","Output":"--- FAIL: TestAuditEventsCursorExpiredReturnsResyncLink (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470660545-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestAuditEventsCursorExpiredReturnsResyncLink","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470664525-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestTailAuditEventsStopsWhenQueueIsFull"}
+{"Time":"2026-08-17T03:21:20.47066802-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestTailAuditEventsStopsWhenQueueIsFull","Output":"=== RUN   TestTailAuditEventsStopsWhenQueueIsFull\n"}
+{"Time":"2026-08-17T03:21:20.470672085-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestTailAuditEventsStopsWhenQueueIsFull","Output":"    audit_test.go:145: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470676698-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestTailAuditEventsStopsWhenQueueIsFull","Output":"--- FAIL: TestTailAuditEventsStopsWhenQueueIsFull (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470680635-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestTailAuditEventsStopsWhenQueueIsFull","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470698903-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestAuditSSEHeartbeatAndCommittedCaptureVisibility"}
+{"Time":"2026-08-17T03:21:20.470702919-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditSSEHeartbeatAndCommittedCaptureVisibility","Output":"=== RUN   TestAuditSSEHeartbeatAndCommittedCaptureVisibility\n"}
+{"Time":"2026-08-17T03:21:20.470711281-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditSSEHeartbeatAndCommittedCaptureVisibility","Output":"    audit_test.go:179: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470719787-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditSSEHeartbeatAndCommittedCaptureVisibility","Output":"--- FAIL: TestAuditSSEHeartbeatAndCommittedCaptureVisibility (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470723938-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestAuditSSEHeartbeatAndCommittedCaptureVisibility","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470728955-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCaptureRoundTripGateG2Transcript"}
+{"Time":"2026-08-17T03:21:20.470732647-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureRoundTripGateG2Transcript","Output":"=== RUN   TestCaptureRoundTripGateG2Transcript\n"}
+{"Time":"2026-08-17T03:21:20.470736728-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureRoundTripGateG2Transcript","Output":"    capture_g2_test.go:42: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470741117-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureRoundTripGateG2Transcript","Output":"--- FAIL: TestCaptureRoundTripGateG2Transcript (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.47074499-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCaptureRoundTripGateG2Transcript","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470748819-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestLiveMultiActorRESTCaptureJourneys"}
+{"Time":"2026-08-17T03:21:20.470752318-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestLiveMultiActorRESTCaptureJourneys","Output":"=== RUN   TestLiveMultiActorRESTCaptureJourneys\n"}
+{"Time":"2026-08-17T03:21:20.470756131-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestLiveMultiActorRESTCaptureJourneys","Output":"    capture_live_test.go:22: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470760429-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestLiveMultiActorRESTCaptureJourneys","Output":"--- FAIL: TestLiveMultiActorRESTCaptureJourneys (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.4707643-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestLiveMultiActorRESTCaptureJourneys","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470768113-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCaptureIngestCreatesReplaysAndRejectsChangedPayload"}
+{"Time":"2026-08-17T03:21:20.470771659-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureIngestCreatesReplaysAndRejectsChangedPayload","Output":"=== RUN   TestCaptureIngestCreatesReplaysAndRejectsChangedPayload\n"}
+{"Time":"2026-08-17T03:21:20.47077555-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureIngestCreatesReplaysAndRejectsChangedPayload","Output":"    capture_test.go:49: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470780004-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureIngestCreatesReplaysAndRejectsChangedPayload","Output":"--- FAIL: TestCaptureIngestCreatesReplaysAndRejectsChangedPayload (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470787946-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCaptureIngestCreatesReplaysAndRejectsChangedPayload","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470792759-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCaptureRejectsUnsupportedContractVersion"}
+{"Time":"2026-08-17T03:21:20.470799276-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureRejectsUnsupportedContractVersion","Output":"=== RUN   TestCaptureRejectsUnsupportedContractVersion\n"}
+{"Time":"2026-08-17T03:21:20.470803516-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureRejectsUnsupportedContractVersion","Output":"    capture_test.go:168: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470808112-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureRejectsUnsupportedContractVersion","Output":"--- FAIL: TestCaptureRejectsUnsupportedContractVersion (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470812121-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCaptureRejectsUnsupportedContractVersion","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470816085-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCapturePersistsEvidenceAndRecoversOrphans"}
+{"Time":"2026-08-17T03:21:20.470819545-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCapturePersistsEvidenceAndRecoversOrphans","Output":"=== RUN   TestCapturePersistsEvidenceAndRecoversOrphans\n"}
+{"Time":"2026-08-17T03:21:20.47082331-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCapturePersistsEvidenceAndRecoversOrphans","Output":"    capture_test.go:188: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470827692-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCapturePersistsEvidenceAndRecoversOrphans","Output":"--- FAIL: TestCapturePersistsEvidenceAndRecoversOrphans (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.4708319-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCapturePersistsEvidenceAndRecoversOrphans","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.47083594-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCaptureEvidenceDeduplicatesAndSurvivesRestart"}
+{"Time":"2026-08-17T03:21:20.470839511-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureEvidenceDeduplicatesAndSurvivesRestart","Output":"=== RUN   TestCaptureEvidenceDeduplicatesAndSurvivesRestart\n"}
+{"Time":"2026-08-17T03:21:20.470845406-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureEvidenceDeduplicatesAndSurvivesRestart","Output":"    capture_test.go:283: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470849976-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureEvidenceDeduplicatesAndSurvivesRestart","Output":"--- FAIL: TestCaptureEvidenceDeduplicatesAndSurvivesRestart (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470853891-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCaptureEvidenceDeduplicatesAndSurvivesRestart","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470857673-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCaptureAcceptsAIInitiationWithDecisionContext"}
+{"Time":"2026-08-17T03:21:20.470861208-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureAcceptsAIInitiationWithDecisionContext","Output":"=== RUN   TestCaptureAcceptsAIInitiationWithDecisionContext\n"}
+{"Time":"2026-08-17T03:21:20.47086521-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureAcceptsAIInitiationWithDecisionContext","Output":"    capture_test.go:422: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470870488-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureAcceptsAIInitiationWithDecisionContext","Output":"--- FAIL: TestCaptureAcceptsAIInitiationWithDecisionContext (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470874651-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCaptureAcceptsAIInitiationWithDecisionContext","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470878528-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput"}
+{"Time":"2026-08-17T03:21:20.470884624-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput","Output":"=== RUN   TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput\n"}
+{"Time":"2026-08-17T03:21:20.470890775-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput","Output":"    capture_test.go:490: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470895434-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput","Output":"--- FAIL: TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470899445-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470903284-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCaptureRejectsConflictingStableEntityKinds"}
+{"Time":"2026-08-17T03:21:20.470906759-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureRejectsConflictingStableEntityKinds","Output":"=== RUN   TestCaptureRejectsConflictingStableEntityKinds\n"}
+{"Time":"2026-08-17T03:21:20.470911993-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureRejectsConflictingStableEntityKinds","Output":"    capture_test.go:647: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.470916771-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureRejectsConflictingStableEntityKinds","Output":"--- FAIL: TestCaptureRejectsConflictingStableEntityKinds (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.470922742-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCaptureRejectsConflictingStableEntityKinds","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.470926609-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency"}
+{"Time":"2026-08-17T03:21:20.470930214-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency","Output":"=== RUN   TestEntityIdentityNormalizationPrecedenceAndConcurrency\n"}
+{"Time":"2026-08-17T03:21:20.470935919-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims"}
+{"Time":"2026-08-17T03:21:20.470939612-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims","Output":"=== RUN   TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims\n"}
+{"Time":"2026-08-17T03:21:20.470944071-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims","Output":"=== PAUSE TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims\n"}
+{"Time":"2026-08-17T03:21:20.470947787-06:00","Action":"pause","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims"}
+{"Time":"2026-08-17T03:21:20.470953944-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes"}
+{"Time":"2026-08-17T03:21:20.470957522-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes","Output":"=== RUN   TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes\n"}
+{"Time":"2026-08-17T03:21:20.470974375-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes","Output":"=== PAUSE TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes\n"}
+{"Time":"2026-08-17T03:21:20.470981565-06:00","Action":"pause","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes"}
+{"Time":"2026-08-17T03:21:20.470986083-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot"}
+{"Time":"2026-08-17T03:21:20.470989585-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot","Output":"=== RUN   TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot\n"}
+{"Time":"2026-08-17T03:21:20.470993951-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot","Output":"=== PAUSE TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot\n"}
+{"Time":"2026-08-17T03:21:20.470997642-06:00","Action":"pause","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot"}
+{"Time":"2026-08-17T03:21:20.471004867-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes"}
+{"Time":"2026-08-17T03:21:20.471008622-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes","Output":"=== RUN   TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes\n"}
+{"Time":"2026-08-17T03:21:20.471012986-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes","Output":"=== PAUSE TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes\n"}
+{"Time":"2026-08-17T03:21:20.471016727-06:00","Action":"pause","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes"}
+{"Time":"2026-08-17T03:21:20.471020735-06:00","Action":"cont","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims"}
+{"Time":"2026-08-17T03:21:20.471024256-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims","Output":"=== CONT  TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims\n"}
+{"Time":"2026-08-17T03:21:20.471037937-06:00","Action":"cont","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes"}
+{"Time":"2026-08-17T03:21:20.471043291-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes","Output":"=== CONT  TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes\n"}
+{"Time":"2026-08-17T03:21:20.47104773-06:00","Action":"cont","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot"}
+{"Time":"2026-08-17T03:21:20.471051315-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot","Output":"=== CONT  TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot\n"}
+{"Time":"2026-08-17T03:21:20.47105742-06:00","Action":"cont","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes"}
+{"Time":"2026-08-17T03:21:20.471061147-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes","Output":"=== CONT  TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes\n"}
+{"Time":"2026-08-17T03:21:20.471319809-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims","Output":"--- PASS: TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471362176-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471367701-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes","Output":"--- PASS: TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471372563-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471376552-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot","Output":"--- PASS: TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471384192-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471388708-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes","Output":"--- PASS: TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471393398-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471397127-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency","Output":"--- PASS: TestEntityIdentityNormalizationPrecedenceAndConcurrency (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471401409-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationPrecedenceAndConcurrency","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471432205-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestReconReadApisAreKeysetPaginatedAndEngagementIsolated"}
+{"Time":"2026-08-17T03:21:20.471439406-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReconReadApisAreKeysetPaginatedAndEngagementIsolated","Output":"=== RUN   TestReconReadApisAreKeysetPaginatedAndEngagementIsolated\n"}
+{"Time":"2026-08-17T03:21:20.471447012-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReconReadApisAreKeysetPaginatedAndEngagementIsolated","Output":"    entity_recon_test.go:18: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.471452292-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReconReadApisAreKeysetPaginatedAndEngagementIsolated","Output":"--- FAIL: TestReconReadApisAreKeysetPaginatedAndEngagementIsolated (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471456282-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestReconReadApisAreKeysetPaginatedAndEngagementIsolated","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471460488-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage"}
+{"Time":"2026-08-17T03:21:20.471464028-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage","Output":"=== RUN   TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage\n"}
+{"Time":"2026-08-17T03:21:20.471469877-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage","Output":"    entity_recon_test.go:140: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.471481928-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage","Output":"--- FAIL: TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471521998-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471530302-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestReconReadQueryShapesRemainKeysetBounded"}
+{"Time":"2026-08-17T03:21:20.471534403-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReconReadQueryShapesRemainKeysetBounded","Output":"=== RUN   TestReconReadQueryShapesRemainKeysetBounded\n"}
+{"Time":"2026-08-17T03:21:20.471686544-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReconReadQueryShapesRemainKeysetBounded","Output":"--- PASS: TestReconReadQueryShapesRemainKeysetBounded (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471696701-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestReconReadQueryShapesRemainKeysetBounded","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471701418-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEntityMergeSplitPreviewUndoAndProvenance"}
+{"Time":"2026-08-17T03:21:20.471705222-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityMergeSplitPreviewUndoAndProvenance","Output":"=== RUN   TestEntityMergeSplitPreviewUndoAndProvenance\n"}
+{"Time":"2026-08-17T03:21:20.471711915-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityMergeSplitPreviewUndoAndProvenance","Output":"    entity_test.go:19: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.471716661-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityMergeSplitPreviewUndoAndProvenance","Output":"--- FAIL: TestEntityMergeSplitPreviewUndoAndProvenance (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471720622-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestEntityMergeSplitPreviewUndoAndProvenance","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471724701-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationConflictAndConcurrentDeduplication"}
+{"Time":"2026-08-17T03:21:20.471728314-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationConflictAndConcurrentDeduplication","Output":"=== RUN   TestEntityIdentityNormalizationConflictAndConcurrentDeduplication\n"}
+{"Time":"2026-08-17T03:21:20.471734403-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationConflictAndConcurrentDeduplication","Output":"    entity_test.go:181: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.471750963-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationConflictAndConcurrentDeduplication","Output":"--- FAIL: TestEntityIdentityNormalizationConflictAndConcurrentDeduplication (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471755794-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestEntityIdentityNormalizationConflictAndConcurrentDeduplication","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471759961-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL"}
+{"Time":"2026-08-17T03:21:20.471763512-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL","Output":"=== RUN   TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL\n"}
+{"Time":"2026-08-17T03:21:20.47176946-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL","Output":"    entity_test.go:293: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.47177962-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL","Output":"--- FAIL: TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471784191-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471788185-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEntityMergeConflictIsOptimisticUnderConcurrency"}
+{"Time":"2026-08-17T03:21:20.471791729-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityMergeConflictIsOptimisticUnderConcurrency","Output":"=== RUN   TestEntityMergeConflictIsOptimisticUnderConcurrency\n"}
+{"Time":"2026-08-17T03:21:20.471797598-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityMergeConflictIsOptimisticUnderConcurrency","Output":"    entity_test.go:380: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.471802217-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEntityMergeConflictIsOptimisticUnderConcurrency","Output":"--- FAIL: TestEntityMergeConflictIsOptimisticUnderConcurrency (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471806173-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestEntityMergeConflictIsOptimisticUnderConcurrency","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471810175-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEvidenceHelpers"}
+{"Time":"2026-08-17T03:21:20.47181395-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEvidenceHelpers","Output":"=== RUN   TestEvidenceHelpers\n"}
+{"Time":"2026-08-17T03:21:20.471851979-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEvidenceHelpers","Output":"--- PASS: TestEvidenceHelpers (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.47185942-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestEvidenceHelpers","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.47186631-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestEvidenceMetadataAndContentReadsStayEngagementScoped"}
+{"Time":"2026-08-17T03:21:20.471870257-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEvidenceMetadataAndContentReadsStayEngagementScoped","Output":"=== RUN   TestEvidenceMetadataAndContentReadsStayEngagementScoped\n"}
+{"Time":"2026-08-17T03:21:20.471876195-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEvidenceMetadataAndContentReadsStayEngagementScoped","Output":"    evidence_test.go:17: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.471881083-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestEvidenceMetadataAndContentReadsStayEngagementScoped","Output":"--- FAIL: TestEvidenceMetadataAndContentReadsStayEngagementScoped (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471885166-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestEvidenceMetadataAndContentReadsStayEngagementScoped","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471891318-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship"}
+{"Time":"2026-08-17T03:21:20.471895068-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship","Output":"=== RUN   TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship\n"}
+{"Time":"2026-08-17T03:21:20.471932984-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship","Output":"    export_test.go:19: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.471946342-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship","Output":"--- SKIP: TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.471951033-06:00","Action":"skip","Package":"waypoint/internal/server","Test":"TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.471955361-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestExportJobListIsPagedAndResumable"}
+{"Time":"2026-08-17T03:21:20.471969334-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestExportJobListIsPagedAndResumable","Output":"=== RUN   TestExportJobListIsPagedAndResumable\n"}
+{"Time":"2026-08-17T03:21:20.471974105-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestExportJobListIsPagedAndResumable","Output":"    export_test.go:152: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.471978969-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestExportJobListIsPagedAndResumable","Output":"--- SKIP: TestExportJobListIsPagedAndResumable (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472013024-06:00","Action":"skip","Package":"waypoint/internal/server","Test":"TestExportJobListIsPagedAndResumable","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472022012-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestExportJobRecoversAfterRestart"}
+{"Time":"2026-08-17T03:21:20.472026012-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestExportJobRecoversAfterRestart","Output":"=== RUN   TestExportJobRecoversAfterRestart\n"}
+{"Time":"2026-08-17T03:21:20.472033657-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestExportJobRecoversAfterRestart","Output":"    export_test.go:212: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.472038616-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestExportJobRecoversAfterRestart","Output":"--- SKIP: TestExportJobRecoversAfterRestart (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.47204268-06:00","Action":"skip","Package":"waypoint/internal/server","Test":"TestExportJobRecoversAfterRestart","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472046701-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestFindingPromotionRevisionsAndOperatorOnlyPromotion"}
+{"Time":"2026-08-17T03:21:20.47205045-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestFindingPromotionRevisionsAndOperatorOnlyPromotion","Output":"=== RUN   TestFindingPromotionRevisionsAndOperatorOnlyPromotion\n"}
+{"Time":"2026-08-17T03:21:20.472055955-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestFindingPromotionRevisionsAndOperatorOnlyPromotion","Output":"    finding_test.go:16: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.472060672-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestFindingPromotionRevisionsAndOperatorOnlyPromotion","Output":"--- FAIL: TestFindingPromotionRevisionsAndOperatorOnlyPromotion (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472064659-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestFindingPromotionRevisionsAndOperatorOnlyPromotion","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472098944-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestG3AuthoritativeProvenanceJourney"}
+{"Time":"2026-08-17T03:21:20.472103917-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestG3AuthoritativeProvenanceJourney","Output":"=== RUN   TestG3AuthoritativeProvenanceJourney\n"}
+{"Time":"2026-08-17T03:21:20.47210839-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestG3AuthoritativeProvenanceJourney","Output":"    g3_journey_test.go:17: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.472118403-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestG3AuthoritativeProvenanceJourney","Output":"--- FAIL: TestG3AuthoritativeProvenanceJourney (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472122813-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestG3AuthoritativeProvenanceJourney","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472126976-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestMCPStandardFlowReusesCaptureService"}
+{"Time":"2026-08-17T03:21:20.472130555-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestMCPStandardFlowReusesCaptureService","Output":"=== RUN   TestMCPStandardFlowReusesCaptureService\n"}
+{"Time":"2026-08-17T03:21:20.472137696-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestMCPStandardFlowReusesCaptureService","Output":"    mcp_test.go:18: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.472142404-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestMCPStandardFlowReusesCaptureService","Output":"--- FAIL: TestMCPStandardFlowReusesCaptureService (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472146455-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestMCPStandardFlowReusesCaptureService","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472181487-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures"}
+{"Time":"2026-08-17T03:21:20.472186878-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures","Output":"=== RUN   TestNotableAlertRuleFixtures\n"}
+{"Time":"2026-08-17T03:21:20.47219128-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures/successful_authentication"}
+{"Time":"2026-08-17T03:21:20.472194987-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures/successful_authentication","Output":"=== RUN   TestNotableAlertRuleFixtures/successful_authentication\n"}
+{"Time":"2026-08-17T03:21:20.472199889-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures/successful_authentication","Output":"--- PASS: TestNotableAlertRuleFixtures/successful_authentication (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472204065-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures/successful_authentication","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472208056-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures/first_newly_reachable_segment"}
+{"Time":"2026-08-17T03:21:20.472211572-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures/first_newly_reachable_segment","Output":"=== RUN   TestNotableAlertRuleFixtures/first_newly_reachable_segment\n"}
+{"Time":"2026-08-17T03:21:20.472216279-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures/first_newly_reachable_segment","Output":"--- PASS: TestNotableAlertRuleFixtures/first_newly_reachable_segment (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472220524-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures/first_newly_reachable_segment","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472224785-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures","Output":"--- PASS: TestNotableAlertRuleFixtures (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472229074-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestNotableAlertRuleFixtures","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472260993-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestNotableAlertsAreDeduplicatedAndStreamed"}
+{"Time":"2026-08-17T03:21:20.472266948-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertsAreDeduplicatedAndStreamed","Output":"=== RUN   TestNotableAlertsAreDeduplicatedAndStreamed\n"}
+{"Time":"2026-08-17T03:21:20.472279208-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertsAreDeduplicatedAndStreamed","Output":"    notable_alerts_test.go:85: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.472284715-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertsAreDeduplicatedAndStreamed","Output":"--- FAIL: TestNotableAlertsAreDeduplicatedAndStreamed (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472288891-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestNotableAlertsAreDeduplicatedAndStreamed","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472308493-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic"}
+{"Time":"2026-08-17T03:21:20.472359425-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic","Output":"=== RUN   TestNotableAlertSelectionIsDeterministic\n"}
+{"Time":"2026-08-17T03:21:20.472376042-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order"}
+{"Time":"2026-08-17T03:21:20.472380361-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order","Output":"=== RUN   TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order\n"}
+{"Time":"2026-08-17T03:21:20.472387291-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order","Output":"--- PASS: TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472391901-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472396205-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order"}
+{"Time":"2026-08-17T03:21:20.47239998-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order","Output":"=== RUN   TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order\n"}
+{"Time":"2026-08-17T03:21:20.472404832-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order","Output":"--- PASS: TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472409086-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472441219-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic","Output":"--- PASS: TestNotableAlertSelectionIsDeterministic (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472449001-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestNotableAlertSelectionIsDeterministic","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472453377-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestNotableAlertsUseSystemActorForAISourceCaptures"}
+{"Time":"2026-08-17T03:21:20.472457172-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertsUseSystemActorForAISourceCaptures","Output":"=== RUN   TestNotableAlertsUseSystemActorForAISourceCaptures\n"}
+{"Time":"2026-08-17T03:21:20.472461371-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertsUseSystemActorForAISourceCaptures","Output":"    notable_alerts_test.go:190: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.472470808-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestNotableAlertsUseSystemActorForAISourceCaptures","Output":"--- FAIL: TestNotableAlertsUseSystemActorForAISourceCaptures (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472475554-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestNotableAlertsUseSystemActorForAISourceCaptures","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472479586-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestStructuredResultValidationGatesNotableAlerts"}
+{"Time":"2026-08-17T03:21:20.472483099-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestStructuredResultValidationGatesNotableAlerts","Output":"=== RUN   TestStructuredResultValidationGatesNotableAlerts\n"}
+{"Time":"2026-08-17T03:21:20.472487562-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestStructuredResultValidationGatesNotableAlerts","Output":"--- PASS: TestStructuredResultValidationGatesNotableAlerts (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472491565-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestStructuredResultValidationGatesNotableAlerts","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.47252453-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestBuildOutOfBandClaimPendingAndLinked"}
+{"Time":"2026-08-17T03:21:20.472531865-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestBuildOutOfBandClaimPendingAndLinked","Output":"=== RUN   TestBuildOutOfBandClaimPendingAndLinked\n"}
+{"Time":"2026-08-17T03:21:20.47254105-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestBuildOutOfBandClaimPendingAndLinked","Output":"--- PASS: TestBuildOutOfBandClaimPendingAndLinked (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.472545341-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestBuildOutOfBandClaimPendingAndLinked","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.472566289-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable"}
+{"Time":"2026-08-17T03:21:20.472571479-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable","Output":"=== RUN   TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable\n"}
+{"Time":"2026-08-17T03:21:20.473008357-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable","Output":"--- PASS: TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.473019333-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.473024058-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable"}
+{"Time":"2026-08-17T03:21:20.473027695-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable","Output":"=== RUN   TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable\n"}
+{"Time":"2026-08-17T03:21:20.473367386-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable","Output":"--- PASS: TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.473407077-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.473412372-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios"}
+{"Time":"2026-08-17T03:21:20.473416078-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios","Output":"=== RUN   TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios\n"}
+{"Time":"2026-08-17T03:21:20.47356334-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios","Output":"--- PASS: TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.473572174-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.473577074-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestAuditQueryShapeRemainsKeysetBounded"}
+{"Time":"2026-08-17T03:21:20.47358092-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditQueryShapeRemainsKeysetBounded","Output":"=== RUN   TestAuditQueryShapeRemainsKeysetBounded\n"}
+{"Time":"2026-08-17T03:21:20.473648844-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAuditQueryShapeRemainsKeysetBounded","Output":"--- PASS: TestAuditQueryShapeRemainsKeysetBounded (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.473655817-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestAuditQueryShapeRemainsKeysetBounded","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.473660351-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase"}
+{"Time":"2026-08-17T03:21:20.473663933-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase","Output":"=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase\n"}
+{"Time":"2026-08-17T03:21:20.473670258-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history"}
+{"Time":"2026-08-17T03:21:20.473674127-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history","Output":"=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history\n"}
+{"Time":"2026-08-17T03:21:20.473999083-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history","Output":"--- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.474012309-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.474017365-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest"}
+{"Time":"2026-08-17T03:21:20.474021191-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest","Output":"=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest\n"}
+{"Time":"2026-08-17T03:21:20.474345078-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest","Output":"--- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.474355044-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.474360289-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase","Output":"--- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.474364745-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestHandlersReturnServiceUnavailableWithoutDatabase","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.474371208-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestReadCaptureRequestRejectsInterruptedMultipartUpload"}
+{"Time":"2026-08-17T03:21:20.474374802-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReadCaptureRequestRejectsInterruptedMultipartUpload","Output":"=== RUN   TestReadCaptureRequestRejectsInterruptedMultipartUpload\n"}
+{"Time":"2026-08-17T03:21:20.474921667-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReadCaptureRequestRejectsInterruptedMultipartUpload","Output":"--- PASS: TestReadCaptureRequestRejectsInterruptedMultipartUpload (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.474928952-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestReadCaptureRequestRejectsInterruptedMultipartUpload","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.474935968-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCaptureEnvelopeLimitMatchesSchemaCeiling"}
+{"Time":"2026-08-17T03:21:20.474939949-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureEnvelopeLimitMatchesSchemaCeiling","Output":"=== RUN   TestCaptureEnvelopeLimitMatchesSchemaCeiling\n"}
+{"Time":"2026-08-17T03:21:20.474944855-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureEnvelopeLimitMatchesSchemaCeiling","Output":"--- PASS: TestCaptureEnvelopeLimitMatchesSchemaCeiling (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.474951351-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestCaptureEnvelopeLimitMatchesSchemaCeiling","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.474955278-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestReadCaptureRequestRejectsOversizedEnvelope"}
+{"Time":"2026-08-17T03:21:20.474966193-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReadCaptureRequestRejectsOversizedEnvelope","Output":"=== RUN   TestReadCaptureRequestRejectsOversizedEnvelope\n"}
+{"Time":"2026-08-17T03:21:20.491822656-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReadCaptureRequestRejectsOversizedEnvelope","Output":"--- PASS: TestReadCaptureRequestRejectsOversizedEnvelope (0.02s)\n"}
+{"Time":"2026-08-17T03:21:20.491864566-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestReadCaptureRequestRejectsOversizedEnvelope","Elapsed":0.02}
+{"Time":"2026-08-17T03:21:20.491873149-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCopyEvidenceStreamRejectsOverLimit"}
+{"Time":"2026-08-17T03:21:20.491877546-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCopyEvidenceStreamRejectsOverLimit","Output":"=== RUN   TestCopyEvidenceStreamRejectsOverLimit\n"}
+{"Time":"2026-08-17T03:21:20.491884139-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCopyEvidenceStreamRejectsOverLimit","Output":"--- PASS: TestCopyEvidenceStreamRejectsOverLimit (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.491888475-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestCopyEvidenceStreamRejectsOverLimit","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.491892641-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestUpsertEvidenceRejectsImmutableMetadataChanges"}
+{"Time":"2026-08-17T03:21:20.491896253-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestUpsertEvidenceRejectsImmutableMetadataChanges","Output":"=== RUN   TestUpsertEvidenceRejectsImmutableMetadataChanges\n"}
+{"Time":"2026-08-17T03:21:20.491900262-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestUpsertEvidenceRejectsImmutableMetadataChanges","Output":"    performance_fault_test.go:223: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.491905157-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestUpsertEvidenceRejectsImmutableMetadataChanges","Output":"--- FAIL: TestUpsertEvidenceRejectsImmutableMetadataChanges (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.491909625-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestUpsertEvidenceRejectsImmutableMetadataChanges","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.491913684-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCaptureIngestRejectsDiskPressureBeforeCommitting"}
+{"Time":"2026-08-17T03:21:20.491926164-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureIngestRejectsDiskPressureBeforeCommitting","Output":"=== RUN   TestCaptureIngestRejectsDiskPressureBeforeCommitting\n"}
+{"Time":"2026-08-17T03:21:20.49193056-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureIngestRejectsDiskPressureBeforeCommitting","Output":"    performance_fault_test.go:265: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.49193536-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureIngestRejectsDiskPressureBeforeCommitting","Output":"--- FAIL: TestCaptureIngestRejectsDiskPressureBeforeCommitting (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.491939429-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCaptureIngestRejectsDiskPressureBeforeCommitting","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.491943885-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication"}
+{"Time":"2026-08-17T03:21:20.491947446-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication","Output":"=== RUN   TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication\n"}
+{"Time":"2026-08-17T03:21:20.491951525-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication","Output":"    performance_fault_test.go:306: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.491956221-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication","Output":"--- FAIL: TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.491969442-06:00","Action":"fail","Package":"waypoint/internal/server","Test":"TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.491974367-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestAssembleReportSnapshotOrdersSectionsAndGaps"}
+{"Time":"2026-08-17T03:21:20.491977928-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAssembleReportSnapshotOrdersSectionsAndGaps","Output":"=== RUN   TestAssembleReportSnapshotOrdersSectionsAndGaps\n"}
+{"Time":"2026-08-17T03:21:20.491982512-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestAssembleReportSnapshotOrdersSectionsAndGaps","Output":"--- PASS: TestAssembleReportSnapshotOrdersSectionsAndGaps (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.491986438-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestAssembleReportSnapshotOrdersSectionsAndGaps","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.49199046-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestReportHandlerRequiresAuthAndScopesEngagement"}
+{"Time":"2026-08-17T03:21:20.491994139-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReportHandlerRequiresAuthAndScopesEngagement","Output":"=== RUN   TestReportHandlerRequiresAuthAndScopesEngagement\n"}
+{"Time":"2026-08-17T03:21:20.491998005-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReportHandlerRequiresAuthAndScopesEngagement","Output":"    report_test.go:101: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests\n"}
+{"Time":"2026-08-17T03:21:20.492002515-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReportHandlerRequiresAuthAndScopesEngagement","Output":"--- SKIP: TestReportHandlerRequiresAuthAndScopesEngagement (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.492006478-06:00","Action":"skip","Package":"waypoint/internal/server","Test":"TestReportHandlerRequiresAuthAndScopesEngagement","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.492010293-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestRenderReportHTMLAndPDFEscapeHostileContent"}
+{"Time":"2026-08-17T03:21:20.492017041-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestRenderReportHTMLAndPDFEscapeHostileContent","Output":"=== RUN   TestRenderReportHTMLAndPDFEscapeHostileContent\n"}
+{"Time":"2026-08-17T03:21:20.496589688-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestRenderReportHTMLAndPDFEscapeHostileContent","Output":"--- PASS: TestRenderReportHTMLAndPDFEscapeHostileContent (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.496621899-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestRenderReportHTMLAndPDFEscapeHostileContent","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.496629515-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestHandlerServesHealthAndSPA"}
+{"Time":"2026-08-17T03:21:20.496633599-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestHandlerServesHealthAndSPA","Output":"=== RUN   TestHandlerServesHealthAndSPA\n"}
+{"Time":"2026-08-17T03:21:20.500975089-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestHandlerServesHealthAndSPA","Output":"--- PASS: TestHandlerServesHealthAndSPA (0.01s)\n"}
+{"Time":"2026-08-17T03:21:20.501015534-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestHandlerServesHealthAndSPA","Elapsed":0.01}
+{"Time":"2026-08-17T03:21:20.501024655-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestReadyzRequiresDatabase"}
+{"Time":"2026-08-17T03:21:20.501028943-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReadyzRequiresDatabase","Output":"=== RUN   TestReadyzRequiresDatabase\n"}
+{"Time":"2026-08-17T03:21:20.501034572-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReadyzRequiresDatabase","Output":"--- PASS: TestReadyzRequiresDatabase (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.501038893-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestReadyzRequiresDatabase","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.501043352-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestReadyzChecksDatabaseHealth"}
+{"Time":"2026-08-17T03:21:20.501046888-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReadyzChecksDatabaseHealth","Output":"=== RUN   TestReadyzChecksDatabaseHealth\n"}
+{"Time":"2026-08-17T03:21:20.501051432-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestReadyzChecksDatabaseHealth","Output":"--- PASS: TestReadyzChecksDatabaseHealth (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.501055675-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestReadyzChecksDatabaseHealth","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.501059606-06:00","Action":"run","Package":"waypoint/internal/server","Test":"TestRequiredAssetsPresentDetectsMissingAsset"}
+{"Time":"2026-08-17T03:21:20.501063194-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestRequiredAssetsPresentDetectsMissingAsset","Output":"=== RUN   TestRequiredAssetsPresentDetectsMissingAsset\n"}
+{"Time":"2026-08-17T03:21:20.501068802-06:00","Action":"output","Package":"waypoint/internal/server","Test":"TestRequiredAssetsPresentDetectsMissingAsset","Output":"--- PASS: TestRequiredAssetsPresentDetectsMissingAsset (0.00s)\n"}
+{"Time":"2026-08-17T03:21:20.501073283-06:00","Action":"pass","Package":"waypoint/internal/server","Test":"TestRequiredAssetsPresentDetectsMissingAsset","Elapsed":0}
+{"Time":"2026-08-17T03:21:20.501077488-06:00","Action":"output","Package":"waypoint/internal/server","Output":"FAIL\n"}
+{"Time":"2026-08-17T03:21:20.502267819-06:00","Action":"output","Package":"waypoint/internal/server","Output":"FAIL\twaypoint/internal/server\t0.036s\n"}
+{"Time":"2026-08-17T03:21:20.502292179-06:00","Action":"fail","Package":"waypoint/internal/server","Elapsed":0.036}
+{"Time":"2026-08-17T03:21:20.550358976-06:00","Action":"output","Package":"waypoint/internal/webassets","Test":"TestEmbeddedAssetsMatchDeterministicWebBuild","Output":"--- PASS: TestEmbeddedAssetsMatchDeterministicWebBuild (0.08s)\n"}
+{"Time":"2026-08-17T03:21:20.550401134-06:00","Action":"pass","Package":"waypoint/internal/webassets","Test":"TestEmbeddedAssetsMatchDeterministicWebBuild","Elapsed":0.08}
+{"Time":"2026-08-17T03:21:20.550409319-06:00","Action":"output","Package":"waypoint/internal/webassets","Output":"PASS\n"}
+{"Time":"2026-08-17T03:21:20.550832137-06:00","Action":"output","Package":"waypoint/internal/webassets","Output":"ok  \twaypoint/internal/webassets\t0.085s\n"}
+{"Time":"2026-08-17T03:21:20.550856484-06:00","Action":"pass","Package":"waypoint/internal/webassets","Elapsed":0.085}
+{"Time":"2026-08-17T03:21:20.646899269-06:00","Action":"start","Package":"waypoint/scripts"}
+{"Time":"2026-08-17T03:21:20.650724487-06:00","Action":"run","Package":"waypoint/scripts","Test":"TestInstallerValidatesInstallsUpgradesAndRollsBack"}
+{"Time":"2026-08-17T03:21:20.650755277-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerValidatesInstallsUpgradesAndRollsBack","Output":"=== RUN   TestInstallerValidatesInstallsUpgradesAndRollsBack\n"}
+{"Time":"2026-08-17T03:21:20.650787725-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerValidatesInstallsUpgradesAndRollsBack","Output":"=== PAUSE TestInstallerValidatesInstallsUpgradesAndRollsBack\n"}
+{"Time":"2026-08-17T03:21:20.650791902-06:00","Action":"pause","Package":"waypoint/scripts","Test":"TestInstallerValidatesInstallsUpgradesAndRollsBack"}
+{"Time":"2026-08-17T03:21:20.65079692-06:00","Action":"run","Package":"waypoint/scripts","Test":"TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass"}
+{"Time":"2026-08-17T03:21:20.650800958-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass","Output":"=== RUN   TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass\n"}
+{"Time":"2026-08-17T03:21:21.739104097-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass","Output":"--- PASS: TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass (1.09s)\n"}
+{"Time":"2026-08-17T03:21:21.739141753-06:00","Action":"pass","Package":"waypoint/scripts","Test":"TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass","Elapsed":1.09}
+{"Time":"2026-08-17T03:21:21.739150673-06:00","Action":"run","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown"}
+{"Time":"2026-08-17T03:21:21.739154999-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown","Output":"=== RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown\n"}
+{"Time":"2026-08-17T03:21:21.739160723-06:00","Action":"run","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64"}
+{"Time":"2026-08-17T03:21:21.739164707-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64","Output":"=== RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64\n"}
+{"Time":"2026-08-17T03:21:22.737508493-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64","Output":"--- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64 (1.00s)\n"}
+{"Time":"2026-08-17T03:21:22.737556092-06:00","Action":"pass","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64","Elapsed":1}
+{"Time":"2026-08-17T03:21:22.737568091-06:00","Action":"run","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64"}
+{"Time":"2026-08-17T03:21:22.737573073-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64","Output":"=== RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64\n"}
+{"Time":"2026-08-17T03:21:23.722428612-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64","Output":"--- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64 (0.98s)\n"}
+{"Time":"2026-08-17T03:21:23.72246952-06:00","Action":"pass","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64","Elapsed":0.98}
+{"Time":"2026-08-17T03:21:23.722478297-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown","Output":"--- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown (1.98s)\n"}
+{"Time":"2026-08-17T03:21:23.722483573-06:00","Action":"pass","Package":"waypoint/scripts","Test":"TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown","Elapsed":1.98}
+{"Time":"2026-08-17T03:21:23.72248851-06:00","Action":"run","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix"}
+{"Time":"2026-08-17T03:21:23.722492805-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix","Output":"=== RUN   TestInstallerRejectsUnsupportedHostMatrix\n"}
+{"Time":"2026-08-17T03:21:23.722517415-06:00","Action":"run","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix/unsupported-os"}
+{"Time":"2026-08-17T03:21:23.72252184-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix/unsupported-os","Output":"=== RUN   TestInstallerRejectsUnsupportedHostMatrix/unsupported-os\n"}
+{"Time":"2026-08-17T03:21:23.765518045-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix/unsupported-os","Output":"--- PASS: TestInstallerRejectsUnsupportedHostMatrix/unsupported-os (0.04s)\n"}
+{"Time":"2026-08-17T03:21:23.765561081-06:00","Action":"pass","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix/unsupported-os","Elapsed":0.04}
+{"Time":"2026-08-17T03:21:23.765572789-06:00","Action":"run","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch"}
+{"Time":"2026-08-17T03:21:23.765577357-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch","Output":"=== RUN   TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch\n"}
+{"Time":"2026-08-17T03:21:23.806167001-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch","Output":"--- PASS: TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch (0.04s)\n"}
+{"Time":"2026-08-17T03:21:23.806199832-06:00","Action":"pass","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch","Elapsed":0.04}
+{"Time":"2026-08-17T03:21:23.806208843-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix","Output":"--- PASS: TestInstallerRejectsUnsupportedHostMatrix (0.08s)\n"}
+{"Time":"2026-08-17T03:21:23.806214022-06:00","Action":"pass","Package":"waypoint/scripts","Test":"TestInstallerRejectsUnsupportedHostMatrix","Elapsed":0.08}
+{"Time":"2026-08-17T03:21:23.806218892-06:00","Action":"cont","Package":"waypoint/scripts","Test":"TestInstallerValidatesInstallsUpgradesAndRollsBack"}
+{"Time":"2026-08-17T03:21:23.806222557-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerValidatesInstallsUpgradesAndRollsBack","Output":"=== CONT  TestInstallerValidatesInstallsUpgradesAndRollsBack\n"}
+{"Time":"2026-08-17T03:21:25.392309086-06:00","Action":"output","Package":"waypoint/scripts","Test":"TestInstallerValidatesInstallsUpgradesAndRollsBack","Output":"--- PASS: TestInstallerValidatesInstallsUpgradesAndRollsBack (1.59s)\n"}
+{"Time":"2026-08-17T03:21:25.392369117-06:00","Action":"pass","Package":"waypoint/scripts","Test":"TestInstallerValidatesInstallsUpgradesAndRollsBack","Elapsed":1.59}
+{"Time":"2026-08-17T03:21:25.392386807-06:00","Action":"output","Package":"waypoint/scripts","Output":"PASS\n"}
+{"Time":"2026-08-17T03:21:25.393910041-06:00","Action":"output","Package":"waypoint/scripts","Output":"ok  \twaypoint/scripts\t4.747s\n"}
+{"Time":"2026-08-17T03:21:25.393936496-06:00","Action":"pass","Package":"waypoint/scripts","Elapsed":4.747}
+
+EXIT_CODE: 1
+STARTED_AT: 2026-08-17T09:21:14Z
+ENDED_AT: 2026-08-17T09:21:25Z
