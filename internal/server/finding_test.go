@@ -136,6 +136,20 @@ func TestFindingPromotionRevisionsAndOperatorOnlyPromotion(t *testing.T) {
 		t.Fatalf("viewer promote status = %d, want %d", viewerResp.StatusCode, http.StatusForbidden)
 	}
 
+	reconActionID := "66666666-6666-4666-8666-666666666667"
+	mustExec(t, db, `INSERT INTO action (id, engagement_id, actor_id, source_agent_id, initiated_by, phase, command, argv, cwd, exec_host_ip, pivot_chain, target_kind, target_value, started_at, ended_at, exit_code, stdout_evidence_id, stderr_evidence_id, parse_status) VALUES ($1, $2, $3, $3, 'manual', 'recon', 'nmap', '[]'::jsonb, '/', '127.0.0.1', '[]'::jsonb, 'host', 'fileserver.local', now(), now(), 0, $4, $5, 'raw')`, reconActionID, engagementID, humanID, evidenceStdoutID, evidenceStderrID)
+	reconPromoteResp := doFindingRequest(t, ts.Client(), ts.URL+"/api/v1/findings/promote", humanToken, "req-finding-recon-promote", http.MethodPost, map[string]any{
+		"sourceActionId": reconActionID,
+		"title":          "Recon result cannot be promoted",
+		"severity":       "low",
+		"remediation":    "Use an attack action as the promotion source.",
+		"status":         "open",
+	})
+	defer reconPromoteResp.Body.Close()
+	if reconPromoteResp.StatusCode != http.StatusConflict {
+		t.Fatalf("recon promote status = %d, want %d", reconPromoteResp.StatusCode, http.StatusConflict)
+	}
+
 	updateReq := map[string]any{
 		"expectedRevision": promoted.Revision,
 		"status":           "triage",
@@ -161,6 +175,25 @@ func TestFindingPromotionRevisionsAndOperatorOnlyPromotion(t *testing.T) {
 	defer viewerUpdateResp.Body.Close()
 	if viewerUpdateResp.StatusCode != http.StatusForbidden {
 		t.Fatalf("viewer update status = %d, want %d", viewerUpdateResp.StatusCode, http.StatusForbidden)
+	}
+	aiUpdateResp := doFindingRequest(t, ts.Client(), ts.URL+"/api/v1/findings/"+promoted.ID, aiToken, "req-finding-ai-update", http.MethodPatch, updateReq)
+	defer aiUpdateResp.Body.Close()
+	if aiUpdateResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("ai update status = %d, want %d", aiUpdateResp.StatusCode, http.StatusForbidden)
+	}
+
+	var mutableEvidence string
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(array_to_json(evidence_action_ids)::text, '[]') FROM finding WHERE id = $1`, promoted.ID).Scan(&mutableEvidence); err != nil {
+		t.Fatalf("load finding evidence before immutable check: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `UPDATE finding SET evidence_action_ids = '{}'::uuid[] WHERE id = $1`, promoted.ID); err == nil {
+		t.Fatal("expected immutable finding evidence links to reject direct mutation")
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COALESCE(array_to_json(evidence_action_ids)::text, '[]') FROM finding WHERE id = $1`, promoted.ID).Scan(&mutableEvidence); err != nil {
+		t.Fatalf("load finding evidence after immutable check: %v", err)
+	}
+	if mutableEvidence != `["66666666-6666-4666-8666-666666666666"]` {
+		t.Fatalf("finding evidence mutated unexpectedly: %s", mutableEvidence)
 	}
 
 	revisionsResp := doFindingRequest(t, ts.Client(), ts.URL+"/api/v1/findings/"+promoted.ID+"/revisions", humanToken, "req-finding-revisions", http.MethodGet, nil)
