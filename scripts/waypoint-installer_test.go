@@ -464,6 +464,46 @@ func TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown(t *testing.
 	}
 }
 
+func TestInstallerRollbackAcceptsTargetVersionAndPreservesState(t *testing.T) {
+	t.Parallel()
+
+	fixture := setupDestroyFixtureForHost(t, "24.04", "x86_64")
+	before, err := os.ReadFile(filepath.Join(fixture.stateRoot, "install.state"))
+	if err != nil {
+		t.Fatalf("read state before rollback: %v", err)
+	}
+
+	configData, err := os.ReadFile(fixture.configPath)
+	if err != nil {
+		t.Fatalf("read config before upgrade: %v", err)
+	}
+	updatedConfig := strings.Replace(string(configData), "WAYPOINT_VERSION=1.0.0", "WAYPOINT_VERSION=1.0.1", 1)
+	mustWriteFile(t, fixture.configPath, updatedConfig)
+	runInstaller(t, fixture.scriptPath, fixture.env, fixture.workDir, "upgrade", "--config", fixture.configPath, "--provision", fixture.provisionPath)
+
+	runInstaller(t, fixture.scriptPath, fixture.env, fixture.workDir, "rollback", "1.0.0", "--config", fixture.configPath, "--provision", fixture.provisionPath)
+
+	target, err := os.Readlink(filepath.Join(fixture.installRoot, "current"))
+	if err != nil {
+		t.Fatalf("read current after rollback: %v", err)
+	}
+	if !strings.HasSuffix(target, filepath.Join("releases", "1.0.0")) {
+		t.Fatalf("rollback symlink = %q, want release 1.0.0", target)
+	}
+	after, err := os.ReadFile(filepath.Join(fixture.stateRoot, "install.state"))
+	if err != nil {
+		t.Fatalf("read state after rollback: %v", err)
+	}
+	for _, want := range []string{"WAYPOINT_INSTALLED_VERSION=1.0.0", "WAYPOINT_PACKAGE_PATH=", "WAYPOINT_CONFIG_SHA256="} {
+		if !strings.Contains(string(after), want) {
+			t.Fatalf("rollback state missing %q:\n%s", want, after)
+		}
+	}
+	if !strings.Contains(string(before), "WAYPOINT_PACKAGE_SHA256=") || !strings.Contains(string(after), "WAYPOINT_PACKAGE_SHA256=") {
+		t.Fatalf("rollback should preserve package metadata:\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
 func TestInstallerRejectsUnsupportedHostMatrix(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
