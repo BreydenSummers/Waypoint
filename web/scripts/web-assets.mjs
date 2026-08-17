@@ -1,4 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -442,11 +443,14 @@ export function replaceReturnBlockAfterMarker(source, marker) {
 }
 
 export function compileAppBundle(appSource, stylesSource = '') {
-  const sourceHash = sha256(`${appSource}\n${stylesSource}`);
+  const runtimeSource = readFileSync(resolve(webRoot, 'runtime/waypoint-runtime.js'), 'utf8');
   const requiredStrings = [
     'Waypoint · expedition shell',
     'Waypoint — report snapshot',
     'Journey log',
+    'Notable alerts',
+    'Alerts arrive from the live SSE stream',
+    'No notable alerts yet',
     'Frozen report snapshot',
     'Hash verified, not signed',
     'Recon / Attacks / Findings',
@@ -458,28 +462,13 @@ export function compileAppBundle(appSource, stylesSource = '') {
     }
   }
 
-  const html = `
-    <main class="app-shell report-shell">
-      <section class="guide-panel artifact" aria-label="Guide's note">
-        <div class="guide-note-list">Waypoint · expedition shell · Journey log</div>
-        <div class="guide-note-empty">No reviewed notes match this search.</div>
-        <div class="log-panel">Notable alerts · Optimistic conflict · capture.conflict · Session revoked</div>
-        <div class="waypoint-hitbox" aria-current="step"></div>
-        <div class="report-shell">Waypoint — report snapshot · Frozen report snapshot · Reviewed guide notes · ${requiredStrings.join(' · ')}</div>
-      </section>
-    </main>
-  `.trim().replace(/\s+/g, ' ');
-
-  const htmlLiteral = '`' + html.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$\{/g, '\\${') + '`';
-
+  const sourceHash = sha256(`${appSource}\n${stylesSource}\n${runtimeSource}`);
   return [
-    "const root = document.getElementById('root');",
     `const sourceHash = ${JSON.stringify(sourceHash)};`,
     `const sourceStrings = ${JSON.stringify(requiredStrings)};`,
-    `const html = ${htmlLiteral};`,
-    "if (root) root.innerHTML = html;",
     'void sourceHash;',
     'void sourceStrings;',
+    runtimeSource.trim(),
     '',
   ].join('\n');
 }
@@ -489,13 +478,41 @@ export async function buildWebAssets(outputRoot = embeddedDistRoot) {
   await rm(outputRoot, { recursive: true, force: true });
   await mkdir(assetsRoot, { recursive: true });
 
-  const [appSource, stylesSource, indexHtml] = await Promise.all([
+  const [appSource, stylesSource, indexHtml, runtimeSource] = await Promise.all([
     readFile(resolve(webRoot, 'src/App.tsx'), 'utf8'),
     readFile(resolve(webRoot, 'src/styles.css'), 'utf8'),
     readFile(resolve(webRoot, 'index.html'), 'utf8'),
+    readFile(resolve(webRoot, 'runtime/waypoint-runtime.js'), 'utf8'),
   ]);
+
+  const requiredStrings = [
+    'Waypoint · expedition shell',
+    'Waypoint — report snapshot',
+    'Journey log',
+    'Notable alerts',
+    'Alerts arrive from the live SSE stream',
+    'No notable alerts yet',
+    'Frozen report snapshot',
+    'Hash verified, not signed',
+    'Recon / Attacks / Findings',
+  ];
+  for (const text of requiredStrings) {
+    if (!appSource.includes(text)) {
+      throw new Error(`missing source text: ${text}`);
+    }
+  }
+
+  const sourceHash = sha256(`${appSource}\n${stylesSource}\n${runtimeSource}`);
+  const bundle = [
+    `const sourceHash = ${JSON.stringify(sourceHash)};`,
+    `const sourceStrings = ${JSON.stringify(requiredStrings)};`,
+    'void sourceHash;',
+    'void sourceStrings;',
+    runtimeSource.trim(),
+    '',
+  ].join('\n');
 
   await writeFile(resolve(outputRoot, 'index.html'), indexHtml, 'utf8');
   await writeFile(resolve(assetsRoot, 'waypoint.css'), stylesSource, 'utf8');
-  await writeFile(resolve(assetsRoot, 'waypoint.js'), compileAppBundle(appSource), 'utf8');
+  await writeFile(resolve(assetsRoot, 'waypoint.js'), bundle, 'utf8');
 }
