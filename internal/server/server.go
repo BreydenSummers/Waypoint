@@ -32,6 +32,8 @@ func handler(db *sql.DB) http.Handler {
 	mux.HandleFunc("/healthz", healthz)
 	mux.HandleFunc("/readyz", readyz(assets, db))
 	store := newEvidenceStore()
+	exports := newExportManager(db, store)
+	go exports.recoverOutstanding(context.Background())
 	mux.HandleFunc("/api/v1/captures", captureHandler(db, store, "rest"))
 	mux.HandleFunc("/captures", captureHandler(db, store, "rest"))
 	mux.HandleFunc("/mcp", mcpHandler(db, store))
@@ -67,6 +69,12 @@ func handler(db *sql.DB) http.Handler {
 	mux.HandleFunc("/actions/needs-plugin", actionsHandler(db, true))
 	mux.HandleFunc("/api/v1/audit-events", auditEventsHandler(db))
 	mux.HandleFunc("/events", auditEventsStreamHandler(db))
+	mux.HandleFunc("/api/v1/exports", exportHandler(db, store, exports))
+	mux.HandleFunc("/api/v1/exports/", exportHandler(db, store, exports))
+	mux.HandleFunc("/exports", exportHandler(db, store, exports))
+	mux.HandleFunc("/exports/", exportHandler(db, store, exports))
+	mux.HandleFunc("/api/v1/export-receipts/", exportHandler(db, store, exports))
+	mux.HandleFunc("/export-receipts/", exportHandler(db, store, exports))
 	report := reportHandler(db, store)
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if reportJSONRoute.MatchString(r.URL.Path) || reportPDFRoute.MatchString(r.URL.Path) {
