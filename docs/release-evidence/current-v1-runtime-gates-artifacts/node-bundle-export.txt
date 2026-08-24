@@ -1,0 +1,35 @@
+COMMAND: node --test web/scripts/bundle-tools.test.mjs web/scripts/bundle-export.test.mjs
+TAP version 13
+# Subtest: finalizeBundle preflight produces no files and emits progress
+ok 1 - finalizeBundle preflight produces no files and emits progress
+  ---
+  duration_ms: 47.466347
+  type: 'test'
+  ...
+# Subtest: finalizeBundle can recover after cancellation and verifies the archive hash
+ok 2 - finalizeBundle can recover after cancellation and verifies the archive hash
+  ---
+  duration_ms: 35.823169
+  type: 'test'
+  ...
+# Subtest: export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
+ok 3 - export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
+  ---
+  duration_ms: 59.495922
+  type: 'test'
+  ...
+# Subtest: web/scripts/bundle-tools.test.mjs
+ok 2 - web/scripts/bundle-tools.test.mjs
+  ---
+  duration_ms: 457.229014
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 476.465389

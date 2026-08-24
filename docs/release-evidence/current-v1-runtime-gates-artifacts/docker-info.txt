@@ -1,0 +1,16 @@
+COMMAND: docker info
+Client:
+ Version:    26.1.5+dfsg1
+ Context:    default
+ Debug Mode: false
+ Plugins:
+  buildx: Docker Buildx (Docker Inc.)
+    Version:  0.13.1+ds1
+    Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+  compose: Docker Compose (Docker Inc.)
+    Version:  2.26.1-4
+    Path:     /usr/libexec/docker/cli-plugins/docker-compose
+
+Server:
+ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+errors pretty printing info
