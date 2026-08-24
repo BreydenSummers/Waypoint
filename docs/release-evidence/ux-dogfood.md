@@ -43,5 +43,9 @@
 - Runtime summit flow now binds to persisted export jobs, server receipts, verified downloads, cancel/failure states, and guarded teardown authorization.
 - The source-level a11y notes below still hold, but I could not capture live screenshots or keyboard/axe output in this sandbox.
 
+## Reproducible host runner
+- `scripts/ux-dogfood-host.sh` starts the authoritative compose stack, waits for `/readyz`, and then runs the browser dogfood pass.
+- `scripts/ux-dogfood-browser.mjs` captures timestamped desktop/mobile light/dark screenshots, keyboard flow, accessibility tree, contrast checks, reduced-motion evidence, SSE reconnect evidence, and optional axe output when `axe-core` is present.
+
 ## Blocker
 This sandbox does not provide a runnable browser or a live PostgreSQL service, so I could not capture authoritative screenshots, accessibility tree output, keyboard transcript, axe report, or reduced-motion playback from the running app. The visual dogfood pass therefore remains unverified here and must be completed in a browser-enabled environment.
