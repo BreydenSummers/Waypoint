@@ -1881,6 +1881,7 @@ func buildExportEvidenceTar(ctx context.Context, db queryer, store *evidenceStor
 		}
 	}()
 	zw := tar.NewWriter(tmp)
+	zeroTime := time.Unix(0, 0).UTC()
 	for _, key := range keys {
 		path, err := safeEvidencePath(store.root, key)
 		if err != nil {
@@ -1890,7 +1891,7 @@ func buildExportEvidenceTar(ctx context.Context, db queryer, store *evidenceStor
 		if err != nil {
 			continue
 		}
-		hdr := &tar.Header{Name: filepath.ToSlash(key), Mode: 0o600, Size: info.Size(), ModTime: info.ModTime()}
+		hdr := &tar.Header{Name: filepath.ToSlash(key), Mode: 0o600, Size: info.Size(), ModTime: zeroTime, AccessTime: zeroTime, ChangeTime: zeroTime, Uid: 0, Gid: 0}
 		if err := zw.WriteHeader(hdr); err != nil {
 			_ = zw.Close()
 			return err
@@ -1938,6 +1939,8 @@ func writeExportArchive(archivePath, bundleDir string) (err error) {
 		}
 	}()
 	gz := gzip.NewWriter(tmp)
+	gz.Header.ModTime = time.Unix(0, 0).UTC()
+	gz.Header.OS = 255
 	zw := tar.NewWriter(gz)
 	var files []string
 	if err := filepath.Walk(bundleDir, func(path string, info os.FileInfo, walkErr error) error {
@@ -1978,7 +1981,7 @@ func writeExportArchive(archivePath, bundleDir string) (err error) {
 			_ = tmp.Close()
 			return err
 		}
-		hdr := &tar.Header{Name: name, Mode: int64(info.Mode().Perm()), Size: info.Size(), ModTime: info.ModTime()}
+		hdr := &tar.Header{Name: name, Mode: int64(info.Mode().Perm()), Size: info.Size(), ModTime: time.Unix(0, 0).UTC(), AccessTime: time.Unix(0, 0).UTC(), ChangeTime: time.Unix(0, 0).UTC(), Uid: 0, Gid: 0}
 		if err := zw.WriteHeader(hdr); err != nil {
 			_ = zw.Close()
 			_ = gz.Close()

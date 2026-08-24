@@ -155,6 +155,113 @@ func TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship(t *testing.
 	}
 }
 
+func TestWriteExportArchiveIsDeterministicAcrossMtimeDrift(t *testing.T) {
+	bundleDir := t.TempDir()
+	mustWrite := func(rel, body string) {
+		path := filepath.Join(bundleDir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+	mustWrite("metadata/export-manifest.json", "{\n  \"version\": \"v1\"\n}\n")
+	mustWrite("report/report-snapshot.json", "snapshot\n")
+	mustWrite("database/engagement.dump", "dump\n")
+
+	archive1 := filepath.Join(t.TempDir(), "archive-1.tar.gz")
+	if err := writeExportArchive(archive1, bundleDir); err != nil {
+		t.Fatalf("write archive 1: %v", err)
+	}
+	sha1, _, err := fileSHA256(archive1)
+	if err != nil {
+		t.Fatalf("hash archive 1: %v", err)
+	}
+
+	if err := os.Chtimes(filepath.Join(bundleDir, "metadata", "export-manifest.json"), time.Now().Add(2*time.Hour), time.Now().Add(2*time.Hour)); err != nil {
+		t.Fatalf("touch bundle file: %v", err)
+	}
+	archive2 := filepath.Join(t.TempDir(), "archive-2.tar.gz")
+	if err := writeExportArchive(archive2, bundleDir); err != nil {
+		t.Fatalf("write archive 2: %v", err)
+	}
+	sha2, _, err := fileSHA256(archive2)
+	if err != nil {
+		t.Fatalf("hash archive 2: %v", err)
+	}
+	if sha1 != sha2 {
+		t.Fatalf("archive hash drifted across mtime change: %s != %s", sha1, sha2)
+	}
+}
+
+func TestBuildExportEvidenceTarIsDeterministicAcrossMtimeDrift(t *testing.T) {
+	if os.Getenv("WAYPOINT_TEST_PG_DSN") == "" {
+		t.Skip("WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests")
+	}
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	evidenceRoot := t.TempDir()
+	t.Setenv("WAYPOINT_EVIDENCE_DIR", evidenceRoot)
+	store := &evidenceStore{root: evidenceRoot}
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'operator')`, "22222222-2222-4222-8222-222222222222", engagementID, hashHex("evidence-tar-token"))
+
+	cases := []struct{ kind, body, key string }{
+		{kind: "stdout", body: "alpha\n", key: "captures/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/stdout"},
+		{kind: "stderr", body: "bravo\n", key: "captures/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/stderr"},
+	}
+	for i, tc := range cases {
+		path := filepath.Join(evidenceRoot, filepath.FromSlash(tc.key))
+		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+			t.Fatalf("mkdir evidence %d: %v", i, err)
+		}
+		if err := os.WriteFile(path, []byte(tc.body), 0o600); err != nil {
+			t.Fatalf("write evidence %d: %v", i, err)
+		}
+		mustExec(t, db, `INSERT INTO evidence (id, engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, $2, $3, $4, $5, 'text/plain', $6)`,
+			[]string{"33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444"}[i], engagementID, tc.kind, hashHex(tc.body), int64(len(tc.body)), tc.key)
+	}
+
+	output1 := filepath.Join(t.TempDir(), "evidence-1.tar")
+	if err := buildExportEvidenceTar(ctx, db, store, engagementID, output1); err != nil {
+		t.Fatalf("build evidence tar 1: %v", err)
+	}
+	sha1, _, err := fileSHA256(output1)
+	if err != nil {
+		t.Fatalf("hash evidence tar 1: %v", err)
+	}
+
+	for _, tc := range cases {
+		path := filepath.Join(evidenceRoot, filepath.FromSlash(tc.key))
+		if err := os.Chtimes(path, time.Now().Add(2*time.Hour), time.Now().Add(2*time.Hour)); err != nil {
+			t.Fatalf("touch evidence %s: %v", tc.key, err)
+		}
+	}
+	output2 := filepath.Join(t.TempDir(), "evidence-2.tar")
+	if err := buildExportEvidenceTar(ctx, db, store, engagementID, output2); err != nil {
+		t.Fatalf("build evidence tar 2: %v", err)
+	}
+	sha2, _, err := fileSHA256(output2)
+	if err != nil {
+		t.Fatalf("hash evidence tar 2: %v", err)
+	}
+	if sha1 != sha2 {
+		t.Fatalf("evidence tar hash drifted across mtime change: %s != %s", sha1, sha2)
+	}
+}
+
 func TestExportJobPreflightRejectsInsufficientCapacity(t *testing.T) {
 	if os.Getenv("WAYPOINT_TEST_PG_DSN") == "" {
 		t.Skip("WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests")
