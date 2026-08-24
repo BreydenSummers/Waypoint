@@ -1,0 +1,1 @@
+COMMAND: docker compose -f compose.yml config --quiet
