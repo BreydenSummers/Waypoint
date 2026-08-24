@@ -1,0 +1,5 @@
+trace_prd_rows=67 acceptance_prd_rows=67
+trace_ev_rows=16 acceptance_ev_rows=16
+prd_status_counts=Fail:15,Pass:7,Unverified:45
+ev_status_counts=Fail:7,Pass:1,Unverified:8
+reconciliation=pass

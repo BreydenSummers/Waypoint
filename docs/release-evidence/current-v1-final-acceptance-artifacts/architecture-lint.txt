@@ -1,0 +1,1 @@
+architecture lint passed (9 ADRs, 9 scope rules, 166 claim-surface files)

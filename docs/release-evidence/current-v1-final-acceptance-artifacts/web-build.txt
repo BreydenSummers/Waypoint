@@ -1,0 +1,4 @@
+
+> build
+> node --no-warnings build.mjs
+
