@@ -921,6 +921,8 @@ export function App() {
   const summitDownloadReady = Boolean(selectedExportJob?.state === 'completed' && selectedExportJob.bundle && selectedExportReceipt?.status === 'verified');
   const summitCanAuthorize = Boolean(summitReceipt && summitReceipt.status === 'verified' && summitReceipt.bundlePath && summitReceipt.archiveSha256 && summitReceipt.manifestSha256);
   const summitCanConsume = Boolean(summitAuthorization && summitAuthorization.status === 'authorized');
+  const trailStreamTone = auditStatus === 'error' ? 'review' : auditStatus === 'ready' ? 'success' : 'neutral';
+  const trailStreamLabel = auditStatus === 'error' ? 'Reconnecting' : auditStatus === 'ready' ? 'Live' : 'Connecting';
 
   useEffect(() => {
     if (!selectedExportJob) {
@@ -2142,7 +2144,7 @@ export function App() {
             ) : null}
 
             {activePhase === 'summit' ? (
-              <section className="summit-flow" aria-label="Summit export and teardown flow">
+              <section className="summit-flow" aria-label="Summit export and teardown flow" aria-live="polite" aria-atomic="false">
                 <div className="summit-status">
                   <span className={`status-chip ${exportStatusClass(selectedExportJobStatus)}`}>{selectedExportJobStatus}</span>
                   <div className="export-meter" role="progressbar" aria-label="Export progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={selectedExportProgress}><span style={{ width: `${selectedExportProgress}%` }} /></div>
@@ -2456,9 +2458,12 @@ export function App() {
         </section>
 
         <aside className="sidebar" aria-label="Guide and trail details">
-          <section className="log-panel" aria-label="Notable alerts">
+          <section className="log-panel" aria-label="Notable alerts" aria-live="polite" aria-atomic="false">
             <div className="panel-heading compact">
-              <h2>⚑ Notable alerts</h2>
+              <div className="panel-heading-title">
+                <h2>⚑ Notable alerts</h2>
+                <StatusPill status={trailStreamTone}>{trailStreamLabel}</StatusPill>
+              </div>
               <p>Alerts arrive from the live SSE stream and stay attached to the audit trail.</p>
             </div>
             {auditStatus === 'loading' ? <div className="guide-note-empty">Loading notable alerts…</div> : null}
@@ -2534,9 +2539,12 @@ export function App() {
             </div>
           </section>
 
-          <section className="log-panel" aria-label="Journey log">
+          <section className="log-panel" aria-label="Journey log" aria-live="polite" aria-atomic="false">
             <div className="panel-heading compact">
-              <h2>📖 Journey log</h2>
+              <div className="panel-heading-title">
+                <h2>📖 Journey log</h2>
+                <StatusPill status={trailStreamTone}>{trailStreamLabel}</StatusPill>
+              </div>
               <p>The audit trail is the journey log — one entry per meaningful action.</p>
             </div>
             {auditStatus === 'loading' ? <div className="guide-note-empty">Loading the latest trail entries…</div> : null}

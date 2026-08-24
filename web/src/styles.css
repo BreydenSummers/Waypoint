@@ -692,6 +692,13 @@ html[data-theme='dark'] .break-glass-input input {
   margin-bottom: 12px;
 }
 
+.panel-heading-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .panel-heading.compact {
   margin-bottom: 8px;
 }
