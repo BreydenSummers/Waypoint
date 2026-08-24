@@ -1,0 +1,69 @@
+
+> test
+> node --test scripts/report-renderer.test.mjs scripts/bundle-tools.test.mjs scripts/bundle-export.test.mjs scripts/g3-workspaces.test.mjs && node --no-warnings scripts/check.mjs
+
+TAP version 13
+# Subtest: finalizeBundle preflight produces no files and emits progress
+ok 1 - finalizeBundle preflight produces no files and emits progress
+  ---
+  duration_ms: 39.148795
+  type: 'test'
+  ...
+# Subtest: finalizeBundle can recover after cancellation and verifies the archive hash
+ok 2 - finalizeBundle can recover after cancellation and verifies the archive hash
+  ---
+  duration_ms: 41.741025
+  type: 'test'
+  ...
+# Subtest: export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
+ok 3 - export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
+  ---
+  duration_ms: 57.769045
+  type: 'test'
+  ...
+# Subtest: scripts/bundle-tools.test.mjs
+ok 2 - scripts/bundle-tools.test.mjs
+  ---
+  duration_ms: 430.832831
+  type: 'test'
+  ...
+# Subtest: G3 shell keeps recon/attacks/findings non-linear and accessible
+ok 5 - G3 shell keeps recon/attacks/findings non-linear and accessible
+  ---
+  duration_ms: 9.112189
+  type: 'test'
+  ...
+# Subtest: G3 styling retains artifact surfaces in light, dark, desktop, and mobile variants
+ok 6 - G3 styling retains artifact surfaces in light, dark, desktop, and mobile variants
+  ---
+  duration_ms: 2.104628
+  type: 'test'
+  ...
+# Subtest: G3 performance fixture keeps the 100k-action budget focused and bounded
+ok 7 - G3 performance fixture keeps the 100k-action budget focused and bounded
+  ---
+  duration_ms: 2.25255
+  type: 'test'
+  ...
+# Subtest: web build output is reproducible and matches the embedded assets
+ok 8 - web build output is reproducible and matches the embedded assets
+  ---
+  duration_ms: 17.517617
+  type: 'test'
+  ...
+# Subtest: scripts/report-renderer.test.mjs
+ok 4 - scripts/report-renderer.test.mjs
+  ---
+  duration_ms: 70.805884
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 450.996587
+web skeleton, bundle manifest, and report fixture check passed

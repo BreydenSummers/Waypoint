@@ -1,0 +1,1 @@
+WAYPOINT_TEST_PG_DSN is required to generate the G1 report

@@ -1,0 +1,77 @@
+go test ./...
+ok  	waypoint	0.378s
+ok  	waypoint/cmd/waypoint	0.006s
+ok  	waypoint/internal/db	0.005s
+ok  	waypoint/internal/server	0.109s
+ok  	waypoint/internal/webassets	0.096s
+ok  	waypoint/scripts	4.957s
+npm --prefix web run test
+
+> test
+> node --test scripts/report-renderer.test.mjs scripts/bundle-tools.test.mjs scripts/bundle-export.test.mjs scripts/g3-workspaces.test.mjs && node --no-warnings scripts/check.mjs
+
+TAP version 13
+# Subtest: finalizeBundle preflight produces no files and emits progress
+ok 1 - finalizeBundle preflight produces no files and emits progress
+  ---
+  duration_ms: 44.14539
+  type: 'test'
+  ...
+# Subtest: finalizeBundle can recover after cancellation and verifies the archive hash
+ok 2 - finalizeBundle can recover after cancellation and verifies the archive hash
+  ---
+  duration_ms: 27.703819
+  type: 'test'
+  ...
+# Subtest: export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
+ok 3 - export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
+  ---
+  duration_ms: 67.341365
+  type: 'test'
+  ...
+# Subtest: scripts/bundle-tools.test.mjs
+ok 2 - scripts/bundle-tools.test.mjs
+  ---
+  duration_ms: 441.358725
+  type: 'test'
+  ...
+# Subtest: G3 shell keeps recon/attacks/findings non-linear and accessible
+ok 5 - G3 shell keeps recon/attacks/findings non-linear and accessible
+  ---
+  duration_ms: 9.140312
+  type: 'test'
+  ...
+# Subtest: G3 styling retains artifact surfaces in light, dark, desktop, and mobile variants
+ok 6 - G3 styling retains artifact surfaces in light, dark, desktop, and mobile variants
+  ---
+  duration_ms: 2.098615
+  type: 'test'
+  ...
+# Subtest: G3 performance fixture keeps the 100k-action budget focused and bounded
+ok 7 - G3 performance fixture keeps the 100k-action budget focused and bounded
+  ---
+  duration_ms: 2.177776
+  type: 'test'
+  ...
+# Subtest: web build output is reproducible and matches the embedded assets
+ok 8 - web build output is reproducible and matches the embedded assets
+  ---
+  duration_ms: 17.056695
+  type: 'test'
+  ...
+# Subtest: scripts/report-renderer.test.mjs
+ok 4 - scripts/report-renderer.test.mjs
+  ---
+  duration_ms: 81.599129
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 460.636025
+web skeleton, bundle manifest, and report fixture check passed

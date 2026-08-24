@@ -1,7 +1,8 @@
 # Waypoint v1 PRD traceability
 
-Status: current post-remediation release audit complete — **Fail; not v1-ready (7 Pass, 15 Fail, 45 Unverified)**  
-Latest evidence: [`release-evidence/current-v1-release-audit.md`](release-evidence/current-v1-release-audit.md)  
+Status: current-main final acceptance complete — **Fail; not v1-ready (7 Pass, 15 Fail, 45 Unverified)**  
+Technical readiness recommended: **false** · Human acceptance: **false** (no explicit owner grant retained)  
+Latest evidence: [`release-evidence/current-v1-final-acceptance.md`](release-evidence/current-v1-final-acceptance.md)  
 Canonical requirements: [`../PRD.md`](../PRD.md)  
 Execution and task definitions: [`v1-execution-plan.md`](v1-execution-plan.md)  
 Design references: [`design-spec.md`](design-spec.md), [`waypoint-mockup.html`](waypoint-mockup.html)  
@@ -26,23 +27,25 @@ by `scripts/verify-contracts.py`. This closes **contract design/drift only**; ro
 non-Pass (`Fail` or `Unverified`) until runtime, PostgreSQL, clean-room, security, and operator
 evidence satisfy their gates. All v2 deferrals remain unchanged.
 
-### Current audit evidence keys
+### Current final-acceptance evidence keys
 
-The `2026-08-24T08:11:44Z–08:16:50Z` audit records the exact current commands, results, all 47 skipped
-PostgreSQL/Compose tests, synthetic-gate classification, source defects, and all-row reconciliation in
-[`release-evidence/current-v1-release-audit.md`](release-evidence/current-v1-release-audit.md).
-The older raw artifact directory predates the remediation and is not current runtime truth. These keys
-point to the current audit record; absent raw runtime artifacts remain release-blocking.
+The `2026-08-24T08:42:57Z–08:51:10Z` acceptance retains exact current commands, UTC timestamps,
+exit codes, all **48** skipped PostgreSQL/Compose tests, contract and deferral inventories, current
+source defects, and the 67-row/EV reconciliation in
+[`release-evidence/current-v1-final-acceptance.md`](release-evidence/current-v1-final-acceptance.md)
+and [`release-evidence/current-v1-final-acceptance-artifacts/`](release-evidence/current-v1-final-acceptance-artifacts/).
+Historical files remain context only. Missing runtime artifacts remain release-blocking.
 
-- **ENV** — [audit boundary and host/tool availability](release-evidence/current-v1-release-audit.md#audit-boundary)
-- **CONTRACT** — [exact current command ledger](release-evidence/current-v1-release-audit.md#exact-command-ledger)
-- **DB** — [current Go/PostgreSQL skip disposition](release-evidence/current-v1-release-audit.md#go-test-disposition)
-- **WEB** — [synthetic/source-only web, PDF, UX, and bundle gates](release-evidence/current-v1-release-audit.md#synthetic-and-source-only-gates)
-- **DEPLOY** — [current Compose/installer host disposition](release-evidence/current-v1-release-audit.md#deployment-and-host-gates)
-- **SOURCE** — [confirmed defects in the remediated source](release-evidence/current-v1-release-audit.md#confirmed-current-source-defects)
-- **SCOPE** — [current deferral inventory](release-evidence/current-v1-release-audit.md#deferral-inventory)
+- **ENV** — [current evidence boundary](release-evidence/current-v1-final-acceptance.md#evidence-boundary)
+- **CONTRACT** — [current contract rerun](release-evidence/current-v1-final-acceptance.md#contract-and-v2-deferral-inventories)
+- **DB** — [current checks and 48-skip disposition](release-evidence/current-v1-final-acceptance.md#checks-rerun)
+- **WEB** — [current browser/dogfood disposition](release-evidence/current-v1-final-acceptance.md#mandatory-acceptance-conditions)
+- **DEPLOY** — [current build/deployment disposition](release-evidence/current-v1-final-acceptance.md#mandatory-acceptance-conditions)
+- **SOURCE** — [current release-stop defects](release-evidence/current-v1-final-acceptance.md#current-release-stop-defects)
+- **SCOPE** — [current deferral inventory](release-evidence/current-v1-final-acceptance.md#contract-and-v2-deferral-inventories)
 
-Current audit commands (results and qualifications are in the linked command ledger):
+Current final-acceptance commands (raw output and qualifications are retained in the linked artifact
+directory):
 
 ```sh
 python3 scripts/verify-contracts.py
@@ -51,17 +54,17 @@ go vet ./...
 make lint
 go test -count=1 -json ./...
 npm --prefix web test
-make test
 npm --prefix web run build
-mkdir -p .audit-bin && go build -o .audit-bin/waypoint ./cmd/waypoint
-WAYPOINT_ADDR=127.0.0.1:18082 .audit-bin/waypoint
+go build -o /tmp/current-v1-final-waypoint ./cmd/waypoint
 docker compose -f compose.yml config --quiet
+docker info
 docker compose -f compose.yml build --no-cache
 docker compose -f compose.yml up -d --wait
 go test -count=1 -v -run '^TestComposeStackPersistsDBAndEvidenceAcrossRestart$' .
-python3 scripts/g1-foundation-report.py --output /tmp/current-v1-g1.md
+python3 scripts/g1-foundation-report.py --output /tmp/current-v1-final-g1.md
 make smoke
-rm -rf .audit-bin bin
+docker compose -f compose.yml down -v --remove-orphans
+make test
 ```
 
 ## 1. Product, data, and audit requirements
@@ -197,12 +200,12 @@ dedicated ADR.
 
 ## 8. Release evidence index
 
-Reconciled against the current post-remediation tree. Do not mark the release complete if any applicable row lacks a durable artifact. See the [current audit disposition](release-evidence/current-v1-release-audit.md#ev-01ev-16-current-disposition).
+Reconciled against the current-main final acceptance. Do not mark the release complete if any applicable row lacks a durable artifact. See the [final EV disposition](release-evidence/current-v1-final-acceptance.md#ev-01ev-16).
 
 | Evidence ID | Required artifact | Covers | Current state / location |
 |---|---|---|---|
 | EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Unverified · current core contracts pass, but no retained plugins compatibility/parser/runtime report exists. |
-| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Fail · 47 current PostgreSQL/Compose tests skip overall, and stored digest text is still accepted directly as bearer input. |
+| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Fail · 48 current PostgreSQL/Compose tests skip overall, and stored digest text is still accepted directly as bearer input. |
 | EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Unverified · lossless capture source exists, but no collector-to-PostgreSQL transcript exists. |
 | EV-04 | Offline replay + platform matrix | PRD-CAP-004/005/011 | Unverified · no retained plugins replay/native-platform artifact exists. |
 | EV-05 | Egress mode packet assertions | PRD-NET-001/002/003 | Fail · app startup resolver/config and manual/off packet evidence remain absent. |
@@ -216,7 +219,7 @@ Reconciled against the current post-remediation tree. Do not mark the release co
 | EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Fail · no retained security report; auth, TLS/middleware/role, scan, and operator-boundary defects remain. |
 | EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Unverified · no browser runtime or retained screenshot/checklist set exists. |
 | EV-15 | Accessibility tree/keyboard/axe/reduced-motion report | PRD-A11Y-001/002 | Unverified · no browser accessibility artifact exists. |
-| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pass · current architecture lint over 162 claim-surface files and source/dependency inventory show no functioning v2 surface. |
+| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pass · current architecture lint over 166 claim-surface files and source/dependency inventory show no functioning v2 surface. |
 
 ## 9. Planning coverage check
 
