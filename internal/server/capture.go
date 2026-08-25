@@ -490,7 +490,7 @@ func captureHandler(db *sql.DB, store *evidenceStore, originKind string) http.Ha
 			Subject:       dbutil.AuditSubject{Type: "action", ID: actionID, Revision: 1},
 			RequestID:     reqID,
 			CorrelationID: req.Envelope.CaptureID,
-			Data:          map[string]any{"actionId": actionID, "captureId": req.Envelope.CaptureID, "sourceAgentId": req.Envelope.SourceAgent.ID, "phase": req.Envelope.Phase, "initiatedBy": req.Envelope.InitiatedBy, "command": req.Envelope.Command, "target": map[string]any{"kind": req.Envelope.Target.Kind, "value": req.Envelope.Target.Value}, "execution": captureExecutionData(req.Envelope.Execution), "parseStatus": req.Envelope.Parsing.Status, "egressStatus": req.Envelope.Network.Egress.Status, "receivedAt": receivedAt, "clockSkewStatus": skewStatus(req.Envelope.Timing.EndedAt, receivedAt)},
+			Data:          map[string]any{"actionId": actionID, "captureId": req.Envelope.CaptureID, "sourceAgentId": req.Envelope.SourceAgent.ID, "phase": req.Envelope.Phase, "initiatedBy": req.Envelope.InitiatedBy, "command": req.Envelope.Command, "target": map[string]any{"kind": req.Envelope.Target.Kind, "value": req.Envelope.Target.Value}, "execution": captureExecutionData(req.Envelope.Execution), "network": req.Envelope.Network, "parseStatus": req.Envelope.Parsing.Status, "egressStatus": req.Envelope.Network.Egress.Status, "receivedAt": receivedAt, "clockSkewStatus": skewStatus(req.Envelope.Timing.EndedAt, receivedAt)},
 		})
 		if err != nil {
 			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: fmt.Sprintf("append accepted audit event failed: %v", err)})
