@@ -1,7 +1,7 @@
 # UX/accessibility dogfood evidence
 
 ## Timestamp
-- 2026-08-17T15:24:08Z
+- 2026-08-25T20:03:21Z
 
 ## Checks run
 - `go test ./...` → passed
@@ -12,6 +12,7 @@
 - `node -e "try{console.log(require.resolve('playwright'));}catch(e){console.error('no playwright')}"` → no Playwright
 - `node -e "try{console.log(require.resolve('puppeteer'));}catch(e){console.error('no puppeteer')}"` → no Puppeteer
 - `node -e "try{console.log(require.resolve('selenium-webdriver'));}catch(e){console.error('no selenium')}"` → no Selenium
+- `bash scripts/ux-dogfood-host.sh /tmp/waypoint-ux-dogfood-$$` → blocked (`Docker daemon unavailable`)
 - `docker compose up -d --build` → blocked (`Cannot connect to the Docker daemon`)
 
 ## Source-level accessibility notes
