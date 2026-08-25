@@ -204,17 +204,22 @@ type teardownAuthorizationResponse struct {
 type exportManager struct {
 	db      *sql.DB
 	store   *evidenceStore
+	runtime RuntimeState
 	root    string
 	running sync.Map
 }
 
 func newExportManager(db *sql.DB, store *evidenceStore) *exportManager {
+	return newExportManagerWithRuntime(db, store, RuntimeState{})
+}
+
+func newExportManagerWithRuntime(db *sql.DB, store *evidenceStore, runtime RuntimeState) *exportManager {
 	root := strings.TrimSpace(os.Getenv("WAYPOINT_EXPORT_DIR"))
 	if root == "" {
 		root = filepath.Join(os.TempDir(), "waypoint", "exports")
 	}
 	_ = os.MkdirAll(root, 0o750)
-	return &exportManager{db: db, store: store, root: root}
+	return &exportManager{db: db, store: store, runtime: runtime, root: root}
 }
 
 func (m *exportManager) loadJob(ctx context.Context, jobID string) (exportJobRecord, error) {
@@ -1068,7 +1073,7 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 		return exportArtifacts{}, err
 	}
 	defer tx.Rollback()
-	snapshot, err := buildReportSnapshot(reportCtx, tx, m.store, job.EngagementID)
+	snapshot, err := buildReportSnapshotWithRuntime(reportCtx, tx, m.store, job.EngagementID, m.runtime)
 	if err != nil {
 		return exportArtifacts{}, err
 	}

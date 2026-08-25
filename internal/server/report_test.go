@@ -96,7 +96,7 @@ func TestAssembleReportSnapshotOrdersSectionsAndGaps(t *testing.T) {
 		},
 	}
 
-	snapshot, err := assembleReportSnapshot(context.Background(), engagement, actions, findings, captureGaps, nil)
+	snapshot, err := assembleReportSnapshot(context.Background(), engagement, actions, findings, captureGaps, nil, RuntimeState{})
 	if err != nil {
 		t.Fatalf("assemble report snapshot: %v", err)
 	}

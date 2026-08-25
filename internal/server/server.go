@@ -11,18 +11,27 @@ import (
 	"strings"
 	"time"
 
+	"waypoint/internal/egresspolicy"
 	"waypoint/internal/webassets"
 )
 
+type RuntimeState struct {
+	Egress egresspolicy.State `json:"egress"`
+}
+
 func Handler() http.Handler {
-	return handler(nil)
+	return handler(nil, RuntimeState{})
 }
 
 func HandlerWithDB(db *sql.DB) http.Handler {
-	return handler(db)
+	return handler(db, RuntimeState{})
 }
 
-func handler(db *sql.DB) http.Handler {
+func HandlerWithDBAndRuntime(db *sql.DB, runtime RuntimeState) http.Handler {
+	return handler(db, runtime)
+}
+
+func handler(db *sql.DB, runtime RuntimeState) http.Handler {
 	assets, err := fs.Sub(webassets.Assets, "dist")
 	if err != nil {
 		panic(err)
@@ -32,7 +41,7 @@ func handler(db *sql.DB) http.Handler {
 	mux.HandleFunc("/healthz", healthz)
 	mux.HandleFunc("/readyz", readyz(assets, db))
 	store := newEvidenceStore()
-	exports := newExportManager(db, store)
+	exports := newExportManagerWithRuntime(db, store, runtime)
 	go exports.recoverOutstanding(context.Background())
 	mux.HandleFunc("/api/v1/captures", captureHandler(db, store, "rest"))
 	mux.HandleFunc("/captures", captureHandler(db, store, "rest"))
@@ -83,7 +92,9 @@ func handler(db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/v1/teardown-authorizations/", exportHandler(db, store, exports))
 	mux.HandleFunc("/teardown-authorizations", exportHandler(db, store, exports))
 	mux.HandleFunc("/teardown-authorizations/", exportHandler(db, store, exports))
-	report := reportHandler(db, store)
+	mux.HandleFunc("/api/v1/runtime", runtimeHandler(runtime))
+	mux.HandleFunc("/runtime", runtimeHandler(runtime))
+	report := reportHandlerWithRuntime(db, store, runtime)
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if reportJSONRoute.MatchString(r.URL.Path) || reportPDFRoute.MatchString(r.URL.Path) {
 			report.ServeHTTP(w, r)
@@ -180,6 +191,17 @@ func serveIndex(w http.ResponseWriter, r *http.Request, assets fs.FS) {
 func exists(assets fs.FS, name string) bool {
 	_, err := fs.Stat(assets, name)
 	return err == nil
+}
+
+func runtimeHandler(runtime RuntimeState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			w.Header().Set("Allow", http.MethodGet)
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		writeJSON(w, http.StatusOK, runtime)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

@@ -16,6 +16,7 @@ import (
 	_ "github.com/lib/pq"
 
 	dbm "waypoint/internal/db"
+	"waypoint/internal/egresspolicy"
 	"waypoint/internal/server"
 )
 
@@ -33,9 +34,17 @@ func main() {
 	}
 	defer db.Close()
 
+	egressState, err := egresspolicy.ResolveFromEnv(startupCtx, os.Getenv, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if egressState.Status == egresspolicy.StatusResolutionFailed {
+		log.Printf("egress auto-resolution failed: %v", egressState.Notes)
+	}
+
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: server.HandlerWithDB(db),
+		Handler: server.HandlerWithDBAndRuntime(db, server.RuntimeState{Egress: egressState}),
 	}
 
 	done := make(chan os.Signal, 1)

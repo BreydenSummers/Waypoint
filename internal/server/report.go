@@ -39,6 +39,7 @@ type reportSnapshot struct {
 	Cutoff           string               `json:"cutoff"`
 	Scope            []string             `json:"scope"`
 	Methodology      []string             `json:"methodology"`
+	Runtime          RuntimeState         `json:"runtime,omitempty"`
 	Findings         []reportFinding      `json:"findings"`
 	Evidence         []reportEvidence     `json:"evidence"`
 	Bundle           *reportBundle        `json:"bundle,omitempty"`
@@ -84,20 +85,24 @@ type reportFinding struct {
 }
 
 type reportEvidence struct {
-	Label       string `json:"label"`
-	Source      string `json:"source,omitempty"`
-	Command     string `json:"command"`
-	Target      string `json:"target"`
-	Actor       string `json:"actor"`
-	Host        string `json:"host"`
-	Egress      string `json:"egress"`
-	InitiatedBy string `json:"initiatedBy"`
-	ParseStatus string `json:"parseStatus"`
-	RawStdout   string `json:"rawStdout,omitempty"`
-	RawStderr   string `json:"rawStderr,omitempty"`
-	RawSnippet  string `json:"rawSnippet,omitempty"`
-	Note        string `json:"note,omitempty"`
-	Attribution string `json:"attribution"`
+	Label            string            `json:"label"`
+	Source           string            `json:"source,omitempty"`
+	Command          string            `json:"command"`
+	Target           string            `json:"target"`
+	Actor            string            `json:"actor"`
+	Host             string            `json:"host"`
+	Egress           string            `json:"egress"`
+	EgressMode       string            `json:"egressMode,omitempty"`
+	EgressStatus     string            `json:"egressStatus,omitempty"`
+	EgressObservedAt string            `json:"egressObservedAt,omitempty"`
+	PivotChain       []capturePivotHop `json:"pivotChain,omitempty"`
+	InitiatedBy      string            `json:"initiatedBy"`
+	ParseStatus      string            `json:"parseStatus"`
+	RawStdout        string            `json:"rawStdout,omitempty"`
+	RawStderr        string            `json:"rawStderr,omitempty"`
+	RawSnippet       string            `json:"rawSnippet,omitempty"`
+	Note             string            `json:"note,omitempty"`
+	Attribution      string            `json:"attribution"`
 }
 
 type reportAttribution struct {
@@ -122,7 +127,11 @@ type reportActionRow struct {
 	TargetKind       string
 	TargetValue      string
 	ExecHostIP       string
+	EgressMode       sql.NullString
+	EgressStatus     sql.NullString
 	EgressPublicIP   sql.NullString
+	EgressObservedAt sql.NullTime
+	PivotChainJSON   string
 	InitiatedBy      string
 	ParseStatus      string
 	ActorHandle      string
@@ -155,6 +164,10 @@ type reportFindingRow struct {
 }
 
 func reportHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
+	return reportHandlerWithRuntime(db, store, RuntimeState{})
+}
+
+func reportHandlerWithRuntime(db *sql.DB, store *evidenceStore, runtime RuntimeState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
@@ -201,7 +214,7 @@ func reportHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 
 		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 		defer cancel()
-		snapshot, err := resolveReportSnapshot(ctx, db, store, engagementID)
+		snapshot, err := resolveReportSnapshotWithRuntime(ctx, db, store, engagementID, runtime)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
 				http.NotFound(w, r)
@@ -231,6 +244,10 @@ func reportHandler(db *sql.DB, store *evidenceStore) http.HandlerFunc {
 }
 
 func buildReportSnapshot(ctx context.Context, db queryer, store *evidenceStore, engagementID string) (reportSnapshot, error) {
+	return buildReportSnapshotWithRuntime(ctx, db, store, engagementID, RuntimeState{})
+}
+
+func buildReportSnapshotWithRuntime(ctx context.Context, db queryer, store *evidenceStore, engagementID string, runtime RuntimeState) (reportSnapshot, error) {
 	engagement, err := loadReportEngagement(ctx, db, engagementID)
 	if err != nil {
 		return reportSnapshot{}, err
@@ -247,10 +264,10 @@ func buildReportSnapshot(ctx context.Context, db queryer, store *evidenceStore, 
 	if err != nil {
 		return reportSnapshot{}, err
 	}
-	return assembleReportSnapshot(ctx, engagement, actions, findings, captureGaps, store)
+	return assembleReportSnapshot(ctx, engagement, actions, findings, captureGaps, store, runtime)
 }
 
-func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow, actions []reportActionRow, findings []reportFindingRow, captureGaps []outOfBandClaimItem, store *evidenceStore) (reportSnapshot, error) {
+func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow, actions []reportActionRow, findings []reportFindingRow, captureGaps []outOfBandClaimItem, store *evidenceStore, runtime RuntimeState) (reportSnapshot, error) {
 	actionLabels := map[string]string{}
 	sortedActions := append([]reportActionRow(nil), actions...)
 	sort.Slice(sortedActions, func(i, j int) bool {
@@ -314,6 +331,7 @@ func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow,
 		Cutoff:           cutoff.Format(time.RFC3339),
 		Scope:            splitScope(engagement.Scope),
 		Methodology:      reportMethodology(),
+		Runtime:          runtime,
 		Findings:         findingCards,
 		Evidence:         evidenceCards,
 		Bundle:           nil,
@@ -333,7 +351,8 @@ func loadReportEngagement(ctx context.Context, db queryer, engagementID string) 
 func loadReportActions(ctx context.Context, db queryer, engagementID string) ([]reportActionRow, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT a.id, a.started_at, a.ended_at, a.command, COALESCE(a.argv::text, '[]'), a.target_kind, a.target_value, a.exec_host_ip::text,
-		       COALESCE(a.egress_public_ip::text, ''), a.initiated_by::text, a.parse_status::text,
+		       COALESCE(a.egress_mode::text, ''), COALESCE(a.egress_status::text, ''), COALESCE(a.egress_public_ip::text, ''), a.egress_observed_at,
+		       COALESCE(a.pivot_chain::text, '[]'), a.initiated_by::text, a.parse_status::text,
 		       actor.handle, actor.kind::text, actor.role::text, COALESCE(actor.agent_name, ''), COALESCE(actor.model, ''), COALESCE(actor.version, ''), COALESCE(auth.handle::text, ''),
 		       COALESCE(stdout.storage_key, ''), COALESCE(stderr.storage_key, ''), COALESCE(stdout.kind, ''), COALESCE(stderr.kind, ''), COALESCE(stdout.sha256, ''), COALESCE(stderr.sha256, '')
 		FROM action a
@@ -350,7 +369,7 @@ func loadReportActions(ctx context.Context, db queryer, engagementID string) ([]
 	out := make([]reportActionRow, 0)
 	for rows.Next() {
 		var row reportActionRow
-		if err := rows.Scan(&row.ID, &row.StartedAt, &row.EndedAt, &row.Command, &row.ArgvJSON, &row.TargetKind, &row.TargetValue, &row.ExecHostIP, &row.EgressPublicIP, &row.InitiatedBy, &row.ParseStatus, &row.ActorHandle, &row.ActorKind, &row.ActorRole, &row.AgentName, &row.Model, &row.Version, &row.AuthorizedBy, &row.StdoutStorageKey, &row.StderrStorageKey, &row.StdoutKind, &row.StderrKind, &row.StdoutSHA256, &row.StderrSHA256); err != nil {
+		if err := rows.Scan(&row.ID, &row.StartedAt, &row.EndedAt, &row.Command, &row.ArgvJSON, &row.TargetKind, &row.TargetValue, &row.ExecHostIP, &row.EgressMode, &row.EgressStatus, &row.EgressPublicIP, &row.EgressObservedAt, &row.PivotChainJSON, &row.InitiatedBy, &row.ParseStatus, &row.ActorHandle, &row.ActorKind, &row.ActorRole, &row.AgentName, &row.Model, &row.Version, &row.AuthorizedBy, &row.StdoutStorageKey, &row.StderrStorageKey, &row.StdoutKind, &row.StderrKind, &row.StdoutSHA256, &row.StderrSHA256); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
@@ -398,20 +417,24 @@ func buildEvidenceCards(ctx context.Context, actions []reportActionRow, labels m
 			note = "Unknown tools remain raw-first; the report keeps evidence instead of dropping it."
 		}
 		out = append(out, reportEvidence{
-			Label:       labels[action.ID],
-			Source:      commandLine(action.Command, action.ArgvJSON),
-			Command:     commandLine(action.Command, action.ArgvJSON),
-			Target:      target,
-			Actor:       actorDisplay(action),
-			Host:        action.ExecHostIP,
-			Egress:      egressDisplay(action.EgressPublicIP),
-			InitiatedBy: action.InitiatedBy,
-			ParseStatus: action.ParseStatus,
-			RawStdout:   stdout,
-			RawStderr:   stderr,
-			RawSnippet:  rawSnippet,
-			Note:        note,
-			Attribution: attributionLine(action),
+			Label:            labels[action.ID],
+			Source:           commandLine(action.Command, action.ArgvJSON),
+			Command:          commandLine(action.Command, action.ArgvJSON),
+			Target:           target,
+			Actor:            actorDisplay(action),
+			Host:             action.ExecHostIP,
+			Egress:           egressSummary(action),
+			EgressMode:       action.EgressMode.String,
+			EgressStatus:     action.EgressStatus.String,
+			EgressObservedAt: formatRFC3339(action.EgressObservedAt),
+			PivotChain:       mustPivotChain(action.PivotChainJSON),
+			InitiatedBy:      action.InitiatedBy,
+			ParseStatus:      action.ParseStatus,
+			RawStdout:        stdout,
+			RawStderr:        stderr,
+			RawSnippet:       rawSnippet,
+			Note:             note,
+			Attribution:      attributionLine(action),
 		})
 	}
 	return out
@@ -491,6 +514,10 @@ func sortReportCaptureGaps(gaps []outOfBandClaimItem) []outOfBandClaimItem {
 }
 
 func resolveReportSnapshot(ctx context.Context, db queryer, store *evidenceStore, engagementID string) (reportSnapshot, error) {
+	return resolveReportSnapshotWithRuntime(ctx, db, store, engagementID, RuntimeState{})
+}
+
+func resolveReportSnapshotWithRuntime(ctx context.Context, db queryer, store *evidenceStore, engagementID string, runtime RuntimeState) (reportSnapshot, error) {
 	if db != nil {
 		if snapshot, ok, err := loadFrozenReportSnapshot(ctx, db, engagementID); err != nil {
 			return reportSnapshot{}, err
@@ -498,7 +525,7 @@ func resolveReportSnapshot(ctx context.Context, db queryer, store *evidenceStore
 			return snapshot, nil
 		}
 	}
-	return buildReportSnapshot(ctx, db, store, engagementID)
+	return buildReportSnapshotWithRuntime(ctx, db, store, engagementID, runtime)
 }
 
 func loadFrozenReportSnapshot(ctx context.Context, db queryer, engagementID string) (reportSnapshot, bool, error) {
@@ -716,10 +743,30 @@ func actorDisplay(action reportActionRow) string {
 
 func attributionLine(action reportActionRow) string {
 	line := action.ExecHostIP
-	if egress := egressDisplay(action.EgressPublicIP); egress != "not recorded" {
+	if egress := egressSummary(action); egress != "not recorded" {
 		line += " → " + egress
 	}
 	return line
+}
+
+func egressSummary(action reportActionRow) string {
+	parts := make([]string, 0, 4)
+	if mode := strings.TrimSpace(action.EgressMode.String); mode != "" {
+		parts = append(parts, mode)
+	}
+	if status := strings.TrimSpace(action.EgressStatus.String); status != "" {
+		parts = append(parts, status)
+	}
+	if addr := egressDisplay(action.EgressPublicIP); addr != "not recorded" {
+		parts = append(parts, addr)
+	}
+	if action.EgressObservedAt.Valid {
+		parts = append(parts, action.EgressObservedAt.Time.UTC().Format(time.RFC3339))
+	}
+	if len(parts) == 0 {
+		return "not recorded"
+	}
+	return strings.Join(parts, " · ")
 }
 
 func egressDisplay(v sql.NullString) string {
@@ -727,6 +774,27 @@ func egressDisplay(v sql.NullString) string {
 		return "not recorded"
 	}
 	return strings.TrimSpace(v.String)
+}
+
+func pivotChainSummary(chain []capturePivotHop) string {
+	if len(chain) == 0 {
+		return "none recorded"
+	}
+	parts := make([]string, 0, len(chain))
+	for _, hop := range chain {
+		label := strings.TrimSpace(hop.Type)
+		if hop.Host != "" {
+			label = strings.TrimSpace(label + " " + hop.Host)
+		}
+		if hop.Port != nil {
+			label = strings.TrimSpace(fmt.Sprintf("%s:%d", label, *hop.Port))
+		}
+		if hop.Label != "" {
+			label = strings.TrimSpace(label + " " + hop.Label)
+		}
+		parts = append(parts, label)
+	}
+	return strings.Join(parts, " → ")
 }
 
 func splitScope(scope string) []string {
@@ -858,6 +926,7 @@ var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap
 	"captureGapLabel":          captureGapLabel,
 	"captureGapSourceActionID": captureGapSourceActionID,
 	"auditActorDisplay":        auditActorDisplay,
+	"pivotChainSummary":        pivotChainSummary,
 }).Parse(`<!doctype html>
 <html lang="en">
 <head>
@@ -929,6 +998,19 @@ var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap
       <ul>{{range .Methodology}}<li>{{.}}</li>{{else}}<li>None recorded.</li>{{end}}</ul>
     </section>
 
+    {{if or .Runtime.Egress.Mode .Runtime.Egress.Status .Runtime.Egress.Address .Runtime.Egress.ObservedAt .Runtime.Egress.Interface .Runtime.Egress.InterfaceAddress .Runtime.Egress.ResolverEndpoint .Runtime.Egress.Notes}}
+    <section class="section">
+      <h2>Runtime</h2>
+      <ul>
+        <li><strong>Egress:</strong> {{if .Runtime.Egress.Address}}{{.Runtime.Egress.Mode}} · {{.Runtime.Egress.Status}} · {{.Runtime.Egress.Address}}{{else}}{{.Runtime.Egress.Mode}} · {{.Runtime.Egress.Status}}{{end}}</li>
+        {{if .Runtime.Egress.ObservedAt}}<li><strong>Observed at:</strong> {{.Runtime.Egress.ObservedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}</li>{{end}}
+        {{if .Runtime.Egress.Interface}}<li><strong>Interface:</strong> {{.Runtime.Egress.Interface}}{{if .Runtime.Egress.InterfaceAddress}} · {{.Runtime.Egress.InterfaceAddress}}{{end}}</li>{{end}}
+        {{if .Runtime.Egress.ResolverEndpoint}}<li><strong>Resolver:</strong> {{.Runtime.Egress.ResolverEndpoint}}</li>{{end}}
+        {{range .Runtime.Egress.Notes}}<li>{{.}}</li>{{end}}
+      </ul>
+    </section>
+    {{end}}
+
     <section class="section">
       <h2>Findings</h2>
       <div class="grid">
@@ -957,6 +1039,10 @@ var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap
           <p><strong>Actor:</strong> {{.Actor}}</p>
           <p><strong>Exec host:</strong> {{.Host}}</p>
           <p><strong>Egress:</strong> {{.Egress}}</p>
+          <p><strong>Egress mode:</strong> {{if .EgressMode}}{{.EgressMode}}{{else}}not recorded{{end}}</p>
+          <p><strong>Egress status:</strong> {{if .EgressStatus}}{{.EgressStatus}}{{else}}not recorded{{end}}</p>
+          <p><strong>Observed at:</strong> {{if .EgressObservedAt}}{{.EgressObservedAt}}{{else}}not recorded{{end}}</p>
+          <p><strong>Pivot chain:</strong> {{if .PivotChain}}{{pivotChainSummary .PivotChain}}{{else}}none recorded{{end}}</p>
           <p><strong>Initiated by:</strong> {{.InitiatedBy}}</p>
           <p><strong>Parse status:</strong> {{.ParseStatus}}</p>
           <p><strong>Attribution:</strong> {{.Attribution}}</p>
