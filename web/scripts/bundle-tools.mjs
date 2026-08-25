@@ -12,6 +12,31 @@ export function isSafeBundlePath(value) {
   return normalized === value && !normalized.startsWith('../') && !normalized.includes('/../') && !normalized.includes('//');
 }
 
+const allowedBundleKinds = new Set(['database_dump', 'evidence', 'report_snapshot', 'report_pdf', 'metadata', 'verify_tool', 'restore_tool', 'regenerate_tool', 'instructions']);
+
+function inferBundlePayloadKind(bundlePath) {
+  switch (bundlePath) {
+    case 'bundle/database/engagement.dump':
+      return 'database_dump';
+    case 'bundle/evidence/evidence.tar.zst':
+      return 'evidence';
+    case 'bundle/report/frozen-report.pdf':
+      return 'report_pdf';
+    case 'bundle/report/report-snapshot.json':
+      return 'report_snapshot';
+    case 'bundle/metadata/export-metadata.json':
+      return 'metadata';
+    case 'bundle/tools/verify-restore.mjs':
+      return 'verify_tool';
+    case 'bundle/tools/regenerate-report.mjs':
+      return 'restore_tool';
+    case 'bundle/instructions/restore.md':
+      return 'instructions';
+    default:
+      return '';
+  }
+}
+
 export function bundleFilePath(root, bundlePath) {
   return resolve(root, ...bundlePath.split('/'));
 }
@@ -63,12 +88,16 @@ export async function readJson(filePath) {
 
 export function deriveManifestFromSnapshot(snapshot) {
   const bundle = snapshot?.bundle ?? {};
+  const payloads = Array.isArray(bundle.payloads) ? bundle.payloads.map((payload) => ({
+    ...payload,
+    kind: typeof payload.kind === 'string' && payload.kind ? payload.kind : inferBundlePayloadKind(payload.path),
+  })) : [];
   return {
     formatVersion: '1.0.0',
     exportJobId: snapshot?.exportJobId ?? bundle.exportJobId ?? snapshot?.id ?? '',
     engagementId: snapshot?.engagement?.id ?? snapshot?.engagementId ?? bundle.engagementId ?? '',
     cutoff: snapshot?.cutoff ?? '',
-    payloads: Array.isArray(bundle.payloads) ? bundle.payloads : [],
+    payloads,
     signatures: bundle.signatures ?? { version: 'v1', items: [] },
   };
 }
@@ -128,6 +157,9 @@ function validateBundleManifest(manifest) {
     }
     if (seen.has(payload.path)) {
       throw new Error(`duplicate bundle path: ${payload.path}`);
+    }
+    if (typeof payload.kind !== 'string' || !allowedBundleKinds.has(payload.kind)) {
+      throw new Error(`bundle manifest payload missing kind: ${payload.path}`);
     }
     const byteLength = Number.isSafeInteger(payload.byteLength) ? payload.byteLength : payload.size;
     if (!Number.isSafeInteger(byteLength) || byteLength < 0) {

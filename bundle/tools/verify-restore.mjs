@@ -88,7 +88,7 @@ export async function verifyBundle(root, options = {}) {
     ? { manifest: options.manifest, manifestFile: bundleFilePath(bundleRoot, manifestPath), source: 'inline' }
     : { manifest: JSON.parse(await readFile(bundleFilePath(bundleRoot, manifestPath), 'utf8')), manifestFile: bundleFilePath(bundleRoot, manifestPath), source: 'manifest' };
   const manifest = loaded.manifest;
-  const manifestBytes = options.manifestBytes ?? Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  const manifestBytes = options.manifestBytes ?? (options.manifest ? Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, 'utf8') : await readFile(loaded.manifestFile));
   validateBundleManifest(manifest);
 
   for (const [index, payload] of [...manifest.payloads].sort((a, b) => String(a.path).localeCompare(String(b.path))).entries()) {
