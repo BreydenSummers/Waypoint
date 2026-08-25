@@ -58,16 +58,19 @@ const regenerateToolBytes = await readFile(regenerateToolPath);
 const snapshotSeed = JSON.stringify(fixtureSnapshot, null, 2);
 
 const manifest = {
-  version: 'v1',
+  formatVersion: '1.0.0',
+  exportJobId: '77777777-7777-4777-8777-777777777777',
+  engagementId: '11111111-1111-4111-8111-111111111111',
+  cutoff: '2025-01-15T11:00:00Z',
   signatures: { version: 'v1', items: [] },
   payloads: [
-    { path: 'bundle/database/engagement.dump', size: dumpBytes.length, sha256: sha256(dumpBytes) },
-    { path: 'bundle/evidence/evidence.tar.zst', size: evidenceBytes.length, sha256: sha256(evidenceBytes) },
-    { path: 'bundle/report/frozen-report.pdf', size: pdfBytes.length, sha256: sha256(pdfBytes) },
-    { path: 'bundle/report/report-snapshot.json', size: snapshotSeed.length, sha256: sha256(snapshotSeed) },
-    { path: 'bundle/metadata/export-metadata.json', size: metadataBytes.length, sha256: sha256(metadataBytes) },
-    { path: 'bundle/tools/verify-restore.mjs', size: verifyToolBytes.length, sha256: sha256(verifyToolBytes) },
-    { path: 'bundle/tools/regenerate-report.mjs', size: regenerateToolBytes.length, sha256: sha256(regenerateToolBytes) },
+    { path: 'bundle/database/engagement.dump', size: dumpBytes.length, sha256: sha256(dumpBytes), kind: 'database_dump' },
+    { path: 'bundle/evidence/evidence.tar.zst', size: evidenceBytes.length, sha256: sha256(evidenceBytes), kind: 'evidence' },
+    { path: 'bundle/report/frozen-report.pdf', size: pdfBytes.length, sha256: sha256(pdfBytes), kind: 'report_pdf' },
+    { path: 'bundle/report/report-snapshot.json', size: snapshotSeed.length, sha256: sha256(snapshotSeed), kind: 'report_snapshot' },
+    { path: 'bundle/metadata/export-metadata.json', size: metadataBytes.length, sha256: sha256(metadataBytes), kind: 'metadata' },
+    { path: 'bundle/tools/verify-restore.mjs', size: verifyToolBytes.length, sha256: sha256(verifyToolBytes), kind: 'verify_tool' },
+    { path: 'bundle/tools/regenerate-report.mjs', size: regenerateToolBytes.length, sha256: sha256(regenerateToolBytes), kind: 'restore_tool' },
   ],
 };
 
@@ -135,7 +138,7 @@ await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 
 await writeFile(manifestPath, JSON.stringify({
   ...manifest,
-  payloads: [...manifest.payloads, { path: '../escape.dump', size: 1, sha256: sha256(Buffer.from('x')) }],
+  payloads: [...manifest.payloads, { path: '../escape.dump', size: 1, sha256: sha256(Buffer.from('x')), kind: 'database_dump' }],
 }, null, 2), 'utf8');
 await assert.rejects(() => verifyBundle(bundleRoot), /unsafe bundle path/);
 
