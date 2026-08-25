@@ -1,1 +1,4 @@
-2026-08-24T08:42:57Z
+started_at	2026-08-25T20:05:43Z
+initial_command_set_completed_at	2026-08-25T20:07:50Z
+last_rerun_completed_at	2026-08-25T20:09:16Z
+evidence_boundary	2026-08-25T20:05:43Z--2026-08-25T20:09:16Z

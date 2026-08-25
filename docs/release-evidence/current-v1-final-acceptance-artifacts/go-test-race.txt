@@ -1,0 +1,12 @@
+$ go test -race -count=1 ./...
+started_at=2026-08-25T20:06:13Z
+ok  	waypoint	1.392s
+ok  	waypoint/cmd/waypoint	1.020s
+ok  	waypoint/internal/db	1.016s
+ok  	waypoint/internal/egresspolicy	1.419s
+ok  	waypoint/internal/server	1.374s
+ok  	waypoint/internal/webassets	1.115s
+ok  	waypoint/scripts	6.116s
+
+completed_at=2026-08-25T20:06:48Z
+exit_code=0

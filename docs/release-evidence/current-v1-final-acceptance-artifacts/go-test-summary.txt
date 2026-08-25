@@ -1,9 +1,12 @@
-top_level_pass=43
-top_level_fail=0
-top_level_skip=48
-all_skip_events=48
-all_fail_events=0
-skipped_top_level_tests:
+top_level_tests_pass=73
+top_level_tests_fail=0
+top_level_tests_skip=50
+packages_pass=7
+packages_fail=0
+packages_skip=0
+invalid_json_lines=0
+skipped_tests:
+waypoint	TestComposeLiveCollectorInteropTranscripts
 waypoint	TestComposeStackPersistsDBAndEvidenceAcrossRestart
 waypoint/cmd/waypoint	TestOpenConfiguredDatabaseAppliesMigrations
 waypoint/internal/db	TestActionAttributionSchemaRoundTrip
@@ -28,6 +31,7 @@ waypoint/internal/server	TestCaptureIngestRejectsDiskPressureBeforeCommitting
 waypoint/internal/server	TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication
 waypoint/internal/server	TestCapturePersistsEvidenceAndRecoversOrphans
 waypoint/internal/server	TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput
+waypoint/internal/server	TestCapturePropagatesOrderedPivotsThroughAuditAndAPI
 waypoint/internal/server	TestCaptureRejectsConflictingStableEntityKinds
 waypoint/internal/server	TestCaptureRejectsUnsupportedContractVersion
 waypoint/internal/server	TestCaptureRoundTripGateG2Transcript
@@ -52,4 +56,4 @@ waypoint/internal/server	TestReconReadApisAreKeysetPaginatedAndEngagementIsolate
 waypoint/internal/server	TestReportHandlerRequiresAuthAndScopesEngagement
 waypoint/internal/server	TestTailAuditEventsStopsWhenQueueIsFull
 waypoint/internal/server	TestUpsertEvidenceRejectsImmutableMetadataChanges
-failed_top_level_tests:
+failed_tests:

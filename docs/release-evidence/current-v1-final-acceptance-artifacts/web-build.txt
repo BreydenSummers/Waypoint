@@ -1,4 +1,9 @@
+$ npm --prefix web run build
+started_at=2026-08-25T20:06:53Z
 
 > build
 > node --no-warnings build.mjs
 
+
+completed_at=2026-08-25T20:06:54Z
+exit_code=0

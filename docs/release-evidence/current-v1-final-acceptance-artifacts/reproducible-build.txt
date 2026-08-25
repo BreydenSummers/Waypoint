@@ -1,0 +1,13 @@
+$ go build -trimpath twice; cmp; rebuild web; compare retained asset manifests
+started_at=2026-08-25T20:08:25Z
+34e91b1b660886568b295dd18ee5003c48432181d779a8a18ef1256402b496c1  /tmp/release-fix-008-final-g5-waypoint-a
+34e91b1b660886568b295dd18ee5003c48432181d779a8a18ef1256402b496c1  /tmp/release-fix-008-final-g5-waypoint-b
+
+> build
+> node --no-warnings build.mjs
+
+496305428edbba75a4af190e34dde6893d0f7e5acec6f52fe4fae77a4e76b611  internal/webassets/dist/assets/waypoint.css
+5145bf7b9c10826f2b70e1bc759bb74686155a04bed431cf24f6fb52442a3ad0  internal/webassets/dist/assets/waypoint.js
+3b4ae4ace18e03970d280b2911f53cf552e7ce44f7eec196c4a26afface724cf  internal/webassets/dist/index.html
+completed_at=2026-08-25T20:09:16Z
+exit_code=0

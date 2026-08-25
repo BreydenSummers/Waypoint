@@ -1,1 +1,6 @@
+$ python3 scripts/g1-foundation-report.py --output /tmp/release-fix-008-final-g5-g1.md
+started_at=2026-08-25T20:07:11Z
 WAYPOINT_TEST_PG_DSN is required to generate the G1 report
+
+completed_at=2026-08-25T20:07:11Z
+exit_code=2

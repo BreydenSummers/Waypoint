@@ -1,3 +1,5 @@
+$ go test -count=1 -v -run \^TestComposeStackPersistsDBAndEvidenceAcrossRestart\$ .
+started_at=2026-08-25T20:07:11Z
 === RUN   TestComposeStackPersistsDBAndEvidenceAcrossRestart
     compose_integration_test.go:27: docker daemon unavailable: exit status 1
         Client:
@@ -15,6 +17,9 @@
         Server:
         ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
         errors pretty printing info
---- SKIP: TestComposeStackPersistsDBAndEvidenceAcrossRestart (0.04s)
+--- SKIP: TestComposeStackPersistsDBAndEvidenceAcrossRestart (0.05s)
 PASS
-ok  	waypoint	0.047s
+ok  	waypoint	0.050s
+
+completed_at=2026-08-25T20:07:11Z
+exit_code=0

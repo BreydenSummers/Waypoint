@@ -1,0 +1,5 @@
+$ docker compose -f compose.yml config --quiet
+started_at=2026-08-25T20:07:10Z
+
+completed_at=2026-08-25T20:07:10Z
+exit_code=0

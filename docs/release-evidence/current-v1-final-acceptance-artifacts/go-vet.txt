@@ -1,0 +1,5 @@
+$ go vet ./...
+started_at=2026-08-25T20:05:45Z
+
+completed_at=2026-08-25T20:06:02Z
+exit_code=0

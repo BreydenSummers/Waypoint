@@ -1,3 +1,8 @@
+$ python3 scripts/verify-contracts.py
+started_at=2026-08-25T20:05:43Z
 /workspace/scripts/verify-contracts.py:17: DeprecationWarning: jsonschema.RefResolver is deprecated as of v4.18.0, in favor of the https://github.com/python-jsonschema/referencing library, which provides more compliant referencing behavior as well as more flexible APIs for customization. A future release will remove RefResolver. Please file a feature request (on referencing) if you are missing an API for the kind of customization you need.
   from jsonschema import Draft202012Validator, FormatChecker, RefResolver
 contract verification passed (30 schemas, 2 generated artifacts, 690 OpenAPI refs, 15 capture cases, 6 event cases, 4 idempotency cases, 9 cursor cases, 9 problem cases, 1 actions fixtures, 3 actor lifecycle fixtures, 4 claims fixtures, 6 MCP fixtures, 7 export lifecycle fixtures, 8 invalid remediation fixtures)
+
+completed_at=2026-08-25T20:05:44Z
+exit_code=0

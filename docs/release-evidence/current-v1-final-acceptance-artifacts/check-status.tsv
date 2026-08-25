@@ -1,22 +1,23 @@
-check	exit	started_utc	ended_utc
-verify-contracts	0	2026-08-24T08:42:57Z	2026-08-24T08:42:58Z
-architecture-lint	0	2026-08-24T08:42:58Z	2026-08-24T08:42:59Z
-go-vet	0	2026-08-24T08:42:59Z	2026-08-24T08:43:16Z
-make-lint	0	2026-08-24T08:43:16Z	2026-08-24T08:43:17Z
-go-test-all	0	2026-08-24T08:43:17Z	2026-08-24T08:43:28Z
-web-test	0	2026-08-24T08:43:28Z	2026-08-24T08:43:28Z
-web-build	0	2026-08-24T08:43:28Z	2026-08-24T08:43:29Z
-go-build	0	2026-08-24T08:43:29Z	2026-08-24T08:43:29Z
-compose-config	0	2026-08-24T08:43:29Z	2026-08-24T08:43:29Z
-docker-info	1	2026-08-24T08:43:29Z	2026-08-24T08:43:29Z
-compose-build	1	2026-08-24T08:43:29Z	2026-08-24T08:43:29Z
-compose-up	1	2026-08-24T08:43:29Z	2026-08-24T08:43:30Z
-compose-runtime-test	0	2026-08-24T08:43:30Z	2026-08-24T08:43:30Z
-g1-report	2	2026-08-24T08:43:30Z	2026-08-24T08:43:30Z
-smoke	2	2026-08-24T08:43:30Z	2026-08-24T08:44:02Z
-compose-down	1	2026-08-24T08:44:02Z	2026-08-24T08:44:02Z
-make-test	0	2026-08-24T08:45:40Z	2026-08-24T08:46:08Z
-architecture-lint-final	1	2026-08-24T08:49:04Z	2026-08-24T08:49:04Z
-architecture-lint-final-rerun	0	2026-08-24T08:49:34Z	2026-08-24T08:49:35Z
-traceability-check	0	2026-08-24T08:49:35Z	2026-08-24T08:49:35Z
-acceptance-reconciliation-check	0	2026-08-24T08:51:10Z	2026-08-24T08:51:10Z
+verify-contracts	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/verify-contracts.txt
+architecture-lint	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/architecture-lint.txt
+go-vet	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/go-vet.txt
+make-lint	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/make-lint.txt
+go-test-all	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/go-test-all.json
+go-test-race	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/go-test-race.txt
+egress-policy-tests	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/egress-policy-tests.txt
+performance-fault-tests	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/performance-fault-tests.txt
+export-tests	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/export-tests.txt
+web-test	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/web-test.txt
+web-build	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/web-build.txt
+go-build	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/go-build.txt
+reproducible-build	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/reproducible-build.txt
+compose-config	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/compose-config.txt
+docker-info	1	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/docker-info.txt
+compose-build	1	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/compose-build.txt
+compose-up	1	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/compose-up.txt
+compose-runtime-test	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/compose-runtime-test.txt
+g1-report	2	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/g1-report.txt
+smoke	2	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/smoke.txt
+ux-dogfood	1	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/ux-dogfood.txt
+compose-down	1	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/compose-down.txt
+make-test	0	/workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/make-test.txt
