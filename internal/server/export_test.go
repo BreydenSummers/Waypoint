@@ -2,6 +2,7 @@ package server
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -152,6 +154,63 @@ func TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship(t *testing.
 		if !entries[want] {
 			t.Fatalf("archive missing %q", want)
 		}
+	}
+
+	manifestBytes, err := os.ReadFile(filepath.Join(exportRoot, "77777777-7777-4777-8777-777777777777", "bundle", "metadata", "export-manifest.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var manifest struct {
+		FormatVersion string `json:"formatVersion"`
+		ExportJobID   string `json:"exportJobId"`
+		EngagementID  string `json:"engagementId"`
+		Cutoff        string `json:"cutoff"`
+		Payloads      []struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		} `json:"payloads"`
+		Signatures struct {
+			Version string   `json:"version"`
+			Items   []string `json:"items"`
+		} `json:"signatures"`
+	}
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	if manifest.FormatVersion != "1.0.0" || manifest.ExportJobID == "" || manifest.EngagementID == "" || manifest.Cutoff == "" {
+		t.Fatalf("manifest metadata = %#v", manifest)
+	}
+	if len(manifest.Payloads) < 7 || manifest.Signatures.Version != "v1" || len(manifest.Signatures.Items) != 0 {
+		t.Fatalf("manifest payloads/signatures = %#v", manifest)
+	}
+	verifyToolBytes, err := os.ReadFile(filepath.Join(exportRoot, "77777777-7777-4777-8777-777777777777", "bundle", "tools", "verify-restore.mjs"))
+	if err != nil {
+		t.Fatalf("read verify tool: %v", err)
+	}
+	if bytes.Contains(verifyToolBytes, []byte("../../web/scripts")) {
+		t.Fatal("verify tool still imports repository code")
+	}
+	regenToolBytes, err := os.ReadFile(filepath.Join(exportRoot, "77777777-7777-4777-8777-777777777777", "bundle", "tools", "regenerate-report.mjs"))
+	if err != nil {
+		t.Fatalf("read regenerate tool: %v", err)
+	}
+	if bytes.Contains(regenToolBytes, []byte("../../web/scripts")) {
+		t.Fatal("regenerate tool still imports repository code")
+	}
+	toolRoot := filepath.Join(exportRoot, "77777777-7777-4777-8777-777777777777")
+	verifyCmd := exec.Command("node", filepath.Join("bundle", "tools", "verify-restore.mjs"), ".")
+	verifyCmd.Dir = toolRoot
+	if out, err := verifyCmd.CombinedOutput(); err != nil {
+		t.Fatalf("verify tool execution failed: %v output=%s", err, string(out))
+	}
+	regeneratedPath := filepath.Join(toolRoot, "report.html")
+	regenCmd := exec.Command("node", filepath.Join("bundle", "tools", "regenerate-report.mjs"), ".", regeneratedPath)
+	regenCmd.Dir = toolRoot
+	if out, err := regenCmd.CombinedOutput(); err != nil {
+		t.Fatalf("regenerate tool execution failed: %v output=%s", err, string(out))
+	}
+	if _, err := os.Stat(regeneratedPath); err != nil {
+		t.Fatalf("regenerated html missing: %v", err)
 	}
 }
 
@@ -520,5 +579,21 @@ func TestExportJobListIsPagedAndResumable(t *testing.T) {
 	}
 	if len(resumed.Items) != 1 || resumed.Items[0].ID == page.Items[0].ID || resumed.Page.NextCursor == "" {
 		t.Fatalf("resumed page = %#v", resumed)
+	}
+}
+
+func TestBundleToolsAreStandaloneAndVersioned(t *testing.T) {
+	for _, name := range []string{"verify-restore.mjs", "regenerate-report.mjs"} {
+		path := filepath.Join("..", "..", "bundle", "tools", name)
+		toolBytes, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if bytes.Contains(toolBytes, []byte("../../web/scripts")) || bytes.Contains(toolBytes, []byte("import { buildReportHtml }")) {
+			t.Fatalf("%s still imports repository code", path)
+		}
+		if !bytes.Contains(toolBytes, []byte("#!/usr/bin/env node")) {
+			t.Fatalf("%s missing node shebang", path)
+		}
 	}
 }

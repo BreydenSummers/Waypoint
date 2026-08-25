@@ -55,13 +55,13 @@ async function stageBundle(root) {
   snapshot.bundle = {
     ...snapshot.bundle,
     payloads: [
-      { path: 'bundle/database/engagement.dump', size: dumpBytes.length, sha256: sha256(dumpBytes) },
-      { path: 'bundle/evidence/evidence.tar.zst', size: evidenceBytes.length, sha256: sha256(evidenceBytes) },
-      { path: 'bundle/report/frozen-report.pdf', size: pdfBytes.length, sha256: sha256(pdfBytes) },
-      { path: 'bundle/report/report-snapshot.json', size: 0, sha256: 'pending' },
-      { path: 'bundle/metadata/export-metadata.json', size: metadataBytes.length, sha256: sha256(metadataBytes) },
-      { path: 'bundle/tools/verify-restore.mjs', size: verifyToolBytes.length, sha256: sha256(verifyToolBytes) },
-      { path: 'bundle/tools/regenerate-report.mjs', size: regenerateToolBytes.length, sha256: sha256(regenerateToolBytes) },
+      { path: 'bundle/database/engagement.dump', byteLength: dumpBytes.length, sha256: sha256(dumpBytes), kind: 'database_dump' },
+      { path: 'bundle/evidence/evidence.tar.zst', byteLength: evidenceBytes.length, sha256: sha256(evidenceBytes), kind: 'evidence' },
+      { path: 'bundle/report/frozen-report.pdf', byteLength: pdfBytes.length, sha256: sha256(pdfBytes), kind: 'report_pdf' },
+      { path: 'bundle/report/report-snapshot.json', byteLength: 0, sha256: 'pending', kind: 'report_snapshot' },
+      { path: 'bundle/metadata/export-metadata.json', byteLength: metadataBytes.length, sha256: sha256(metadataBytes), kind: 'metadata' },
+      { path: 'bundle/tools/verify-restore.mjs', byteLength: verifyToolBytes.length, sha256: sha256(verifyToolBytes), kind: 'verify_tool' },
+      { path: 'bundle/tools/regenerate-report.mjs', byteLength: regenerateToolBytes.length, sha256: sha256(regenerateToolBytes), kind: 'regenerate_tool' },
     ],
     signatures: { version: 'v1', items: [] },
     outerArchiveSha256: '',
@@ -70,11 +70,14 @@ async function stageBundle(root) {
   await writeFile(snapshotPath, JSON.stringify(snapshot, null, 2), 'utf8');
   const snapshotBytes = await readFile(snapshotPath);
   const snapshotPayload = snapshot.bundle.payloads.find((item) => item.path === 'bundle/report/report-snapshot.json');
-  snapshotPayload.size = snapshotBytes.length;
+  snapshotPayload.byteLength = snapshotBytes.length;
   snapshotPayload.sha256 = sha256(snapshotBytes);
 
   const manifest = {
-    version: 'v1',
+    formatVersion: '1.0.0',
+    exportJobId: '77777777-7777-4777-8777-777777777777',
+    engagementId: '11111111-1111-4111-8111-111111111111',
+    cutoff: '2025-01-15T11:00:00Z',
     signatures: { version: 'v1', items: [] },
     payloads: snapshot.bundle.payloads,
   };

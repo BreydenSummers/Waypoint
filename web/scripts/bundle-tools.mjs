@@ -64,7 +64,10 @@ export async function readJson(filePath) {
 export function deriveManifestFromSnapshot(snapshot) {
   const bundle = snapshot?.bundle ?? {};
   return {
-    version: 'v1',
+    formatVersion: '1.0.0',
+    exportJobId: snapshot?.exportJobId ?? bundle.exportJobId ?? snapshot?.id ?? '',
+    engagementId: snapshot?.engagement?.id ?? snapshot?.engagementId ?? bundle.engagementId ?? '',
+    cutoff: snapshot?.cutoff ?? '',
     payloads: Array.isArray(bundle.payloads) ? bundle.payloads : [],
     signatures: bundle.signatures ?? { version: 'v1', items: [] },
   };
@@ -99,8 +102,17 @@ function bundleProgress(onProgress, detail) {
 }
 
 function validateBundleManifest(manifest) {
-  if (manifest.version !== 'v1') {
-    throw new Error(`unsupported bundle manifest version: ${manifest.version ?? 'unknown'}`);
+  if (manifest.formatVersion !== '1.0.0') {
+    throw new Error(`unsupported bundle manifest version: ${manifest.formatVersion ?? 'unknown'}`);
+  }
+  if (typeof manifest.exportJobId !== 'string' || manifest.exportJobId.trim() === '') {
+    throw new Error('bundle manifest missing exportJobId');
+  }
+  if (typeof manifest.engagementId !== 'string' || manifest.engagementId.trim() === '') {
+    throw new Error('bundle manifest missing engagementId');
+  }
+  if (typeof manifest.cutoff !== 'string' || manifest.cutoff.trim() === '') {
+    throw new Error('bundle manifest missing cutoff');
   }
   if (!manifest.signatures || manifest.signatures.version !== 'v1' || !Array.isArray(manifest.signatures.items) || manifest.signatures.items.length !== 0) {
     throw new Error('bundle manifest signature hook must be versioned and empty');
@@ -117,8 +129,12 @@ function validateBundleManifest(manifest) {
     if (seen.has(payload.path)) {
       throw new Error(`duplicate bundle path: ${payload.path}`);
     }
-    if (!Number.isSafeInteger(payload.size) || payload.size < 0) {
+    const byteLength = Number.isSafeInteger(payload.byteLength) ? payload.byteLength : payload.size;
+    if (!Number.isSafeInteger(byteLength) || byteLength < 0) {
       throw new Error(`payload size out of range for ${payload.path}`);
+    }
+    if (typeof payload.sha256 !== 'string' || payload.sha256.length !== 64) {
+      throw new Error(`payload sha256 out of range for ${payload.path}`);
     }
     seen.add(payload.path);
   }
@@ -163,7 +179,8 @@ export async function verifyBundle(root, options = {}) {
     bundleProgress(onProgress, { phase: 'payload', index: index + 1, total: payloads.length, path: payload.path });
 
     const bytes = await readVerifiedBundleFile(bundleRoot, payload.path);
-    if (Number(payload.size) !== bytes.length) {
+    const byteLength = Number.isSafeInteger(payload.byteLength) ? payload.byteLength : payload.size;
+    if (Number(byteLength) !== bytes.length) {
       throw new Error(`size mismatch for ${payload.path}`);
     }
     const digest = sha256(bytes);

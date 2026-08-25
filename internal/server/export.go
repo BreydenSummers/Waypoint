@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -1111,8 +1112,14 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 		return exportArtifacts{}, err
 	}
 
-	toolVerify := []byte(bundleVerifyToolScript)
-	toolRegenerate := []byte(bundleRegenerateToolScript)
+	toolVerify, err := readCheckedInBundleTool("verify-restore.mjs")
+	if err != nil {
+		return exportArtifacts{}, err
+	}
+	toolRegenerate, err := readCheckedInBundleTool("regenerate-report.mjs")
+	if err != nil {
+		return exportArtifacts{}, err
+	}
 	if err := os.WriteFile(paths["verifyTool"], toolVerify, 0o600); err != nil {
 		return exportArtifacts{}, err
 	}
@@ -1125,7 +1132,10 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 	}
 
 	metadata := map[string]any{
-		"version":            "v1",
+		"formatVersion":      exportContractVersion,
+		"exportJobId":        job.ID,
+		"engagementId":       job.EngagementID,
+		"cutoff":             cutoff,
 		"bundleRoot":         "bundle",
 		"archivePath":        exportArchiveFilename,
 		"manifestPath":       "bundle/metadata/export-manifest.json",
@@ -1136,10 +1146,7 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 		"verifyToolPath":     "bundle/tools/verify-restore.mjs",
 		"regenerateToolPath": "bundle/tools/regenerate-report.mjs",
 		"instructionsPath":   "bundle/instructions/restore.md",
-		"exportJobId":        job.ID,
-		"engagementId":       job.EngagementID,
 		"snapshotId":         snapshotID,
-		"cutoff":             cutoff,
 	}
 	if err := tx.Commit(); err != nil {
 		return exportArtifacts{}, err
@@ -1236,9 +1243,12 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 	}
 
 	manifest := map[string]any{
-		"version":    "v1",
-		"payloads":   bundlePayloads,
-		"signatures": map[string]any{"version": "v1", "items": []string{}},
+		"formatVersion": exportContractVersion,
+		"exportJobId":   job.ID,
+		"engagementId":  job.EngagementID,
+		"cutoff":        cutoff,
+		"payloads":      bundlePayloads,
+		"signatures":    map[string]any{"version": "v1", "items": []string{}},
 	}
 	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -2072,11 +2082,15 @@ func computeExportArchiveHash(payloads []reportBundlePayload, manifestBytes []by
 
 func verifyExportBundle(bundleDir, archivePath string, manifest []byte, manifestSHA256, archiveSHA256 string) error {
 	var parsed struct {
-		Version  string `json:"version"`
-		Payloads []struct {
-			Path string `json:"path"`
-			Size int64  `json:"size"`
-			SHA  string `json:"sha256"`
+		FormatVersion string `json:"formatVersion"`
+		ExportJobID   string `json:"exportJobId"`
+		EngagementID  string `json:"engagementId"`
+		Cutoff        string `json:"cutoff"`
+		Payloads      []struct {
+			Path       string `json:"path"`
+			ByteLength int64  `json:"byteLength"`
+			SHA        string `json:"sha256"`
+			Kind       string `json:"kind"`
 		} `json:"payloads"`
 		Signatures struct {
 			Version string   `json:"version"`
@@ -2086,16 +2100,30 @@ func verifyExportBundle(bundleDir, archivePath string, manifest []byte, manifest
 	if err := json.Unmarshal(manifest, &parsed); err != nil {
 		return err
 	}
-	if parsed.Version != "v1" || parsed.Signatures.Version != "v1" || len(parsed.Signatures.Items) != 0 {
+	if parsed.FormatVersion != exportContractVersion || !isUUID(parsed.ExportJobID) || !isUUID(parsed.EngagementID) || strings.TrimSpace(parsed.Cutoff) == "" {
+		return errors.New("bundle manifest metadata is incomplete")
+	}
+	if parsed.Signatures.Version != "v1" || len(parsed.Signatures.Items) != 0 {
 		return errors.New("bundle manifest signature hook must be versioned and empty")
 	}
+	seenPaths := map[string]struct{}{}
 	for _, payload := range parsed.Payloads {
+		if !isSafeBundlePath(payload.Path) {
+			return fmt.Errorf("unsafe bundle path: %s", payload.Path)
+		}
+		if payload.Kind == "" {
+			return fmt.Errorf("bundle manifest payload missing kind: %s", payload.Path)
+		}
+		if _, ok := seenPaths[payload.Path]; ok {
+			return fmt.Errorf("duplicate bundle path: %s", payload.Path)
+		}
+		seenPaths[payload.Path] = struct{}{}
 		path := filepath.Join(filepath.FromSlash(bundleDir), strings.TrimPrefix(payload.Path, "bundle/"))
 		info, err := os.Stat(path)
 		if err != nil {
 			return err
 		}
-		if info.Size() != payload.Size {
+		if info.Size() != payload.ByteLength {
 			return fmt.Errorf("size mismatch for %s", payload.Path)
 		}
 		f, err := os.Open(path)
@@ -2210,6 +2238,17 @@ func sha256HexBytes(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func isSafeBundlePath(value string) bool {
+	if strings.TrimSpace(value) == "" || strings.Contains(value, `\\`) {
+		return false
+	}
+	if strings.HasPrefix(value, "/") || strings.HasPrefix(value, "./") || strings.HasPrefix(value, "../") {
+		return false
+	}
+	normalized := filepath.ToSlash(filepath.Clean(value))
+	return normalized == value && !strings.HasPrefix(normalized, "../") && !strings.Contains(normalized, "/../") && !strings.Contains(normalized, "//")
+}
+
 const bundleVerifyToolScript = "#!/usr/bin/env node\nimport { verifyBundle } from '../../web/scripts/bundle-tools.mjs';\n\nconst bundleRoot = process.argv[2] ? process.argv[2] : '.';\n\ntry {\n  const result = await verifyBundle(bundleRoot);\n  process.stdout.write(JSON.stringify({ status: 'verified', ...result }, null, 2) + '\\n');\n} catch (error) {\n  console.error(error instanceof Error ? error.message : String(error));\n  process.exit(1);\n}\n"
 
 const bundleRegenerateToolScript = "#!/usr/bin/env node\nimport { regenerateReport } from '../../web/scripts/bundle-tools.mjs';\n\nconst bundleRoot = process.argv[2] ? process.argv[2] : '.';\nconst outputPath = process.argv[3];\n\ntry {\n  const result = await regenerateReport(bundleRoot, outputPath);\n  if (result.html) {\n    process.stdout.write(result.html);\n  } else {\n    process.stdout.write(JSON.stringify({ status: 'rendered', ...result }, null, 2) + '\\n');\n  }\n} catch (error) {\n  console.error(error instanceof Error ? error.message : String(error));\n  process.exit(1);\n}\n"
@@ -2218,6 +2257,16 @@ const bundleRestoreInstructions = `Verify the outer archive hash before restore.
 Reject the manifest if any payload path is missing, duplicated, or traverses upward.
 Regenerate the report from the frozen snapshot rather than live queries.
 `
+
+func readCheckedInBundleTool(name string) ([]byte, error) {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return nil, errors.New("resolve bundle tool path failed")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+	path := filepath.Join(root, "bundle", "tools", name)
+	return os.ReadFile(path)
+}
 
 func appendExportAuditEvent(ctx context.Context, tx *sql.Tx, actor actorRecord, reqID, eventType, subjectID string, subjectRevision int, originKind, originService string, data map[string]any) error {
 	if tx == nil {
