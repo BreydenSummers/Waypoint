@@ -1,3 +1,5 @@
+$ make smoke
+started_at=2026-08-25T20:07:11Z
 npm --prefix web run build
 
 > build
@@ -37,3 +39,6 @@ curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connec
 curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
 curl: (7) Failed to connect to 127.0.0.1 port 18080 after 0 ms: Could not connect to server
 make: *** [Makefile:23: smoke] Error 1
+
+completed_at=2026-08-25T20:07:43Z
+exit_code=2

@@ -1,0 +1,6 @@
+$ bash scripts/ux-dogfood-host.sh /workspace/docs/release-evidence/current-v1-final-acceptance-artifacts/ux-dogfood-runtime
+started_at=2026-08-25T20:07:43Z
+BLOCKER: Docker daemon unavailable; start the Waypoint compose stack on a host with Docker, PostgreSQL, and Chromium/Playwright.
+
+completed_at=2026-08-25T20:07:43Z
+exit_code=1

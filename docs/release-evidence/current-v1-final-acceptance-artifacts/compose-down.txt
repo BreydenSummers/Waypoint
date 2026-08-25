@@ -1,1 +1,6 @@
+$ docker compose -f compose.yml down -v --remove-orphans
+started_at=2026-08-25T20:07:43Z
 Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+
+completed_at=2026-08-25T20:07:43Z
+exit_code=1

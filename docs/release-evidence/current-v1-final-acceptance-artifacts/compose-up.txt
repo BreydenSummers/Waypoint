@@ -1,1 +1,6 @@
+$ docker compose -f compose.yml up -d --wait
+started_at=2026-08-25T20:07:11Z
 Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+
+completed_at=2026-08-25T20:07:11Z
+exit_code=1

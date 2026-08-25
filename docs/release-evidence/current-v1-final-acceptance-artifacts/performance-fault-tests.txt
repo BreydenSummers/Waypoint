@@ -1,0 +1,38 @@
+$ go test -count=1 -v ./internal/server -run TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios\|TestAuditQueryShapeRemainsKeysetBounded\|TestHandlersReturnServiceUnavailableWithoutDatabase\|TestReadCaptureRequestRejectsInterruptedMultipartUpload\|TestCaptureEnvelopeLimitMatchesSchemaCeiling\|TestReadCaptureRequestRejectsOversizedEnvelope\|TestCopyEvidenceStreamRejectsOverLimit\|TestExportStreamingHelpersStayFileBounded\|TestCopyEvidenceStreamKeeps10GiBLimitPathWithinRSSBudget\|TestUpsertEvidenceRejectsImmutableMetadataChanges\|TestCaptureIngestRejectsDiskPressureBeforeCommitting\|TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication\$
+started_at=2026-08-25T20:06:49Z
+=== RUN   TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios
+--- PASS: TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios (0.00s)
+=== RUN   TestAuditQueryShapeRemainsKeysetBounded
+--- PASS: TestAuditQueryShapeRemainsKeysetBounded (0.00s)
+=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase
+=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history
+=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest
+--- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase (0.00s)
+    --- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history (0.00s)
+    --- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest (0.00s)
+=== RUN   TestReadCaptureRequestRejectsInterruptedMultipartUpload
+--- PASS: TestReadCaptureRequestRejectsInterruptedMultipartUpload (0.00s)
+=== RUN   TestCaptureEnvelopeLimitMatchesSchemaCeiling
+--- PASS: TestCaptureEnvelopeLimitMatchesSchemaCeiling (0.00s)
+=== RUN   TestReadCaptureRequestRejectsOversizedEnvelope
+--- PASS: TestReadCaptureRequestRejectsOversizedEnvelope (0.01s)
+=== RUN   TestCopyEvidenceStreamRejectsOverLimit
+--- PASS: TestCopyEvidenceStreamRejectsOverLimit (0.00s)
+=== RUN   TestExportStreamingHelpersStayFileBounded
+--- PASS: TestExportStreamingHelpersStayFileBounded (0.00s)
+=== RUN   TestCopyEvidenceStreamKeeps10GiBLimitPathWithinRSSBudget
+--- PASS: TestCopyEvidenceStreamKeeps10GiBLimitPathWithinRSSBudget (0.03s)
+=== RUN   TestUpsertEvidenceRejectsImmutableMetadataChanges
+    performance_fault_test.go:273: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestUpsertEvidenceRejectsImmutableMetadataChanges (0.00s)
+=== RUN   TestCaptureIngestRejectsDiskPressureBeforeCommitting
+    performance_fault_test.go:315: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestCaptureIngestRejectsDiskPressureBeforeCommitting (0.00s)
+=== RUN   TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication
+    performance_fault_test.go:356: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication (0.00s)
+PASS
+ok  	waypoint/internal/server	0.068s
+
+completed_at=2026-08-25T20:06:52Z
+exit_code=0

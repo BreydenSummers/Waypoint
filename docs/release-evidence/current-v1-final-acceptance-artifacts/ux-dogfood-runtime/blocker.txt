@@ -1,0 +1,1 @@
+BLOCKER: Docker daemon unavailable; start the Waypoint compose stack on a host with Docker, PostgreSQL, and Chromium/Playwright.

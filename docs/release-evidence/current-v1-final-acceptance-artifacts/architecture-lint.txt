@@ -1,1 +1,6 @@
-architecture lint passed (9 ADRs, 9 scope rules, 166 claim-surface files)
+$ python3 scripts/lint-architecture.py
+started_at=2026-08-25T20:05:44Z
+architecture lint passed (9 ADRs, 9 scope rules, 171 claim-surface files)
+
+completed_at=2026-08-25T20:05:45Z
+exit_code=0

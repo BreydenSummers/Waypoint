@@ -1,10 +1,13 @@
+$ make test
+started_at=2026-08-25T20:07:43Z
 go test ./...
-ok  	waypoint	0.378s
+ok  	waypoint	0.470s
 ok  	waypoint/cmd/waypoint	0.006s
-ok  	waypoint/internal/db	0.005s
-ok  	waypoint/internal/server	0.109s
-ok  	waypoint/internal/webassets	0.096s
-ok  	waypoint/scripts	4.957s
+ok  	waypoint/internal/db	0.010s
+ok  	waypoint/internal/egresspolicy	0.412s
+ok  	waypoint/internal/server	0.097s
+ok  	waypoint/internal/webassets	0.102s
+ok  	waypoint/scripts	5.018s
 npm --prefix web run test
 
 > test
@@ -14,55 +17,55 @@ TAP version 13
 # Subtest: finalizeBundle preflight produces no files and emits progress
 ok 1 - finalizeBundle preflight produces no files and emits progress
   ---
-  duration_ms: 44.14539
+  duration_ms: 78.776017
   type: 'test'
   ...
 # Subtest: finalizeBundle can recover after cancellation and verifies the archive hash
 ok 2 - finalizeBundle can recover after cancellation and verifies the archive hash
   ---
-  duration_ms: 27.703819
+  duration_ms: 60.869875
   type: 'test'
   ...
 # Subtest: export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
 ok 3 - export lifecycle preserves finding-to-evidence traceability, survives concurrent capture, and reconstructs after wipe
   ---
-  duration_ms: 67.341365
+  duration_ms: 62.449603
   type: 'test'
   ...
 # Subtest: scripts/bundle-tools.test.mjs
 ok 2 - scripts/bundle-tools.test.mjs
   ---
-  duration_ms: 441.358725
+  duration_ms: 479.622254
   type: 'test'
   ...
 # Subtest: G3 shell keeps recon/attacks/findings non-linear and accessible
 ok 5 - G3 shell keeps recon/attacks/findings non-linear and accessible
   ---
-  duration_ms: 9.140312
+  duration_ms: 11.586928
   type: 'test'
   ...
 # Subtest: G3 styling retains artifact surfaces in light, dark, desktop, and mobile variants
 ok 6 - G3 styling retains artifact surfaces in light, dark, desktop, and mobile variants
   ---
-  duration_ms: 2.098615
+  duration_ms: 5.978652
   type: 'test'
   ...
 # Subtest: G3 performance fixture keeps the 100k-action budget focused and bounded
 ok 7 - G3 performance fixture keeps the 100k-action budget focused and bounded
   ---
-  duration_ms: 2.177776
+  duration_ms: 5.025863
   type: 'test'
   ...
 # Subtest: web build output is reproducible and matches the embedded assets
 ok 8 - web build output is reproducible and matches the embedded assets
   ---
-  duration_ms: 17.056695
+  duration_ms: 23.665297
   type: 'test'
   ...
 # Subtest: scripts/report-renderer.test.mjs
 ok 4 - scripts/report-renderer.test.mjs
   ---
-  duration_ms: 81.599129
+  duration_ms: 103.237997
   type: 'test'
   ...
 1..9
@@ -73,5 +76,8 @@ ok 4 - scripts/report-renderer.test.mjs
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 460.636025
+# duration_ms 500.106968
 web skeleton, bundle manifest, and report fixture check passed
+
+completed_at=2026-08-25T20:07:50Z
+exit_code=0

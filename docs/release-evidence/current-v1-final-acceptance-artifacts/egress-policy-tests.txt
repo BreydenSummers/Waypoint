@@ -1,0 +1,23 @@
+$ go test -count=1 -v ./internal/egresspolicy
+started_at=2026-08-25T20:06:48Z
+=== RUN   TestParseConfigFromEnv
+=== RUN   TestParseConfigFromEnv/auto_requires_endpoint
+=== RUN   TestParseConfigFromEnv/manual_requires_an_explicit_address
+=== RUN   TestParseConfigFromEnv/off_is_the_default
+--- PASS: TestParseConfigFromEnv (0.00s)
+    --- PASS: TestParseConfigFromEnv/auto_requires_endpoint (0.00s)
+    --- PASS: TestParseConfigFromEnv/manual_requires_an_explicit_address (0.00s)
+    --- PASS: TestParseConfigFromEnv/off_is_the_default (0.00s)
+=== RUN   TestResolveAutoManualAndOff
+=== RUN   TestResolveAutoManualAndOff/auto_resolves_through_a_configured_endpoint
+=== RUN   TestResolveAutoManualAndOff/manual_sends_no_discovery_traffic
+=== RUN   TestResolveAutoManualAndOff/off_sends_no_discovery_traffic
+--- PASS: TestResolveAutoManualAndOff (0.40s)
+    --- PASS: TestResolveAutoManualAndOff/auto_resolves_through_a_configured_endpoint (0.00s)
+    --- PASS: TestResolveAutoManualAndOff/manual_sends_no_discovery_traffic (0.20s)
+    --- PASS: TestResolveAutoManualAndOff/off_sends_no_discovery_traffic (0.20s)
+PASS
+ok  	waypoint/internal/egresspolicy	0.410s
+
+completed_at=2026-08-25T20:06:49Z
+exit_code=0

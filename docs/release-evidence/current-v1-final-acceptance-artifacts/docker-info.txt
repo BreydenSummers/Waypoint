@@ -1,3 +1,5 @@
+$ docker info
+started_at=2026-08-25T20:07:10Z
 Client:
  Version:    26.1.5+dfsg1
  Context:    default
@@ -13,3 +15,6 @@ Client:
 Server:
 ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
 errors pretty printing info
+
+completed_at=2026-08-25T20:07:10Z
+exit_code=1

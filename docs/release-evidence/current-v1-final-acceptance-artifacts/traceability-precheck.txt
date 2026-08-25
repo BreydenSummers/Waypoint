@@ -1,7 +1,8 @@
-row_count=67
-unique_row_count=67
-Fail=15
-Pass=7
-Unverified=45
-ev_count=16
-ev_unique=16
+Pre-hash traceability checks
+acceptance reconciliation passed
+PRD rows=67 unique=67 statuses=8 Pass, 10 Fail, 49 Unverified
+EV rows=16 ordered=EV-01..EV-16 statuses=2 Pass, 5 Fail, 9 Unverified
+traceability and final-acceptance status maps are identical
+go summary: top_level_tests_pass=73 top_level_tests_fail=0 top_level_tests_skip=50 
+Status: current merged-code final acceptance complete — **Fail; not v1-ready (8 Pass, 10 Fail, 49 Unverified)**  
+Technical verdict: **Fail — not v1-ready (8 Pass, 10 Fail, 49 Unverified).**  

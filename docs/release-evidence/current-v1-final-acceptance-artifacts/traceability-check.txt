@@ -1,8 +1,4 @@
-row_count=67
-unique_row_count=67
-Pass=7
-Fail=15
-Unverified=45
-Waived=0
-ev_count=16
-ev_unique=16
+acceptance reconciliation passed
+PRD rows=67 unique=67 statuses=8 Pass, 10 Fail, 49 Unverified
+EV rows=16 ordered=EV-01..EV-16 statuses=2 Pass, 5 Fail, 9 Unverified
+traceability and final-acceptance status maps are identical

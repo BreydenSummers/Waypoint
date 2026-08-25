@@ -1,3 +1,5 @@
+$ make lint
+started_at=2026-08-25T20:06:02Z
 go vet ./...
 npm --prefix web run lint
 
@@ -5,3 +7,6 @@ npm --prefix web run lint
 > node --no-warnings scripts/check.mjs
 
 web skeleton, bundle manifest, and report fixture check passed
+
+completed_at=2026-08-25T20:06:03Z
+exit_code=0

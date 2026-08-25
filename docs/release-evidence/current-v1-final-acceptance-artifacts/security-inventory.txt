@@ -1,0 +1,108 @@
+Security acceptance inventory (current assigned environment)
+captured_at=2026-08-25T20:07:50Z
+Dedicated scanner availability:
+govulncheck: unavailable
+gosec: unavailable
+semgrep: unavailable
+trivy: unavailable
+osv-scanner: unavailable
+
+Known high-impact source findings checked:
+func lookupActor(ctx context.Context, db queryer, token string) (actorRecord, error) {
+	cands := []string{sha256Hex(token)}
+	if isHexSHA256(token) {
+		cands = append([]string{strings.ToLower(token)}, cands...)
+	}
+	var a actorRecord
+	err := db.QueryRowContext(ctx, `SELECT id, engagement_id, kind, handle, role, COALESCE(agent_name,''), COALESCE(model,''), COALESCE(version,''), COALESCE(authorized_by::text,''), token_hash FROM actor WHERE token_hash = ANY($1) AND revoked_at IS NULL LIMIT 1`, stringArray(cands)).Scan(&a.ID, &a.EngagementID, &a.Kind, &a.Handle, &a.Role, &a.AgentName, &a.Model, &a.Version, &a.AuthorizedBy, &a.TokenHash)
+	return a, err
+
+TLS/server startup:
+	if addr == "" {
+		addr = ":8080"
+	}
+
+	startupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	db, err := openConfiguredDatabase(startupCtx, os.Getenv("WAYPOINT_DB_DSN"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer db.Close()
+
+	egressState, err := egresspolicy.ResolveFromEnv(startupCtx, os.Getenv, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if egressState.Status == egresspolicy.StatusResolutionFailed {
+		log.Printf("egress auto-resolution failed: %v", egressState.Notes)
+	}
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: server.HandlerWithDBAndRuntime(db, server.RuntimeState{Egress: egressState}),
+	}
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-done
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("shutdown: %v", err)
+		}
+	}()
+
+	log.Printf("waypoint listening on %s", addr)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+
+Supported destroy receipt verification:
+verify_export_receipt() {
+  local receipt_file=$1
+  local bundle_path=$2
+  python3 - "$receipt_file" "$bundle_path" <<'PY'
+import json
+import pathlib
+import sys
+
+receipt_path = pathlib.Path(sys.argv[1]).resolve(strict=False)
+bundle_path = pathlib.Path(sys.argv[2]).resolve(strict=False)
+with receipt_path.open('r', encoding='utf-8') as fh:
+    data = json.load(fh)
+
+if not isinstance(data, dict):
+    raise SystemExit('receipt must be a JSON object')
+
+status = str(data.get('status', '')).strip().lower()
+verified = data.get('verified') is True or status in {'verified', 'hash-verified', 'sha-256 verified'}
+if not verified:
+    raise SystemExit('receipt is not verified')
+
+receipt_bundle = data.get('bundlePath') or data.get('bundle_path') or data.get('verifiedBundlePath')
+if not receipt_bundle and isinstance(data.get('bundle'), dict):
+    receipt_bundle = data['bundle'].get('path')
+if not receipt_bundle:
+    raise SystemExit('receipt missing bundlePath')
+
+if pathlib.Path(str(receipt_bundle)).resolve(strict=False) != bundle_path:
+    raise SystemExit('receipt bundle path does not match the requested bundle')
+PY
+}
+
+destroy() {
+  [[ -n ${DESTROY_BUNDLE_PATH:-} ]] || die "--bundle is required for destroy"
+  if [[ $DESTROY_FORCE -ne 1 ]]; then
+    [[ -n ${DESTROY_RECEIPT_FILE:-} ]] || die "--receipt is required unless --force is used"
+    [[ -f $DESTROY_RECEIPT_FILE ]] || die "missing receipt file: $DESTROY_RECEIPT_FILE"
+    [[ -e $DESTROY_BUNDLE_PATH ]] || die "missing bundle path: $DESTROY_BUNDLE_PATH"
+    verify_export_receipt "$DESTROY_RECEIPT_FILE" "$DESTROY_BUNDLE_PATH"
+  else
+    log "BREAK-GLASS: destroy proceeding without verified receipt"
+  fi
+
+  systemctl stop waypoint >/dev/null 2>&1 || true
+  systemctl disable waypoint >/dev/null 2>&1 || true
+  if is_local_database; then
+    systemctl stop postgresql >/dev/null 2>&1 || true
+  fi
