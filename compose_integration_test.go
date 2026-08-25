@@ -151,10 +151,10 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 
 	stdoutPath := filepath.Join("/var/lib/waypoint/evidence", "captures", sha256Hex(string(stdout)), "stdout")
 	stderrPath := filepath.Join("/var/lib/waypoint/evidence", "captures", sha256Hex(string(stderr)), "stderr")
-	if got := strings.TrimSpace(runCompose("exec", "-T", "waypoint", "sh", "-lc", fmt.Sprintf("cat %s", shellQuote(stdoutPath)))); got != string(stdout) {
+	if got := runCompose("exec", "-T", "waypoint", "sh", "-lc", fmt.Sprintf("cat %s", shellQuote(stdoutPath))); got != string(stdout) {
 		t.Fatalf("stdout evidence = %q, want %q", got, stdout)
 	}
-	if got := strings.TrimSpace(runCompose("exec", "-T", "waypoint", "sh", "-lc", fmt.Sprintf("cat %s", shellQuote(stderrPath)))); got != string(stderr) {
+	if got := runCompose("exec", "-T", "waypoint", "sh", "-lc", fmt.Sprintf("cat %s", shellQuote(stderrPath))); got != string(stderr) {
 		t.Fatalf("stderr evidence = %q, want %q", got, stderr)
 	}
 
