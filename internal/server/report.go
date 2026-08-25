@@ -56,8 +56,8 @@ type reportBundle struct {
 
 type reportBundlePayload struct {
 	Path       string `json:"path"`
-	Size       int64  `json:"size"`
-	ByteLength int64  `json:"byteLength,omitempty"`
+	Size       int64  `json:"-"`
+	ByteLength int64  `json:"byteLength"`
 	SHA256     string `json:"sha256"`
 	Kind       string `json:"kind,omitempty"`
 }
@@ -74,35 +74,59 @@ type reportBundleRestore struct {
 }
 
 type reportFinding struct {
-	Title       string   `json:"title"`
-	Summary     string   `json:"summary,omitempty"`
-	Severity    string   `json:"severity"`
-	Evidence    []string `json:"evidence"`
-	Remediation string   `json:"remediation"`
-	Status      string   `json:"status"`
-	PromotedBy  string   `json:"promotedBy"`
-	PromotedAt  string   `json:"promotedAt"`
+	ID                string   `json:"id"`
+	Title             string   `json:"title"`
+	Summary           string   `json:"summary,omitempty"`
+	Severity          string   `json:"severity"`
+	Evidence          []string `json:"evidence"`
+	AffectedEntityIDs []string `json:"affectedEntityIds,omitempty"`
+	Remediation       string   `json:"remediation"`
+	Status            string   `json:"status"`
+	PromotedBy        string   `json:"promotedBy"`
+	PromotedAt        string   `json:"promotedAt"`
+	Revision          int      `json:"revision"`
 }
 
 type reportEvidence struct {
-	Label            string            `json:"label"`
-	Source           string            `json:"source,omitempty"`
-	Command          string            `json:"command"`
-	Target           string            `json:"target"`
-	Actor            string            `json:"actor"`
-	Host             string            `json:"host"`
-	Egress           string            `json:"egress"`
-	EgressMode       string            `json:"egressMode,omitempty"`
-	EgressStatus     string            `json:"egressStatus,omitempty"`
-	EgressObservedAt string            `json:"egressObservedAt,omitempty"`
-	PivotChain       []capturePivotHop `json:"pivotChain,omitempty"`
-	InitiatedBy      string            `json:"initiatedBy"`
-	ParseStatus      string            `json:"parseStatus"`
-	RawStdout        string            `json:"rawStdout,omitempty"`
-	RawStderr        string            `json:"rawStderr,omitempty"`
-	RawSnippet       string            `json:"rawSnippet,omitempty"`
-	Note             string            `json:"note,omitempty"`
-	Attribution      string            `json:"attribution"`
+	Label              string             `json:"label"`
+	Source             string             `json:"source,omitempty"`
+	SourceAgent        string             `json:"sourceAgent,omitempty"`
+	CaptureID          string             `json:"captureId,omitempty"`
+	CaptureFingerprint string             `json:"captureFingerprint,omitempty"`
+	Command            string             `json:"command"`
+	Target             string             `json:"target"`
+	Actor              string             `json:"actor"`
+	Host               string             `json:"host"`
+	Egress             string             `json:"egress"`
+	EgressMode         string             `json:"egressMode,omitempty"`
+	EgressStatus       string             `json:"egressStatus,omitempty"`
+	EgressObservedAt   string             `json:"egressObservedAt,omitempty"`
+	PivotChain         []capturePivotHop  `json:"pivotChain,omitempty"`
+	StartedAt          string             `json:"startedAt,omitempty"`
+	EndedAt            string             `json:"endedAt,omitempty"`
+	Duration           string             `json:"duration,omitempty"`
+	ExitCode           string             `json:"exitCode,omitempty"`
+	ExecutionStatus    string             `json:"executionStatus,omitempty"`
+	ExecutionSignal    string             `json:"executionSignal,omitempty"`
+	ExecutionFailure   string             `json:"executionFailure,omitempty"`
+	InitiatedBy        string             `json:"initiatedBy"`
+	ParseStatus        string             `json:"parseStatus"`
+	Stdout             reportEvidenceBlob `json:"stdout,omitempty"`
+	Stderr             reportEvidenceBlob `json:"stderr,omitempty"`
+	RawStdout          string             `json:"rawStdout,omitempty"`
+	RawStderr          string             `json:"rawStderr,omitempty"`
+	RawSnippet         string             `json:"rawSnippet,omitempty"`
+	Note               string             `json:"note,omitempty"`
+	Attribution        string             `json:"attribution"`
+}
+
+type reportEvidenceBlob struct {
+	Kind       string `json:"kind,omitempty"`
+	MediaType  string `json:"mediaType,omitempty"`
+	ByteLength int64  `json:"byteLength,omitempty"`
+	SHA256     string `json:"sha256,omitempty"`
+	StorageKey string `json:"storageKey,omitempty"`
+	CreatedAt  string `json:"createdAt,omitempty"`
 }
 
 type reportAttribution struct {
@@ -119,34 +143,55 @@ type reportEngagementRow struct {
 }
 
 type reportActionRow struct {
-	ID               string
-	StartedAt        time.Time
-	EndedAt          sql.NullTime
-	Command          string
-	ArgvJSON         string
-	TargetKind       string
-	TargetValue      string
-	ExecHostIP       string
-	EgressMode       sql.NullString
-	EgressStatus     sql.NullString
-	EgressPublicIP   sql.NullString
-	EgressObservedAt sql.NullTime
-	PivotChainJSON   string
-	InitiatedBy      string
-	ParseStatus      string
-	ActorHandle      string
-	ActorKind        string
-	ActorRole        string
-	AgentName        string
-	Model            string
-	Version          string
-	AuthorizedBy     sql.NullString
-	StdoutStorageKey string
-	StderrStorageKey string
-	StdoutKind       string
-	StderrKind       string
-	StdoutSHA256     string
-	StderrSHA256     string
+	ID                      string
+	StartedAt               time.Time
+	EndedAt                 sql.NullTime
+	Command                 string
+	ArgvJSON                string
+	TargetKind              string
+	TargetValue             string
+	ExecHostIP              string
+	ExecHostMethod          sql.NullString
+	ExecHostInterface       sql.NullString
+	ExecHostConfidence      sql.NullString
+	EgressMode              sql.NullString
+	EgressStatus            sql.NullString
+	EgressPublicIP          sql.NullString
+	EgressObservedAt        sql.NullTime
+	PivotChainJSON          string
+	InitiatedBy             string
+	ParseStatus             string
+	ExecutionStatus         sql.NullString
+	ExecutionSignal         sql.NullString
+	ExecutionFailureCode    sql.NullString
+	ExitCode                sql.NullInt64
+	SourceAgentID           string
+	SourceAgentKind         string
+	SourceAgentName         string
+	SourceAgentVersion      string
+	SourceAgentPlatformOS   string
+	SourceAgentPlatformArch string
+	CaptureID               sql.NullString
+	CaptureFingerprint      sql.NullString
+	ActorHandle             string
+	ActorKind               string
+	ActorRole               string
+	AgentName               string
+	Model                   string
+	Version                 string
+	AuthorizedBy            sql.NullString
+	StdoutStorageKey        string
+	StderrStorageKey        string
+	StdoutKind              string
+	StderrKind              string
+	StdoutSHA256            string
+	StderrSHA256            string
+	StdoutByteLength        int64
+	StderrByteLength        int64
+	StdoutMediaType         string
+	StderrMediaType         string
+	StdoutCreatedAt         sql.NullTime
+	StderrCreatedAt         sql.NullTime
 }
 
 type reportFindingRow struct {
@@ -160,6 +205,7 @@ type reportFindingRow struct {
 	PromotedBy       sql.NullString
 	PromotedByHandle string
 	PromotedAt       sql.NullTime
+	Revision         int
 	UpdatedAt        time.Time
 }
 
@@ -285,14 +331,17 @@ func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow,
 	for _, finding := range findings {
 		labels := labelsForActionIDs(finding.EvidenceJSON, actionLabels)
 		findingCards = append(findingCards, reportFinding{
-			Title:       finding.Title,
-			Summary:     finding.Title,
-			Severity:    titleWord(strings.ToLower(strings.TrimSpace(finding.Severity))),
-			Evidence:    labels,
-			Remediation: strings.TrimSpace(finding.Remediation),
-			Status:      strings.TrimSpace(finding.Status),
-			PromotedBy:  strings.TrimSpace(finding.PromotedByHandle),
-			PromotedAt:  formatRFC3339(finding.PromotedAt),
+			ID:                finding.ID,
+			Title:             finding.Title,
+			Summary:           finding.Title,
+			Severity:          titleWord(strings.ToLower(strings.TrimSpace(finding.Severity))),
+			Evidence:          labels,
+			AffectedEntityIDs: mustJSONStrings(finding.AffectedJSON),
+			Remediation:       strings.TrimSpace(finding.Remediation),
+			Status:            strings.TrimSpace(finding.Status),
+			PromotedBy:        strings.TrimSpace(finding.PromotedByHandle),
+			PromotedAt:        formatRFC3339(finding.PromotedAt),
+			Revision:          finding.Revision,
 		})
 	}
 	sort.Slice(findingCards, func(i, j int) bool {
@@ -351,10 +400,12 @@ func loadReportEngagement(ctx context.Context, db queryer, engagementID string) 
 func loadReportActions(ctx context.Context, db queryer, engagementID string) ([]reportActionRow, error) {
 	rows, err := db.QueryContext(ctx, `
 		SELECT a.id, a.started_at, a.ended_at, a.command, COALESCE(a.argv::text, '[]'), a.target_kind, a.target_value, a.exec_host_ip::text,
+		       COALESCE(a.exec_host_method::text, ''), COALESCE(a.exec_host_interface::text, ''), COALESCE(a.exec_host_confidence::text, ''),
 		       COALESCE(a.egress_mode::text, ''), COALESCE(a.egress_status::text, ''), COALESCE(a.egress_public_ip::text, ''), a.egress_observed_at,
-		       COALESCE(a.pivot_chain::text, '[]'), a.initiated_by::text, a.parse_status::text,
+		       COALESCE(a.pivot_chain::text, '[]'), a.initiated_by::text, a.parse_status::text, COALESCE(a.execution_status::text, ''), COALESCE(a.execution_signal, ''), COALESCE(a.execution_failure_code, ''), COALESCE(a.exit_code, 0),
+		       COALESCE(a.source_agent_id::text, ''), COALESCE(a.source_agent_kind::text, ''), COALESCE(a.source_agent_name, ''), COALESCE(a.source_agent_version, ''), COALESCE(a.source_agent_platform_os::text, ''), COALESCE(a.source_agent_platform_arch::text, ''), COALESCE(a.capture_id::text, ''), COALESCE(a.capture_fingerprint, ''),
 		       actor.handle, actor.kind::text, actor.role::text, COALESCE(actor.agent_name, ''), COALESCE(actor.model, ''), COALESCE(actor.version, ''), COALESCE(auth.handle::text, ''),
-		       COALESCE(stdout.storage_key, ''), COALESCE(stderr.storage_key, ''), COALESCE(stdout.kind, ''), COALESCE(stderr.kind, ''), COALESCE(stdout.sha256, ''), COALESCE(stderr.sha256, '')
+		       COALESCE(stdout.storage_key, ''), COALESCE(stderr.storage_key, ''), COALESCE(stdout.kind, ''), COALESCE(stderr.kind, ''), COALESCE(stdout.sha256, ''), COALESCE(stderr.sha256, ''), COALESCE(stdout.byte_length, 0), COALESCE(stderr.byte_length, 0), COALESCE(stdout.media_type, ''), COALESCE(stderr.media_type, ''), stdout.created_at, stderr.created_at
 		FROM action a
 		JOIN actor ON actor.id = a.actor_id
 		LEFT JOIN actor auth ON auth.id = actor.authorized_by
@@ -369,7 +420,7 @@ func loadReportActions(ctx context.Context, db queryer, engagementID string) ([]
 	out := make([]reportActionRow, 0)
 	for rows.Next() {
 		var row reportActionRow
-		if err := rows.Scan(&row.ID, &row.StartedAt, &row.EndedAt, &row.Command, &row.ArgvJSON, &row.TargetKind, &row.TargetValue, &row.ExecHostIP, &row.EgressMode, &row.EgressStatus, &row.EgressPublicIP, &row.EgressObservedAt, &row.PivotChainJSON, &row.InitiatedBy, &row.ParseStatus, &row.ActorHandle, &row.ActorKind, &row.ActorRole, &row.AgentName, &row.Model, &row.Version, &row.AuthorizedBy, &row.StdoutStorageKey, &row.StderrStorageKey, &row.StdoutKind, &row.StderrKind, &row.StdoutSHA256, &row.StderrSHA256); err != nil {
+		if err := rows.Scan(&row.ID, &row.StartedAt, &row.EndedAt, &row.Command, &row.ArgvJSON, &row.TargetKind, &row.TargetValue, &row.ExecHostIP, &row.ExecHostMethod, &row.ExecHostInterface, &row.ExecHostConfidence, &row.EgressMode, &row.EgressStatus, &row.EgressPublicIP, &row.EgressObservedAt, &row.PivotChainJSON, &row.InitiatedBy, &row.ParseStatus, &row.ExecutionStatus, &row.ExecutionSignal, &row.ExecutionFailureCode, &row.ExitCode, &row.SourceAgentID, &row.SourceAgentKind, &row.SourceAgentName, &row.SourceAgentVersion, &row.SourceAgentPlatformOS, &row.SourceAgentPlatformArch, &row.CaptureID, &row.CaptureFingerprint, &row.ActorHandle, &row.ActorKind, &row.ActorRole, &row.AgentName, &row.Model, &row.Version, &row.AuthorizedBy, &row.StdoutStorageKey, &row.StderrStorageKey, &row.StdoutKind, &row.StderrKind, &row.StdoutSHA256, &row.StderrSHA256, &row.StdoutByteLength, &row.StderrByteLength, &row.StdoutMediaType, &row.StderrMediaType, &row.StdoutCreatedAt, &row.StderrCreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
@@ -379,7 +430,7 @@ func loadReportActions(ctx context.Context, db queryer, engagementID string) ([]
 
 func loadReportFindings(ctx context.Context, db queryer, engagementID string) ([]reportFindingRow, error) {
 	rows, err := db.QueryContext(ctx, `
-		SELECT f.id, f.title, f.severity::text, COALESCE(array_to_json(f.affected_entity_ids)::text, '[]'), COALESCE(array_to_json(f.evidence_action_ids)::text, '[]'), f.remediation, f.status, COALESCE(f.promoted_by::text, ''), COALESCE(actor.handle, ''), f.promoted_at, f.updated_at
+		SELECT f.id, f.title, f.severity::text, COALESCE(array_to_json(f.affected_entity_ids)::text, '[]'), COALESCE(array_to_json(f.evidence_action_ids)::text, '[]'), f.remediation, f.status, COALESCE(f.promoted_by::text, ''), COALESCE(actor.handle, ''), f.promoted_at, f.revision, f.updated_at
 		FROM finding f
 		LEFT JOIN actor ON actor.id = f.promoted_by
 		WHERE f.engagement_id = $1
@@ -391,7 +442,7 @@ func loadReportFindings(ctx context.Context, db queryer, engagementID string) ([
 	out := make([]reportFindingRow, 0)
 	for rows.Next() {
 		var row reportFindingRow
-		if err := rows.Scan(&row.ID, &row.Title, &row.Severity, &row.AffectedJSON, &row.EvidenceJSON, &row.Remediation, &row.Status, &row.PromotedBy, &row.PromotedByHandle, &row.PromotedAt, &row.UpdatedAt); err != nil {
+		if err := rows.Scan(&row.ID, &row.Title, &row.Severity, &row.AffectedJSON, &row.EvidenceJSON, &row.Remediation, &row.Status, &row.PromotedBy, &row.PromotedByHandle, &row.PromotedAt, &row.Revision, &row.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, row)
@@ -416,25 +467,41 @@ func buildEvidenceCards(ctx context.Context, actions []reportActionRow, labels m
 		if action.ParseStatus == "needs-plugin" || action.ParseStatus == "raw" {
 			note = "Unknown tools remain raw-first; the report keeps evidence instead of dropping it."
 		}
+		exitCode := "not recorded"
+		if action.ExitCode.Valid {
+			exitCode = strconv.FormatInt(action.ExitCode.Int64, 10)
+		}
 		out = append(out, reportEvidence{
-			Label:            labels[action.ID],
-			Source:           commandLine(action.Command, action.ArgvJSON),
-			Command:          commandLine(action.Command, action.ArgvJSON),
-			Target:           target,
-			Actor:            actorDisplay(action),
-			Host:             action.ExecHostIP,
-			Egress:           egressSummary(action),
-			EgressMode:       action.EgressMode.String,
-			EgressStatus:     action.EgressStatus.String,
-			EgressObservedAt: formatRFC3339(action.EgressObservedAt),
-			PivotChain:       mustPivotChain(action.PivotChainJSON),
-			InitiatedBy:      action.InitiatedBy,
-			ParseStatus:      action.ParseStatus,
-			RawStdout:        stdout,
-			RawStderr:        stderr,
-			RawSnippet:       rawSnippet,
-			Note:             note,
-			Attribution:      attributionLine(action),
+			Label:              labels[action.ID],
+			Source:             commandLine(action.Command, action.ArgvJSON),
+			SourceAgent:        sourceAgentSummary(action),
+			CaptureID:          nullableString(action.CaptureID),
+			CaptureFingerprint: nullableString(action.CaptureFingerprint),
+			Command:            commandLine(action.Command, action.ArgvJSON),
+			Target:             target,
+			Actor:              actorDisplay(action),
+			Host:               action.ExecHostIP,
+			Egress:             egressSummary(action),
+			EgressMode:         action.EgressMode.String,
+			EgressStatus:       action.EgressStatus.String,
+			EgressObservedAt:   formatRFC3339(action.EgressObservedAt),
+			PivotChain:         mustPivotChain(action.PivotChainJSON),
+			StartedAt:          action.StartedAt.UTC().Format(time.RFC3339),
+			EndedAt:            formatTimePtr(action.EndedAt),
+			Duration:           timingDuration(action.StartedAt, action.EndedAt),
+			ExitCode:           exitCode,
+			ExecutionStatus:    action.ExecutionStatus.String,
+			ExecutionSignal:    action.ExecutionSignal.String,
+			ExecutionFailure:   action.ExecutionFailureCode.String,
+			InitiatedBy:        action.InitiatedBy,
+			ParseStatus:        action.ParseStatus,
+			Stdout:             reportEvidenceBlob{Kind: action.StdoutKind, MediaType: action.StdoutMediaType, ByteLength: action.StdoutByteLength, SHA256: action.StdoutSHA256, StorageKey: action.StdoutStorageKey, CreatedAt: formatTimePtr(action.StdoutCreatedAt)},
+			Stderr:             reportEvidenceBlob{Kind: action.StderrKind, MediaType: action.StderrMediaType, ByteLength: action.StderrByteLength, SHA256: action.StderrSHA256, StorageKey: action.StderrStorageKey, CreatedAt: formatTimePtr(action.StderrCreatedAt)},
+			RawStdout:          stdout,
+			RawStderr:          stderr,
+			RawSnippet:         rawSnippet,
+			Note:               note,
+			Attribution:        attributionLine(action),
 		})
 	}
 	return out
@@ -818,8 +885,8 @@ func splitScope(scope string) []string {
 func reportMethodology() []string {
 	return []string{
 		"Recon: preserve raw discovery and entity provenance.",
-		"Attacks: capture every attempt with command, host, IPs, timing, and outcome.",
-		"Findings: promote only confirmed results and keep evidence linked.",
+		"Attacks: capture every attempt with command, host, IPs, timing, outcome, and execution semantics.",
+		"Findings: promote only confirmed results, retain revisions, and keep evidence linked.",
 		"Export: freeze the snapshot before PDF rendering, bundle manifest generation, and restore verification.",
 	}
 }
@@ -847,6 +914,63 @@ func formatRFC3339(t sql.NullTime) string {
 		return ""
 	}
 	return t.Time.UTC().Format(time.RFC3339)
+}
+
+func formatTimePtr(t sql.NullTime) string {
+	if !t.Valid {
+		return ""
+	}
+	return t.Time.UTC().Format(time.RFC3339)
+}
+
+func timingDuration(start time.Time, ended sql.NullTime) string {
+	if !ended.Valid {
+		return "running"
+	}
+	delta := ended.Time.Sub(start)
+	if delta < 0 {
+		return "invalid"
+	}
+	return delta.Round(time.Millisecond).String()
+}
+
+func nullableString(v sql.NullString) string {
+	if !v.Valid || strings.TrimSpace(v.String) == "" {
+		return ""
+	}
+	return strings.TrimSpace(v.String)
+}
+
+func mustJSONStrings(raw string) []string {
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func sourceAgentSummary(action reportActionRow) string {
+	parts := make([]string, 0, 4)
+	if action.SourceAgentKind != "" {
+		parts = append(parts, action.SourceAgentKind)
+	}
+	if action.SourceAgentName != "" {
+		parts = append(parts, action.SourceAgentName)
+	}
+	if action.SourceAgentVersion != "" {
+		parts = append(parts, "v"+action.SourceAgentVersion)
+	}
+	platform := strings.TrimSpace(strings.Join([]string{action.SourceAgentPlatformOS, action.SourceAgentPlatformArch}, "/"))
+	if platform != "" && platform != "/" {
+		parts = append(parts, platform)
+	}
+	if action.SourceAgentID != "" {
+		parts = append(parts, action.SourceAgentID)
+	}
+	if len(parts) == 0 {
+		return "not recorded"
+	}
+	return strings.Join(parts, " · ")
 }
 
 func formatActionLabel(n int) string {
@@ -1020,6 +1144,8 @@ var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap
           <h3>{{.Title}}</h3>
           <p><strong>Status:</strong> {{.Status}}</p>
           <p><strong>Evidence:</strong> {{join .Evidence ", "}}</p>
+          <p><strong>Affected entities:</strong> {{join .AffectedEntityIDs ", "}}</p>
+          <p><strong>Revision:</strong> {{.Revision}}</p>
           <p><strong>Promoted by:</strong> {{.PromotedBy}}</p>
           <p><strong>Promoted at:</strong> {{.PromotedAt}}</p>
           <p><strong>Remediation:</strong> {{.Remediation}}</p>
@@ -1035,6 +1161,8 @@ var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap
         <article class="card">
           <p class="badge">{{.Label}}</p>
           <p><strong>Command:</strong> {{.Command}}</p>
+          <p><strong>Source agent:</strong> {{.SourceAgent}}</p>
+          <p><strong>Capture:</strong> {{if .CaptureID}}{{.CaptureID}}{{else}}not recorded{{end}}{{if .CaptureFingerprint}} · {{.CaptureFingerprint}}{{end}}</p>
           <p><strong>Target:</strong> {{.Target}}</p>
           <p><strong>Actor:</strong> {{.Actor}}</p>
           <p><strong>Exec host:</strong> {{.Host}}</p>
@@ -1042,9 +1170,16 @@ var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap
           <p><strong>Egress mode:</strong> {{if .EgressMode}}{{.EgressMode}}{{else}}not recorded{{end}}</p>
           <p><strong>Egress status:</strong> {{if .EgressStatus}}{{.EgressStatus}}{{else}}not recorded{{end}}</p>
           <p><strong>Observed at:</strong> {{if .EgressObservedAt}}{{.EgressObservedAt}}{{else}}not recorded{{end}}</p>
+          <p><strong>Started:</strong> {{if .StartedAt}}{{.StartedAt}}{{else}}not recorded{{end}}</p>
+          <p><strong>Ended:</strong> {{if .EndedAt}}{{.EndedAt}}{{else}}not recorded{{end}}</p>
+          <p><strong>Duration:</strong> {{if .Duration}}{{.Duration}}{{else}}not recorded{{end}}</p>
+          <p><strong>Exit code:</strong> {{if .ExitCode}}{{.ExitCode}}{{else}}not recorded{{end}}</p>
+          <p><strong>Execution:</strong> {{if .ExecutionStatus}}{{.ExecutionStatus}}{{else}}not recorded{{end}}{{if .ExecutionSignal}} · signal {{.ExecutionSignal}}{{end}}{{if .ExecutionFailure}} · failure {{.ExecutionFailure}}{{end}}</p>
           <p><strong>Pivot chain:</strong> {{if .PivotChain}}{{pivotChainSummary .PivotChain}}{{else}}none recorded{{end}}</p>
           <p><strong>Initiated by:</strong> {{.InitiatedBy}}</p>
           <p><strong>Parse status:</strong> {{.ParseStatus}}</p>
+          <p><strong>Stdout:</strong> {{.Stdout.Kind}} · {{.Stdout.MediaType}} · {{.Stdout.ByteLength}} · {{.Stdout.SHA256}}</p>
+          <p><strong>Stderr:</strong> {{.Stderr.Kind}} · {{.Stderr.MediaType}} · {{.Stderr.ByteLength}} · {{.Stderr.SHA256}}</p>
           <p><strong>Attribution:</strong> {{.Attribution}}</p>
           <pre>{{.RawStdout}}</pre>
           <pre>{{.RawStderr}}</pre>

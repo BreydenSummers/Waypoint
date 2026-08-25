@@ -23,21 +23,44 @@ func TestAssembleReportSnapshotOrdersSectionsAndGaps(t *testing.T) {
 	}
 	actions := []reportActionRow{
 		{
-			ID:             "b-action",
-			StartedAt:      time.Date(2025, 1, 10, 8, 15, 0, 0, time.UTC),
-			Command:        "nmap",
-			ArgvJSON:       `["-sn","10.10.0.0/24"]`,
-			TargetKind:     "host",
-			TargetValue:    "10.10.0.0/24",
-			ExecHostIP:     "10.0.0.12",
-			EgressPublicIP: sqlNullString("203.0.113.26"),
-			InitiatedBy:    "manual",
-			ParseStatus:    "raw",
-			ActorHandle:    "alex.operator",
-			ActorKind:      "human",
-			ActorRole:      "operator",
-			StdoutKind:     "stdout",
-			StderrKind:     "stderr",
+			ID:                      "b-action",
+			StartedAt:               time.Date(2025, 1, 10, 8, 15, 0, 0, time.UTC),
+			Command:                 "nmap",
+			ArgvJSON:                `["-sn","10.10.0.0/24"]`,
+			TargetKind:              "host",
+			TargetValue:             "10.10.0.0/24",
+			ExecHostIP:              "10.0.0.12",
+			ExecHostMethod:          sqlNullString("route_selection"),
+			ExecHostInterface:       sqlNullString("eth0"),
+			ExecHostConfidence:      sqlNullString("confirmed"),
+			EgressMode:              sqlNullString("manual"),
+			EgressStatus:            sqlNullString("declared"),
+			EgressPublicIP:          sqlNullString("203.0.113.26"),
+			EgressObservedAt:        sqlNullTime(time.Date(2025, 1, 10, 8, 0, 0, 0, time.UTC)),
+			PivotChainJSON:          `[{"type":"ssh","host":"10.0.0.1","port":22,"label":"jump"}]`,
+			InitiatedBy:             "manual",
+			ParseStatus:             "raw",
+			ExecutionStatus:         sql.NullString{String: "exited", Valid: true},
+			ExitCode:                sql.NullInt64{Int64: 0, Valid: true},
+			SourceAgentID:           "33333333-3333-4333-8333-333333333333",
+			SourceAgentKind:         "operator_wrapper",
+			SourceAgentName:         "waypoint-wrapper",
+			SourceAgentVersion:      "1.0.0",
+			SourceAgentPlatformOS:   "linux",
+			SourceAgentPlatformArch: "amd64",
+			CaptureID:               sqlNullString("capture-1"),
+			CaptureFingerprint:      sqlNullString("fingerprint-1"),
+			ActorHandle:             "alex.operator",
+			ActorKind:               "human",
+			ActorRole:               "operator",
+			StdoutKind:              "stdout",
+			StderrKind:              "stderr",
+			StdoutSHA256:            strings.Repeat("a", 64),
+			StderrSHA256:            strings.Repeat("b", 64),
+			StdoutByteLength:        3,
+			StderrByteLength:        0,
+			StdoutMediaType:         "text/plain; charset=utf-8",
+			StderrMediaType:         "text/plain; charset=utf-8",
 		},
 		{
 			ID:           "a-action",
@@ -68,6 +91,7 @@ func TestAssembleReportSnapshotOrdersSectionsAndGaps(t *testing.T) {
 		Status:           "open",
 		PromotedByHandle: "alex.operator",
 		PromotedAt:       sqlNullTime(time.Date(2025, 1, 10, 8, 45, 0, 0, time.UTC)),
+		Revision:         4,
 		UpdatedAt:        time.Date(2025, 1, 10, 8, 45, 0, 0, time.UTC),
 	}}
 
@@ -107,7 +131,10 @@ func TestAssembleReportSnapshotOrdersSectionsAndGaps(t *testing.T) {
 	if len(snapshot.Evidence) != 2 || snapshot.Evidence[0].Label != "Action 1" || snapshot.Evidence[1].Label != "Action 2" {
 		t.Fatalf("evidence labels = %#v", snapshot.Evidence)
 	}
-	if snapshot.Findings[0].Severity != "Low" || snapshot.Findings[0].Evidence[0] != "Action 1" || snapshot.Findings[0].Evidence[1] != "Action 2" {
+	if snapshot.Evidence[1].SourceAgent == "" || snapshot.Evidence[1].CaptureID != "capture-1" || snapshot.Evidence[1].ExitCode != "0" || snapshot.Evidence[1].Stdout.ByteLength != 3 || snapshot.Evidence[1].Stdout.SHA256 != strings.Repeat("a", 64) {
+		t.Fatalf("evidence metadata = %#v", snapshot.Evidence[1])
+	}
+	if snapshot.Findings[0].Severity != "Low" || snapshot.Findings[0].Evidence[0] != "Action 1" || snapshot.Findings[0].Evidence[1] != "Action 2" || snapshot.Findings[0].Revision != 4 {
 		t.Fatalf("finding ordering/evidence = %#v", snapshot.Findings)
 	}
 	if len(snapshot.KnownCaptureGaps) != 2 || snapshot.KnownCaptureGaps[0].Status != outOfBandClaimStatusPending || snapshot.KnownCaptureGaps[1].Status != outOfBandClaimStatusDismissed {
