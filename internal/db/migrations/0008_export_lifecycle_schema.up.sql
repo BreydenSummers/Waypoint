@@ -14,7 +14,8 @@ CREATE TABLE export_job (
     bundle_archive_path text CHECK (
         bundle_archive_path IS NULL
         OR (
-            char_length(bundle_archive_path) BETWEEN 1 AND 1024
+            btrim(bundle_archive_path) <> ''
+            AND char_length(bundle_archive_path) BETWEEN 1 AND 1024
             AND bundle_archive_path ~ '^(?!/)(?!.*(?:^|/)\.\.(?:/|$))(?!.*//).+$'
         )
     ),
@@ -70,7 +71,8 @@ CREATE TABLE export_receipt (
     engagement_id uuid NOT NULL REFERENCES engagement(id) ON DELETE CASCADE,
     status text NOT NULL CHECK (status IN ('verified', 'invalidated')),
     bundle_path text NOT NULL CHECK (
-        char_length(bundle_path) BETWEEN 1 AND 1024
+        btrim(bundle_path) <> ''
+        AND char_length(bundle_path) BETWEEN 1 AND 1024
         AND bundle_path ~ '^(?!/)(?!.*(?:^|/)\.\.(?:/|$))(?!.*//).+$'
     ),
     archive_byte_length bigint NOT NULL CHECK (archive_byte_length >= 1),
@@ -110,7 +112,8 @@ ALTER TABLE teardown_authorization
 ALTER TABLE teardown_authorization
     ADD CONSTRAINT teardown_authorization_bundle_path_check
     CHECK (
-        char_length(bundle_path) BETWEEN 1 AND 1024
+        btrim(bundle_path) <> ''
+        AND char_length(bundle_path) BETWEEN 1 AND 1024
         AND bundle_path ~ '^(?!/)(?!.*(?:^|/)\.\.(?:/|$))(?!.*//).+$'
     );
 
