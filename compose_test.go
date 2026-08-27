@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -116,4 +117,13 @@ func mustReadFile(t *testing.T, path string) string {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return string(b)
+}
+
+func prepareComposeDockerConfig(t *testing.T) {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "docker-config")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("mkdir docker config: %v", err)
+	}
+	t.Setenv("DOCKER_CONFIG", dir)
 }

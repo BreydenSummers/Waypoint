@@ -66,6 +66,8 @@ func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 		t.Fatalf("write compose override: %v", err)
 	}
 
+	prepareComposeDockerConfig(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), composeTestTimeout)
 	defer cancel()
 
