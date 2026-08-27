@@ -1,0 +1,75 @@
+$ go test -run TestCompose(LiveCollectorInteropTranscripts|StackPersistsDBAndEvidenceAcrossRestart|StackStartsCleanlyTwice)$ -count=1 -v ./...
+=== RUN   TestComposeStackStartsCleanlyTwice
+    compose_integration_test.go:33: docker daemon unavailable: exit status 1
+        Client:
+         Version:    26.1.5+dfsg1
+         Context:    default
+         Debug Mode: false
+         Plugins:
+          buildx: Docker Buildx (Docker Inc.)
+            Version:  0.13.1+ds1
+            Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+          compose: Docker Compose (Docker Inc.)
+            Version:  2.26.1-4
+            Path:     /usr/libexec/docker/cli-plugins/docker-compose
+        
+        Server:
+        ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+        errors pretty printing info
+--- SKIP: TestComposeStackStartsCleanlyTwice (0.06s)
+=== RUN   TestComposeStackPersistsDBAndEvidenceAcrossRestart
+    compose_integration_test.go:86: docker daemon unavailable: exit status 1
+        Client:
+         Version:    26.1.5+dfsg1
+         Context:    default
+         Debug Mode: false
+         Plugins:
+          buildx: Docker Buildx (Docker Inc.)
+            Version:  0.13.1+ds1
+            Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+          compose: Docker Compose (Docker Inc.)
+            Version:  2.26.1-4
+            Path:     /usr/libexec/docker/cli-plugins/docker-compose
+        
+        Server:
+        ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+        errors pretty printing info
+--- SKIP: TestComposeStackPersistsDBAndEvidenceAcrossRestart (0.08s)
+=== RUN   TestComposeLiveCollectorInteropTranscripts
+    compose_live_interop_test.go:59: docker daemon unavailable: exit status 1
+        Client:
+         Version:    26.1.5+dfsg1
+         Context:    default
+         Debug Mode: false
+         Plugins:
+          buildx: Docker Buildx (Docker Inc.)
+            Version:  0.13.1+ds1
+            Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+          compose: Docker Compose (Docker Inc.)
+            Version:  2.26.1-4
+            Path:     /usr/libexec/docker/cli-plugins/docker-compose
+        
+        Server:
+        ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+        errors pretty printing info
+--- SKIP: TestComposeLiveCollectorInteropTranscripts (0.13s)
+PASS
+ok  	waypoint	0.281s
+testing: warning: no tests to run
+PASS
+ok  	waypoint/cmd/waypoint	0.005s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	waypoint/internal/db	0.007s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	waypoint/internal/egresspolicy	0.005s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	waypoint/internal/server	0.006s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	waypoint/internal/webassets	0.003s [no tests to run]
+testing: warning: no tests to run
+PASS
+ok  	waypoint/scripts	0.005s [no tests to run]

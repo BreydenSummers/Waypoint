@@ -40,6 +40,8 @@ func TestComposeStackStartsCleanlyTwice(t *testing.T) {
 		t.Fatalf("write compose override: %v", err)
 	}
 
+	prepareComposeDockerConfig(t)
+
 	ctx, cancel := context.WithTimeout(context.Background(), composeTestTimeout)
 	defer cancel()
 
@@ -90,6 +92,8 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	if err := os.WriteFile(overridePath, override, 0o600); err != nil {
 		t.Fatalf("write compose override: %v", err)
 	}
+
+	prepareComposeDockerConfig(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), composeTestTimeout)
 	defer cancel()
