@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -555,9 +556,16 @@ type destroyFixture struct {
 }
 
 func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing.T) {
-	var createReqBody, consumeReqBody []byte
-	var createSeen, consumeSeen bool
-	var expectedArchiveSHA, expectedManifestSHA, expectedBundlePath string
+	var probe struct {
+		mu                  sync.Mutex
+		createReqBody       []byte
+		consumeReqBody      []byte
+		createSeen          bool
+		consumeSeen         bool
+		expectedArchiveSHA  string
+		expectedManifestSHA string
+		expectedBundlePath  string
+	}
 	teardownServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/readyz":
@@ -570,8 +578,14 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 			if got := r.Header.Get("Waypoint-Contract-Version"); got != "1.0.0" {
 				t.Fatalf("create authorization contract version = %q", got)
 			}
-			createSeen = true
-			createReqBody, _ = io.ReadAll(r.Body)
+			createReqBody, _ := io.ReadAll(r.Body)
+			probe.mu.Lock()
+			probe.createSeen = true
+			probe.createReqBody = createReqBody
+			expectedBundlePath := probe.expectedBundlePath
+			expectedArchiveSHA := probe.expectedArchiveSHA
+			expectedManifestSHA := probe.expectedManifestSHA
+			probe.mu.Unlock()
 			var req struct {
 				ReceiptID      string `json:"receiptId"`
 				BundlePath     string `json:"bundlePath"`
@@ -591,8 +605,14 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 			if got := r.Header.Get("Authorization"); got != "Bearer destroy-token" {
 				t.Fatalf("consume authorization auth header = %q", got)
 			}
-			consumeSeen = true
-			consumeReqBody, _ = io.ReadAll(r.Body)
+			consumeReqBody, _ := io.ReadAll(r.Body)
+			probe.mu.Lock()
+			probe.consumeSeen = true
+			probe.consumeReqBody = consumeReqBody
+			expectedBundlePath := probe.expectedBundlePath
+			expectedArchiveSHA := probe.expectedArchiveSHA
+			expectedManifestSHA := probe.expectedManifestSHA
+			probe.mu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"contractVersion":"1.0.0","id":"grant-1","engagementId":"11111111-1111-4111-8111-111111111111","receiptId":"receipt-q3-2025-01-10","exportJobId":"77777777-7777-4777-8777-777777777777","bundlePath":"` + expectedBundlePath + `","archiveSha256":"` + expectedArchiveSHA + `","manifestSha256":"` + expectedManifestSHA + `","requestedBy":{"id":"00000000-0000-0000-0000-000000000010","kind":"human","handle":"alice","role":"owner"},"requestedAt":"2025-01-10T09:02:14Z","expiresAt":"2025-01-10T09:07:14Z","status":"consumed","consumedAt":"2025-01-10T09:02:15Z"}`))
 		default:
@@ -614,9 +634,11 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 	if err := json.Unmarshal(receiptBytes, &receipt); err != nil {
 		t.Fatalf("decode receipt: %v", err)
 	}
-	expectedBundlePath = receipt.BundlePath
-	expectedArchiveSHA = receipt.ArchiveSHA256
-	expectedManifestSHA = receipt.ManifestSHA256
+	probe.mu.Lock()
+	probe.expectedBundlePath = receipt.BundlePath
+	probe.expectedArchiveSHA = receipt.ArchiveSHA256
+	probe.expectedManifestSHA = receipt.ManifestSHA256
+	probe.mu.Unlock()
 	wrongBundle := filepath.Join(filepath.Dir(blocked.bundlePath), "wrong.tar.gz")
 	mustWriteFile(t, wrongBundle, "wrong bundle")
 
@@ -644,10 +666,12 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 		"verifiedAt":     "2025-01-10T09:02:14Z",
 		"bundlePath":     tamperedBundle,
 		"archiveSha256":  tamperedArchiveSHA,
-		"manifestSha256": expectedManifestSHA,
+		"manifestSha256": receipt.ManifestSHA256,
 	})
-	expectedBundlePath = tamperedBundle
-	expectedArchiveSHA = tamperedArchiveSHA
+	probe.mu.Lock()
+	probe.expectedBundlePath = tamperedBundle
+	probe.expectedArchiveSHA = tamperedArchiveSHA
+	probe.mu.Unlock()
 
 	failed = runInstallerExpectFailure(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", tamperedBundle, "--receipt", blocked.receiptPath)
 	if !strings.Contains(failed, "unexpected archive entry") {
@@ -665,9 +689,11 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 		"archiveSha256":  receipt.ArchiveSHA256,
 		"manifestSha256": receipt.ManifestSHA256,
 	})
-	expectedBundlePath = receipt.BundlePath
-	expectedArchiveSHA = receipt.ArchiveSHA256
-	expectedManifestSHA = receipt.ManifestSHA256
+	probe.mu.Lock()
+	probe.expectedBundlePath = receipt.BundlePath
+	probe.expectedArchiveSHA = receipt.ArchiveSHA256
+	probe.expectedManifestSHA = receipt.ManifestSHA256
+	probe.mu.Unlock()
 
 	destroyOutput := runInstaller(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", blocked.bundlePath, "--receipt", blocked.receiptPath)
 	if !strings.Contains(destroyOutput, "teardown authorization requested") || !strings.Contains(destroyOutput, "teardown authorization consumed") {
@@ -678,6 +704,12 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 			t.Fatalf("expected %s to be removed, got err=%v", path, err)
 		}
 	}
+	probe.mu.Lock()
+	createSeen := probe.createSeen
+	consumeSeen := probe.consumeSeen
+	createReqBody := append([]byte(nil), probe.createReqBody...)
+	consumeReqBody := append([]byte(nil), probe.consumeReqBody...)
+	probe.mu.Unlock()
 	if !createSeen || !consumeSeen {
 		t.Fatalf("teardown authorization calls missing: create=%q consume=%q", createReqBody, consumeReqBody)
 	}
