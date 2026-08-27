@@ -644,6 +644,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		return nil, err
 	}
 	var cols []string
+	var oids []uint32
 	var rows [][]driver.Value
 	var queryErr error
 	for {
@@ -653,9 +654,9 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		}
 		switch typ {
 		case 'T':
-			cols = parseColumns(payload)
+			cols, oids = parseColumns(payload)
 		case 'D':
-			row, err := parseRow(payload)
+			row, err := parseRow(payload, oids)
 			if err != nil {
 				return nil, err
 			}
@@ -738,19 +739,30 @@ func (r *rowsResult) Next(dest []driver.Value) error {
 	return nil
 }
 
-func parseColumns(payload []byte) []string {
+func parseColumns(payload []byte) ([]string, []uint32) {
 	count := int(binary.BigEndian.Uint16(payload[:2]))
 	payload = payload[2:]
 	cols := make([]string, 0, count)
+	oids := make([]uint32, 0, count)
 	for i := 0; i < count; i++ {
 		name, rest := readCString(payload)
 		cols = append(cols, name)
+		// Field metadata: tableOID(4) attrNo(2) typeOID(4) typeLen(2) typeMod(4) format(2).
+		oids = append(oids, binary.BigEndian.Uint32(rest[6:10]))
 		payload = rest[18:]
 	}
-	return cols
+	return cols, oids
 }
 
-func parseRow(payload []byte) ([]driver.Value, error) {
+// PostgreSQL type OIDs whose text form must be decoded to a Go type, because
+// database/sql cannot convert a plain string into them (notably time.Time).
+const (
+	oidTimestamp   = 1114
+	oidTimestamptz = 1184
+	oidDate        = 1082
+)
+
+func parseRow(payload []byte, oids []uint32) ([]driver.Value, error) {
 	count := int(binary.BigEndian.Uint16(payload[:2]))
 	payload = payload[2:]
 	row := make([]driver.Value, 0, count)
@@ -767,10 +779,53 @@ func parseRow(payload []byte) ([]driver.Value, error) {
 		if len(payload) < l {
 			return nil, errors.New("invalid row data")
 		}
-		row = append(row, string(payload[:l]))
+		raw := string(payload[:l])
 		payload = payload[l:]
+		var oid uint32
+		if i < len(oids) {
+			oid = oids[i]
+		}
+		value, err := decodeTextValue(oid, raw)
+		if err != nil {
+			return nil, err
+		}
+		row = append(row, value)
 	}
 	return row, nil
+}
+
+// decodeTextValue converts a column's text representation into a driver.Value
+// that database/sql can assign. Most columns stay as strings (the converter
+// handles string→int/bool/[]byte), but temporal types must become time.Time.
+func decodeTextValue(oid uint32, s string) (driver.Value, error) {
+	switch oid {
+	case oidTimestamp, oidTimestamptz:
+		return parsePgTimestamp(s)
+	case oidDate:
+		t, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			return nil, fmt.Errorf("parse date %q: %w", s, err)
+		}
+		return t, nil
+	default:
+		return s, nil
+	}
+}
+
+func parsePgTimestamp(s string) (time.Time, error) {
+	for _, layout := range []string{
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999-07",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05-07",
+		"2006-01-02 15:04:05",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("cannot parse timestamp %q", s)
 }
 
 func readCString(b []byte) (string, []byte) {
