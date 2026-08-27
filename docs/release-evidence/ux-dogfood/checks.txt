@@ -1,0 +1,15 @@
+make test: PASS
+make lint: PASS
+npm --prefix web run build: PASS
+python3 scripts/verify-contracts.py: PASS
+
+docker info:
+ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+
+browser binaries:
+<none>
+
+browser runtimes:
+playwright: no
+puppeteer: no
+selenium-webdriver: no
