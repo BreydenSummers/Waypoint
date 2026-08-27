@@ -1,0 +1,4 @@
+Expected plan shape for export job listing:
+- index-backed engagement scan on export_job using (engagement_id, updated_at DESC, id DESC)
+- page resume remains bounded and avoids OFFSET
+- row_number projection stays confined to the filtered engagement set

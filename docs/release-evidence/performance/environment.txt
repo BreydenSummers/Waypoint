@@ -1,0 +1,5 @@
+Run status: blocked / no real PostgreSQL DSN in sandbox
+Go: go version go1.24.4 linux/amd64
+OS: Linux waypoint 6.12.94+deb13-cloud-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.94-1 (2026-06-20) x86_64 GNU/Linux
+Docker daemon: unavailable
+WAYPOINT_TEST_PG_DSN: <unset>

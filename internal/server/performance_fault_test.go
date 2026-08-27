@@ -88,6 +88,35 @@ func TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios(t *testing.T) {
 	}
 }
 
+func TestPerformanceReadIndexesCoverBudgetedListPaths(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "internal", "db", "migrations", "0008_performance_read_indexes.up.sql"))
+	if err != nil {
+		t.Fatalf("read performance index migration: %v", err)
+	}
+	text := string(data)
+	for _, want := range []string{
+		"CREATE INDEX audit_event_engagement_id_idx ON audit_event (engagement_id, id ASC)",
+		"CREATE INDEX export_job_engagement_updated_at_idx ON export_job (engagement_id, updated_at DESC, id DESC)",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("performance index migration missing %q", want)
+		}
+	}
+	downData, err := os.ReadFile(filepath.Join("..", "..", "internal", "db", "migrations", "0008_performance_read_indexes.down.sql"))
+	if err != nil {
+		t.Fatalf("read performance index down migration: %v", err)
+	}
+	downText := string(downData)
+	for _, want := range []string{
+		"DROP INDEX IF EXISTS export_job_engagement_updated_at_idx",
+		"DROP INDEX IF EXISTS audit_event_engagement_id_idx",
+	} {
+		if !strings.Contains(downText, want) {
+			t.Fatalf("performance index down migration missing %q", want)
+		}
+	}
+}
+
 func TestAuditQueryShapeRemainsKeysetBounded(t *testing.T) {
 	data, err := os.ReadFile("audit.go")
 	if err != nil {
