@@ -51,6 +51,48 @@ type liveResponse struct {
 	Headers http.Header
 }
 
+type liveActorCredentialResponse struct {
+	ContractVersion string `json:"contractVersion"`
+	ActorRecord     struct {
+		ContractVersion string `json:"contractVersion"`
+		EngagementID    string `json:"engagementId"`
+		Actor           struct {
+			ID           string `json:"id"`
+			Kind         string `json:"kind"`
+			Handle       string `json:"handle"`
+			Role         string `json:"role"`
+			AuthorizedBy string `json:"authorizedBy,omitempty"`
+		} `json:"actor"`
+		Status            string     `json:"status"`
+		CredentialVersion int        `json:"credentialVersion"`
+		Revision          int        `json:"revision"`
+		RevokedAt         *time.Time `json:"revokedAt,omitempty"`
+	} `json:"actorRecord"`
+	Token    string    `json:"token"`
+	IssuedAt time.Time `json:"issuedAt"`
+}
+
+type liveActorLifecycleResponse struct {
+	ContractVersion string `json:"contractVersion"`
+	EngagementID    string `json:"engagementId"`
+	Actor           struct {
+		ID           string `json:"id"`
+		Kind         string `json:"kind"`
+		Handle       string `json:"handle"`
+		Role         string `json:"role"`
+		AuthorizedBy string `json:"authorizedBy,omitempty"`
+	} `json:"actor"`
+	Status            string     `json:"status"`
+	CredentialVersion int        `json:"credentialVersion"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	CreatedBy         string     `json:"createdBy"`
+	LastRotatedAt     *time.Time `json:"lastRotatedAt,omitempty"`
+	LastRotatedBy     string     `json:"lastRotatedBy,omitempty"`
+	RevokedAt         *time.Time `json:"revokedAt,omitempty"`
+	RevokedBy         string     `json:"revokedBy,omitempty"`
+	Revision          int        `json:"revision"`
+}
+
 func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 	if _, err := execLookPath("docker"); err != nil {
 		t.Skip("docker not available")
@@ -105,6 +147,54 @@ func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 	aiToken := "compose-live-ai-token"
 
 	runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-v", "ON_ERROR_STOP=1", "-c", fmt.Sprintf(`INSERT INTO engagement (id, name, client, scope, status) VALUES ('%s', 'Demo', 'Client', 'Scope', 'active'); INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ('%s', '%s', 'human', 'alex.operator', '%s', 'operator'); INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ('%s', '%s', 'human', 'beatrice.operator', '%s', 'operator'); INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role, agent_name, model, version, authorized_by) VALUES ('%s', '%s', 'ai_agent', 'field-agent-7', '%s', 'operator', 'Synthetic Field Agent', 'synthetic-offline-model', '2025.01', '%s');`, engagementID, humanAID, engagementID, sha256Hex(humanAToken), humanBID, engagementID, sha256Hex(humanBToken), aiID, engagementID, sha256Hex(aiToken), humanAID))
+
+	actorClient := &http.Client{Timeout: 15 * time.Second}
+	provisionedResp := doLiveActorRequest(t, actorClient, baseURL+"/api/v1/actors", humanAToken, http.MethodPost, "req-compose-actor-provision", map[string]any{
+		"kind":   "human",
+		"handle": "charlie.operator",
+		"role":   "operator",
+	}, "")
+	if provisionedResp.Status != http.StatusCreated {
+		t.Fatalf("actor provision status = %d, body=%s", provisionedResp.Status, provisionedResp.Body)
+	}
+	var provisioned liveActorCredentialResponse
+	decodeBody(t, provisionedResp.Body, &provisioned)
+	if provisioned.Token == "" || provisioned.ActorRecord.Actor.ID == "" || provisioned.ActorRecord.Actor.Handle != "charlie.operator" || provisioned.ActorRecord.CredentialVersion != 1 || provisioned.ActorRecord.Revision != 1 {
+		t.Fatalf("provisioned actor = %#v", provisioned)
+	}
+
+	rotatedResp := doLiveActorRequest(t, actorClient, baseURL+"/api/v1/actors/"+provisioned.ActorRecord.Actor.ID+"/rotate", humanAToken, http.MethodPost, "req-compose-actor-rotate", nil, `"1"`)
+	if rotatedResp.Status != http.StatusCreated {
+		t.Fatalf("actor rotate status = %d, body=%s", rotatedResp.Status, rotatedResp.Body)
+	}
+	var rotated liveActorCredentialResponse
+	decodeBody(t, rotatedResp.Body, &rotated)
+	if rotated.Token == "" || rotated.Token == provisioned.Token || rotated.ActorRecord.Actor.Handle != "charlie.operator" || rotated.ActorRecord.CredentialVersion != 2 || rotated.ActorRecord.Revision != 2 {
+		t.Fatalf("rotated actor = %#v", rotated)
+	}
+
+	oldTokenResp := doLiveActorRequest(t, actorClient, baseURL+"/api/v1/actors?limit=1", provisioned.Token, http.MethodGet, "req-compose-actor-old-token", nil, "")
+	if oldTokenResp.Status != http.StatusUnauthorized {
+		t.Fatalf("old actor token status = %d, body=%s", oldTokenResp.Status, oldTokenResp.Body)
+	}
+	newTokenResp := doLiveActorRequest(t, actorClient, baseURL+"/api/v1/actors?limit=1", rotated.Token, http.MethodGet, "req-compose-actor-new-token", nil, "")
+	if newTokenResp.Status != http.StatusOK {
+		t.Fatalf("rotated actor token status = %d, body=%s", newTokenResp.Status, newTokenResp.Body)
+	}
+
+	revokedResp := doLiveActorRequest(t, actorClient, baseURL+"/api/v1/actors/"+provisioned.ActorRecord.Actor.ID+"/revoke", humanAToken, http.MethodPost, "req-compose-actor-revoke", nil, `"2"`)
+	if revokedResp.Status != http.StatusOK {
+		t.Fatalf("actor revoke status = %d, body=%s", revokedResp.Status, revokedResp.Body)
+	}
+	var revoked liveActorLifecycleResponse
+	decodeBody(t, revokedResp.Body, &revoked)
+	if revoked.Status != "revoked" || revoked.RevokedAt == nil || revoked.RevokedBy != humanAID || revoked.Revision != 3 {
+		t.Fatalf("revoked actor = %#v", revoked)
+	}
+	revokedTokenResp := doLiveActorRequest(t, actorClient, baseURL+"/api/v1/actors?limit=1", rotated.Token, http.MethodGet, "req-compose-actor-revoked-token", nil, "")
+	if revokedTokenResp.Status != http.StatusUnauthorized {
+		t.Fatalf("revoked actor token status = %d, body=%s", revokedTokenResp.Status, revokedTokenResp.Body)
+	}
 
 	sseResp := doLiveAuditRequest(t, &http.Client{Timeout: 5 * time.Second}, baseURL+"/events", humanAToken, "req-compose-sse", "", "")
 	defer sseResp.Body.Close()
@@ -644,6 +734,41 @@ func assertEvidenceBytes(t *testing.T, runCompose func(args ...string) string, p
 	if got != string(want) {
 		t.Fatalf("evidence %s = %q, want %q", path, got, want)
 	}
+}
+
+func doLiveActorRequest(t *testing.T, client *http.Client, url, token, method, requestID string, body any, ifMatch string) liveResponse {
+	t.Helper()
+	var payload []byte
+	if body != nil {
+		var err error
+		payload, err = json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal body: %v", err)
+		}
+	}
+	req, err := http.NewRequest(method, url, bytes.NewReader(payload))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	req.Header.Set("X-Request-ID", requestID)
+	if ifMatch != "" {
+		req.Header.Set("If-Match", ifMatch)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("do request: %v", err)
+	}
+	defer resp.Body.Close()
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	return liveResponse{Status: resp.StatusCode, Body: out, Headers: resp.Header.Clone()}
 }
 
 func execLookPath(bin string) (string, error) { return exec.LookPath(bin) }
