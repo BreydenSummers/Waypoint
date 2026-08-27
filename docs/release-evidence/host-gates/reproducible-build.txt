@@ -1,1 +1,3 @@
-Error: go exited 1: cmd/waypoint/main.go:20:2: open /home/breyden/.cache/go-build/b2/b2880aa57b8e1c29b6ca53f39b07b61b9e5daa48df6487dacb0dd3a04b70e41f-d: read-only file system
+A 84fd6f76dc6cb6ebeb9efa74d4b76f01128dfb1952237402d0302726e1e0da83
+B 84fd6f76dc6cb6ebeb9efa74d4b76f01128dfb1952237402d0302726e1e0da83
+match=true

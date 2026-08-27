@@ -1,89 +1,122 @@
-Error: go exited 1: # waypoint
-open /home/breyden/.cache/go-build/18/18a1c487633f2c92c19317ea9b859f9eb9b7a57543769a066e4ffc1b5dabf018-d: read-only file system
-# waypoint/cmd/waypoint
-cmd/waypoint/main.go:20:2: open /home/breyden/.cache/go-build/b2/b2880aa57b8e1c29b6ca53f39b07b61b9e5daa48df6487dacb0dd3a04b70e41f-d: read-only file system
-# ./...
-pattern ./...: open /home/breyden/.cache/go-build/b2/b2880aa57b8e1c29b6ca53f39b07b61b9e5daa48df6487dacb0dd3a04b70e41f-d: read-only file system
-FAIL	waypoint [setup failed]
-FAIL	waypoint/cmd/waypoint [setup failed]
-FAIL	./... [setup failed]
-=== RUN   TestRedactAuditData
---- PASS: TestRedactAuditData (0.00s)
-=== RUN   TestAppendAuditEventCapturesOutOfBandReviewLifecycle
-    audit_test.go:35: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
---- SKIP: TestAppendAuditEventCapturesOutOfBandReviewLifecycle (0.00s)
-=== RUN   TestValidateAuditEventInputRejectsIncompleteAIActor
---- PASS: TestValidateAuditEventInputRejectsIncompleteAIActor (0.00s)
-=== RUN   TestAppendAuditEventRedactsSensitiveMetadata
-    audit_test.go:139: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
---- SKIP: TestAppendAuditEventRedactsSensitiveMetadata (0.00s)
-=== RUN   TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly
-    audit_test.go:214: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
---- SKIP: TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly (0.00s)
-=== RUN   TestAuditEventViewAndTableRemainAppendOnly
-    audit_test.go:311: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
---- SKIP: TestAuditEventViewAndTableRemainAppendOnly (0.00s)
-=== RUN   TestApplyMigrationsOnRealPostgreSQL
-    migrations_test.go:37: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
---- SKIP: TestApplyMigrationsOnRealPostgreSQL (0.00s)
-=== RUN   TestApplyMigrationsSerializesConcurrentStarters
-    migrations_test.go:84: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
---- SKIP: TestApplyMigrationsSerializesConcurrentStarters (0.00s)
-=== RUN   TestDatabaseProtectionsRejectMutations
-    migrations_test.go:121: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
---- SKIP: TestDatabaseProtectionsRejectMutations (0.00s)
-=== RUN   TestActorAuthorizationConstraint
-    migrations_test.go:186: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
---- SKIP: TestActorAuthorizationConstraint (0.00s)
-=== RUN   TestActionAttributionSchemaRoundTrip
-    migrations_test.go:211: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
---- SKIP: TestActionAttributionSchemaRoundTrip (0.00s)
+Error: go exited 1: AndOperatorOnlyPromotion (0.00s)
+=== RUN   TestFindingsReportWorkflowAuthoritativeRealPostgresJourney
+    findings_report_workflow_test.go:19: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestFindingsReportWorkflowAuthoritativeRealPostgresJourney (0.00s)
+=== RUN   TestG3AuthoritativeProvenanceJourney
+    g3_journey_test.go:17: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestG3AuthoritativeProvenanceJourney (0.00s)
+=== RUN   TestMCPStandardFlowReusesCaptureService
+    mcp_test.go:18: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestMCPStandardFlowReusesCaptureService (0.00s)
+=== RUN   TestNotableAlertRuleFixtures
+=== RUN   TestNotableAlertRuleFixtures/successful_authentication
+=== RUN   TestNotableAlertRuleFixtures/first_newly_reachable_segment
+--- PASS: TestNotableAlertRuleFixtures (0.00s)
+    --- PASS: TestNotableAlertRuleFixtures/successful_authentication (0.00s)
+    --- PASS: TestNotableAlertRuleFixtures/first_newly_reachable_segment (0.00s)
+=== RUN   TestNotableAlertsAreDeduplicatedAndStreamed
+    notable_alerts_test.go:85: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestNotableAlertsAreDeduplicatedAndStreamed (0.00s)
+=== RUN   TestNotableAlertSelectionIsDeterministic
+=== RUN   TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order
+=== RUN   TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order
+--- PASS: TestNotableAlertSelectionIsDeterministic (0.00s)
+    --- PASS: TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order (0.00s)
+    --- PASS: TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order (0.00s)
+=== RUN   TestNotableAlertsUseSystemActorForAISourceCaptures
+    notable_alerts_test.go:190: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestNotableAlertsUseSystemActorForAISourceCaptures (0.00s)
+=== RUN   TestStructuredResultValidationGatesNotableAlerts
+--- PASS: TestStructuredResultValidationGatesNotableAlerts (0.00s)
+=== RUN   TestBuildOutOfBandClaimPendingAndLinked
+--- PASS: TestBuildOutOfBandClaimPendingAndLinked (0.00s)
+=== RUN   TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable
+--- PASS: TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable (0.00s)
+=== RUN   TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable
+--- PASS: TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable (0.00s)
+=== RUN   TestOutOfBandClaimLifecycleThroughPostgreSQL
+    out_of_band_claims_test.go:111: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestOutOfBandClaimLifecycleThroughPostgreSQL (0.00s)
+=== RUN   TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios
+--- PASS: TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios (0.00s)
+=== RUN   TestPerformanceReadIndexesCoverBudgetedListPaths
+--- PASS: TestPerformanceReadIndexesCoverBudgetedListPaths (0.00s)
+=== RUN   TestAuditQueryShapeRemainsKeysetBounded
+--- PASS: TestAuditQueryShapeRemainsKeysetBounded (0.00s)
+=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase
+=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history
+=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest
+--- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase (0.00s)
+    --- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history (0.00s)
+    --- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest (0.00s)
+=== RUN   TestReadCaptureRequestRejectsInterruptedMultipartUpload
+--- PASS: TestReadCaptureRequestRejectsInterruptedMultipartUpload (0.00s)
+=== RUN   TestCaptureEnvelopeLimitMatchesSchemaCeiling
+--- PASS: TestCaptureEnvelopeLimitMatchesSchemaCeiling (0.00s)
+=== RUN   TestReadCaptureRequestRejectsOversizedEnvelope
+--- PASS: TestReadCaptureRequestRejectsOversizedEnvelope (0.01s)
+=== RUN   TestCopyEvidenceStreamRejectsOverLimit
+--- PASS: TestCopyEvidenceStreamRejectsOverLimit (0.00s)
+=== RUN   TestExportStreamingHelpersStayFileBounded
+--- PASS: TestExportStreamingHelpersStayFileBounded (0.00s)
+=== RUN   TestCopyEvidenceStreamKeeps10GiBLimitPathWithinRSSBudget
+--- PASS: TestCopyEvidenceStreamKeeps10GiBLimitPathWithinRSSBudget (0.05s)
+=== RUN   TestUpsertEvidenceRejectsImmutableMetadataChanges
+    performance_fault_test.go:302: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestUpsertEvidenceRejectsImmutableMetadataChanges (0.00s)
+=== RUN   TestCaptureIngestRejectsDiskPressureBeforeCommitting
+    performance_fault_test.go:350: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestCaptureIngestRejectsDiskPressureBeforeCommitting (0.00s)
+=== RUN   TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication
+    performance_fault_test.go:391: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication (0.00s)
+=== RUN   TestAssembleReportSnapshotOrdersSectionsAndGaps
+--- PASS: TestAssembleReportSnapshotOrdersSectionsAndGaps (0.00s)
+=== RUN   TestReportHandlerRequiresAuthAndScopesEngagement
+    report_test.go:159: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestReportHandlerRequiresAuthAndScopesEngagement (0.00s)
+=== RUN   TestRenderReportHTMLAndPDFEscapeHostileContent
+--- PASS: TestRenderReportHTMLAndPDFEscapeHostileContent (0.01s)
+=== RUN   TestLoadFrozenReportSnapshotFromBundle
+--- PASS: TestLoadFrozenReportSnapshotFromBundle (0.00s)
+=== RUN   TestRuntimeEndpointReturnsStartupEgressState
+--- PASS: TestRuntimeEndpointReturnsStartupEgressState (0.00s)
+=== RUN   TestHandlerServesHealthAndSPA
+--- PASS: TestHandlerServesHealthAndSPA (0.01s)
+=== RUN   TestReadyzRequiresDatabase
+--- PASS: TestReadyzRequiresDatabase (0.00s)
+=== RUN   TestReadyzChecksDatabaseHealth
+--- PASS: TestReadyzChecksDatabaseHealth (0.00s)
+=== RUN   TestRequiredAssetsPresentDetectsMissingAsset
+--- PASS: TestRequiredAssetsPresentDetectsMissingAsset (0.00s)
 PASS
-ok  	waypoint/internal/db	0.018s
-=== RUN   TestParseConfigFromEnv
-=== RUN   TestParseConfigFromEnv/auto_requires_endpoint
-=== RUN   TestParseConfigFromEnv/manual_requires_an_explicit_address
-=== RUN   TestParseConfigFromEnv/off_is_the_default
---- PASS: TestParseConfigFromEnv (0.00s)
-    --- PASS: TestParseConfigFromEnv/auto_requires_endpoint (0.00s)
-    --- PASS: TestParseConfigFromEnv/manual_requires_an_explicit_address (0.00s)
-    --- PASS: TestParseConfigFromEnv/off_is_the_default (0.00s)
-=== RUN   TestResolveAutoManualAndOff
-=== RUN   TestResolveAutoManualAndOff/auto_resolves_through_a_configured_endpoint
-=== RUN   TestResolveAutoManualAndOff/manual_sends_no_discovery_traffic
-=== RUN   TestResolveAutoManualAndOff/off_sends_no_discovery_traffic
---- PASS: TestResolveAutoManualAndOff (0.40s)
-    --- PASS: TestResolveAutoManualAndOff/auto_resolves_through_a_configured_endpoint (0.00s)
-    --- PASS: TestResolveAutoManualAndOff/manual_sends_no_discovery_traffic (0.20s)
-    --- PASS: TestResolveAutoManualAndOff/off_sends_no_discovery_traffic (0.20s)
-PASS
-ok  	waypoint/internal/egresspolicy	0.423s
+ok  	waypoint/internal/server	0.104s
 === RUN   TestEmbeddedAssetsMatchDeterministicWebBuild
---- PASS: TestEmbeddedAssetsMatchDeterministicWebBuild (0.06s)
+--- PASS: TestEmbeddedAssetsMatchDeterministicWebBuild (0.07s)
 PASS
-ok  	waypoint/internal/webassets	0.087s
+ok  	waypoint/internal/webassets	0.076s
 === RUN   TestInstallerValidatesInstallsUpgradesAndRollsBack
 === PAUSE TestInstallerValidatesInstallsUpgradesAndRollsBack
 === RUN   TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass
---- PASS: TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass (1.15s)
+--- PASS: TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass (1.24s)
 === RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown
 === RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64
 === RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64
---- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown (2.23s)
-    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64 (1.14s)
-    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64 (1.10s)
+--- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown (2.35s)
+    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64 (1.12s)
+    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64 (1.23s)
 === RUN   TestInstallerRollbackAcceptsTargetVersionAndPreservesState
 === PAUSE TestInstallerRollbackAcceptsTargetVersionAndPreservesState
 === RUN   TestInstallerRejectsUnsupportedHostMatrix
 === RUN   TestInstallerRejectsUnsupportedHostMatrix/unsupported-os
 === RUN   TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch
---- PASS: TestInstallerRejectsUnsupportedHostMatrix (0.08s)
+--- PASS: TestInstallerRejectsUnsupportedHostMatrix (0.09s)
     --- PASS: TestInstallerRejectsUnsupportedHostMatrix/unsupported-os (0.04s)
     --- PASS: TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch (0.04s)
-=== CONT  TestInstallerValidatesInstallsUpgradesAndRollsBack
 === CONT  TestInstallerRollbackAcceptsTargetVersionAndPreservesState
---- PASS: TestInstallerRollbackAcceptsTargetVersionAndPreservesState (1.03s)
---- PASS: TestInstallerValidatesInstallsUpgradesAndRollsBack (1.58s)
+=== CONT  TestInstallerValidatesInstallsUpgradesAndRollsBack
+--- PASS: TestInstallerRollbackAcceptsTargetVersionAndPreservesState (1.05s)
+--- PASS: TestInstallerValidatesInstallsUpgradesAndRollsBack (1.65s)
 PASS
-ok  	waypoint/scripts	5.046s
+ok  	waypoint/scripts	5.325s
 FAIL

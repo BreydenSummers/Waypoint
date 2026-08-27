@@ -1,4 +1,122 @@
-Error: go exited 1: # waypoint
-open /home/breyden/.cache/go-build/18/18a1c487633f2c92c19317ea9b859f9eb9b7a57543769a066e4ffc1b5dabf018-d: read-only file system
-FAIL	waypoint [setup failed]
+Error: go exited 1: === RUN   TestComposeStackPersistsDBAndEvidenceAcrossRestart
+    compose_integration_test.go:116: docker compose up -d --wait --build failed: exit status 1
+        #0 building with "default" instance using docker driver
+        
+        #1 [waypoint internal] load build definition from Dockerfile
+        #1 transferring dockerfile:
+        #1 transferring dockerfile: 1.00kB done
+        #1 DONE 2.7s
+        
+        #2 [waypoint internal] load metadata for docker.io/library/golang:1.22-bookworm
+        #2 ...
+        
+        #3 [waypoint internal] load metadata for docker.io/library/debian:bookworm-slim
+        #3 DONE 0.6s
+        
+        #4 [waypoint internal] load metadata for docker.io/library/node:22-bookworm
+        #4 DONE 0.7s
+        
+        #2 [waypoint internal] load metadata for docker.io/library/golang:1.22-bookworm
+        #2 DONE 0.8s
+        
+        #5 [waypoint internal] load .dockerignore
+        #5 transferring context:
+        #5 transferring context: 2B done
+        #5 DONE 0.3s
+        
+        #6 [waypoint web 1/8] FROM docker.io/library/node:22-bookworm@sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d
+        #6 DONE 0.0s
+        
+        #7 [waypoint stage-2 1/4] FROM docker.io/library/debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
+        #7 DONE 0.0s
+        
+        #8 [waypoint build 1/9] FROM docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
+        #8 DONE 0.0s
+        
+        #9 [waypoint internal] load build context
+        #9 transferring context: 1.69MB 0.0s done
+        #9 DONE 3.0s
+        
+        #10 [waypoint web 7/8] COPY contracts ./contracts
+        #10 CACHED
+        
+        #11 [waypoint build 9/9] RUN CGO_ENABLED=0 go build -o /out/waypoint ./cmd/waypoint
+        #11 CACHED
+        
+        #12 [waypoint stage-2 2/4] RUN apt-get update  && apt-get install -y --no-install-recommends curl ca-certificates chromium  && rm -rf /var/lib/apt/lists/*
+        #12 CACHED
+        
+        #13 [waypoint web 2/8] WORKDIR /src
+        #13 CACHED
+        
+        #14 [waypoint web 5/8] COPY web ./web
+        #14 CACHED
+        
+        #15 [waypoint build 6/9] COPY internal ./internal
+        #15 CACHED
+        
+        #16 [waypoint web 3/8] COPY web/package*.json ./web/
+        #16 CACHED
+        
+        #17 [waypoint build 2/9] WORKDIR /src
+        #17 CACHED
+        
+        #18 [waypoint web 6/8] COPY internal ./internal
+        #18 CACHED
+        
+        #19 [waypoint stage-2 3/4] WORKDIR /app
+        #19 CACHED
+        
+        #20 [waypoint build 4/9] COPY third_party ./third_party
+        #20 CACHED
+        
+        #21 [waypoint build 7/9] COPY contracts ./contracts
+        #21 CACHED
+        
+        #22 [waypoint build 3/9] COPY go.mod ./
+        #22 CACHED
+        
+        #23 [waypoint build 5/9] COPY cmd ./cmd
+        #23 CACHED
+        
+        #24 [waypoint web 8/8] RUN cd web && npm run build
+        #24 CACHED
+        
+        #25 [waypoint web 4/8] RUN npm ci --prefix web
+        #25 CACHED
+        
+        #26 [waypoint build 8/9] COPY --from=web /src/internal/webassets/dist ./internal/webassets/dist
+        #26 CACHED
+        
+        #27 [waypoint stage-2 4/4] COPY --from=build /out/waypoint /usr/local/bin/waypoint
+        #27 CACHED
+        
+        #28 [waypoint] exporting to image
+        #28 exporting layers done
+        #28 writing image sha256:6e0e031c74bb30d21cf570de4ebc32ed7d52b94d96d8b74e9d6c8bca4085f083 0.0s done
+        #28 naming to docker.io/library/waypoint:compose 0.1s done
+        #28 DONE 0.3s
+         Network waypoint-compose-2525998-1787835839517510294_default  Creating
+         Network waypoint-compose-2525998-1787835839517510294_default  Created
+         Volume "waypoint-compose-2525998-1787835839517510294_waypoint-evidence"  Creating
+         Volume "waypoint-compose-2525998-1787835839517510294_waypoint-evidence"  Created
+         Volume "waypoint-compose-2525998-1787835839517510294_waypoint-postgres"  Creating
+         Volume "waypoint-compose-2525998-1787835839517510294_waypoint-postgres"  Created
+         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Creating
+         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Created
+         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Creating
+         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Created
+         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Starting
+         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Started
+         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Waiting
+         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Healthy
+         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Starting
+         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Started
+         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Waiting
+         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Waiting
+         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Healthy
+        container waypoint-compose-2525998-1787835839517510294-waypoint-1 is unhealthy
+--- FAIL: TestComposeStackPersistsDBAndEvidenceAcrossRestart (32.24s)
+FAIL
+FAIL	waypoint	32.242s
 FAIL
