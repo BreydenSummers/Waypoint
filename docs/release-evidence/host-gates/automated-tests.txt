@@ -52,7 +52,7 @@ Error: go exited 1: G_DSN is required for real-PostgreSQL gate tests
 === RUN   TestCaptureEnvelopeLimitMatchesSchemaCeiling
 --- PASS: TestCaptureEnvelopeLimitMatchesSchemaCeiling (0.00s)
 === RUN   TestReadCaptureRequestRejectsOversizedEnvelope
---- PASS: TestReadCaptureRequestRejectsOversizedEnvelope (0.03s)
+--- PASS: TestReadCaptureRequestRejectsOversizedEnvelope (0.02s)
 === RUN   TestCopyEvidenceStreamRejectsOverLimit
 --- PASS: TestCopyEvidenceStreamRejectsOverLimit (0.00s)
 === RUN   TestExportStreamingHelpersStayFileBounded
@@ -90,33 +90,33 @@ Error: go exited 1: G_DSN is required for real-PostgreSQL gate tests
 === RUN   TestRequiredAssetsPresentDetectsMissingAsset
 --- PASS: TestRequiredAssetsPresentDetectsMissingAsset (0.00s)
 PASS
-ok  	waypoint/internal/server	0.140s
+ok  	waypoint/internal/server	0.114s
 === RUN   TestEmbeddedAssetsMatchDeterministicWebBuild
---- PASS: TestEmbeddedAssetsMatchDeterministicWebBuild (0.10s)
+--- PASS: TestEmbeddedAssetsMatchDeterministicWebBuild (0.08s)
 PASS
-ok  	waypoint/internal/webassets	0.103s
+ok  	waypoint/internal/webassets	0.085s
 === RUN   TestInstallerValidatesInstallsUpgradesAndRollsBack
 === PAUSE TestInstallerValidatesInstallsUpgradesAndRollsBack
 === RUN   TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass
---- PASS: TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass (1.59s)
+--- PASS: TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass (1.48s)
 === RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown
 === RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64
 === RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64
---- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown (2.24s)
-    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64 (1.17s)
-    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64 (1.07s)
+--- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown (2.43s)
+    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64 (1.20s)
+    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64 (1.23s)
 === RUN   TestInstallerRollbackAcceptsTargetVersionAndPreservesState
 === PAUSE TestInstallerRollbackAcceptsTargetVersionAndPreservesState
 === RUN   TestInstallerRejectsUnsupportedHostMatrix
 === RUN   TestInstallerRejectsUnsupportedHostMatrix/unsupported-os
 === RUN   TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch
---- PASS: TestInstallerRejectsUnsupportedHostMatrix (0.11s)
+--- PASS: TestInstallerRejectsUnsupportedHostMatrix (0.09s)
     --- PASS: TestInstallerRejectsUnsupportedHostMatrix/unsupported-os (0.05s)
-    --- PASS: TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch (0.06s)
+    --- PASS: TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch (0.05s)
 === CONT  TestInstallerValidatesInstallsUpgradesAndRollsBack
 === CONT  TestInstallerRollbackAcceptsTargetVersionAndPreservesState
---- PASS: TestInstallerRollbackAcceptsTargetVersionAndPreservesState (1.13s)
---- PASS: TestInstallerValidatesInstallsUpgradesAndRollsBack (2.04s)
+--- PASS: TestInstallerRollbackAcceptsTargetVersionAndPreservesState (1.28s)
+--- PASS: TestInstallerValidatesInstallsUpgradesAndRollsBack (2.09s)
 PASS
-ok  	waypoint/scripts	5.984s
+ok  	waypoint/scripts	6.095s
 FAIL
