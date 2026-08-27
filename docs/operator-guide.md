@@ -12,6 +12,8 @@ Use this when you want a fresh engagement that is easy to tear down later.
 docker compose up -d --build
 ```
 
+This stack is the path used for dogfood UX runs; pair it with Playwright-driven browser checks when verifying the operator flow.
+
 Relevant files: [`compose.yml`](../compose.yml), [`cmd/waypoint/main.go`](../cmd/waypoint/main.go).
 
 ### 2) Supported-host install

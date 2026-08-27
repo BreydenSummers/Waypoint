@@ -4,6 +4,9 @@ Use this skill **before declaring any user-facing Waypoint feature done.** Passi
 necessary but NOT sufficient — this project requires that the agent actually runs the app, uses the
 feature as an operator would, and visually judges it.
 
+This pass assumes the host can run Docker Compose and Playwright; if either is missing, treat the
+run as blocked rather than substituting a mocked browser flow.
+
 Reference: `../../docs/design-spec.md` and `../../docs/waypoint-mockup.html` (the intended look), and
 `../../PRD.md` (verification section).
 
