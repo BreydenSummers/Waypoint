@@ -86,7 +86,10 @@ func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 		_, _ = composeOutput(cleanupCtx, project, overridePath, "down", "-v", "--remove-orphans")
 	})
 
-	runCompose("up", "-d", "--wait", "--build")
+	buildOut := mustComposeBuildNoCache(t, ctx, project, overridePath)
+	t.Logf("docker compose build --no-cache:\n%s", strings.TrimSpace(buildOut))
+	upOut := runCompose("up", "-d", "--wait")
+	t.Logf("docker compose up --wait:\n%s", strings.TrimSpace(upOut))
 	port := waitForComposePort(t, ctx, project, overridePath)
 	baseURL := "http://127.0.0.1:" + port
 
