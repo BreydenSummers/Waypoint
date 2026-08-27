@@ -209,7 +209,18 @@ func (c *conn) writeStartup(params map[string]string) error {
 		payload = append(payload, 0)
 	}
 	payload = append(payload, 0)
-	return c.writeMessage(0, payload)
+	// The PostgreSQL startup packet has no leading message-type byte; it is
+	// framed only by a 4-byte length prefix covering the length field itself.
+	if c.c == nil {
+		return io.ErrClosedPipe
+	}
+	var header [4]byte
+	binary.BigEndian.PutUint32(header[:], uint32(len(payload)+4))
+	if _, err := c.c.Write(header[:]); err != nil {
+		return err
+	}
+	_, err := c.c.Write(payload)
+	return err
 }
 
 func (c *conn) writeMessage(typ byte, payload []byte) error {
@@ -325,7 +336,9 @@ func (c *conn) handleSASL(payload []byte) error {
 		return err
 	}
 	c.scram = &scramState{username: c.cfg.user, password: c.cfg.password, nonce: nonce}
-	initial := c.scram.clientFirstBare()
+	// The SASLInitialResponse carries the full client-first-message: the GS2
+	// header ("n,," for no channel binding) followed by the client-first-bare.
+	initial := append([]byte("n,,"), c.scram.clientFirstBare()...)
 	msg := append([]byte(mech), 0)
 	msg = binary.BigEndian.AppendUint32(msg, uint32(len(initial)))
 	msg = append(msg, initial...)
