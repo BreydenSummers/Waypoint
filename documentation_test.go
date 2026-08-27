@@ -88,7 +88,7 @@ func TestOperatorDocumentationCoverageAndLinks(t *testing.T) {
 		"named actors/accounts and one-time credentials",
 		"| PRD-DEP-004 | Sensitive local deployment |",
 		"TLS outside loopback, restrictive secret/data permissions, redacted logs, and explicit host/disk encryption responsibility.",
-		"| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Unverified",
+		"| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Fail",
 	} {
 		if !strings.Contains(traceability, want) {
 			t.Fatalf("traceability matrix missing %q", want)

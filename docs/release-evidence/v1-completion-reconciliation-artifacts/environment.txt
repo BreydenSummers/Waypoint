@@ -1,0 +1,36 @@
+timestamp=2026-08-27T22:14:17Z
+pwd=/workspace
+go version go1.24.4 linux/amd64
+v22.23.2
+10.9.8
+Docker version 26.1.5+dfsg1, build a72d7cd
+Docker Compose version 2.26.1-4
+WAYPOINT_TEST_PG_DSN=
+WAYPOINT_DB_DSN=
+chromium=unavailable
+chromium-browser=unavailable
+google-chrome=unavailable
+firefox=unavailable
+microsoft-edge=unavailable
+msedge=unavailable
+psql=unavailable
+postgres=unavailable
+initdb=unavailable
+pg_dump=unavailable
+pg_restore=unavailable
+Client:
+ Version:    26.1.5+dfsg1
+ Context:    default
+ Debug Mode: false
+ Plugins:
+  buildx: Docker Buildx (Docker Inc.)
+    Version:  0.13.1+ds1
+    Path:     /usr/libexec/docker/cli-plugins/docker-buildx
+  compose: Docker Compose (Docker Inc.)
+    Version:  2.26.1-4
+    Path:     /usr/libexec/docker/cli-plugins/docker-compose
+
+Server:
+ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?
+errors pretty printing info
+docker_info_exit=1

@@ -1,8 +1,8 @@
 # Waypoint v1 PRD traceability
 
-Status: current merged-code final acceptance complete — **Fail; not v1-ready (8 Pass, 10 Fail, 49 Unverified)**  
+Status: trusted completion reconciliation complete — **Fail; not v1-ready (9 Pass, 8 Fail, 50 Unverified)**  
 Technical completion recommended: **false** · Human acceptance: **not evaluated or inferred by this technical gate**  
-Latest evidence: [`release-evidence/current-v1-final-acceptance.md`](release-evidence/current-v1-final-acceptance.md)  
+Latest evidence: [`release-evidence/v1-completion-reconciliation.md`](release-evidence/v1-completion-reconciliation.md)  
 Canonical requirements: [`../PRD.md`](../PRD.md)  
 Execution and task definitions: [`v1-execution-plan.md`](v1-execution-plan.md)  
 Design references: [`design-spec.md`](design-spec.md), [`waypoint-mockup.html`](waypoint-mockup.html)  
@@ -27,51 +27,38 @@ by `scripts/verify-contracts.py`. This closes **contract design/drift only**; ro
 non-Pass (`Fail` or `Unverified`) until runtime, PostgreSQL, clean-room, security, and operator
 evidence satisfy their gates. All v2 deferrals remain unchanged.
 
-### Current final-acceptance evidence keys
+### Current completion-reconciliation evidence keys
 
-The `2026-08-25T20:05:43Z–20:09:16Z` acceptance retains exact current commands, UTC timestamps,
-exit codes, all **50** skipped release-critical tests, contract, egress, build, security, deployment,
-UX, and deferral inventories, current source defects, and the 67-row/EV reconciliation in
-[`release-evidence/current-v1-final-acceptance.md`](release-evidence/current-v1-final-acceptance.md)
-and [`release-evidence/current-v1-final-acceptance-artifacts/`](release-evidence/current-v1-final-acceptance-artifacts/).
+The `2026-08-27T22:13:26Z` reconciliation ran the shipped trusted release gate and retained its
+fail-closed browser preflight, environment, unit-mode report, all **48** release-critical skips,
+contract/lint/web checks, durable host/runtime artifacts, row transitions, and EV-01–EV-16
+reconciliation in
+[`release-evidence/v1-completion-reconciliation.md`](release-evidence/v1-completion-reconciliation.md)
+and [`release-evidence/v1-completion-reconciliation-artifacts/`](release-evidence/v1-completion-reconciliation-artifacts/).
 Historical files remain context only. Missing runtime artifacts remain release-blocking.
 
-- **ENV** — [current evidence boundary](release-evidence/current-v1-final-acceptance.md#evidence-boundary)
-- **CONTRACT** — [current checks](release-evidence/current-v1-final-acceptance.md#checks-rerun)
-- **DB** — [current checks and 50-skip disposition](release-evidence/current-v1-final-acceptance.md#checks-rerun)
-- **EGRESS** — [current startup mode and packet assertions](release-evidence/current-v1-final-acceptance.md#checks-rerun)
-- **WEB** — [current browser/dogfood disposition](release-evidence/current-v1-final-acceptance.md#mandatory-acceptance-conditions)
-- **DEPLOY** — [current build/deployment disposition](release-evidence/current-v1-final-acceptance.md#mandatory-acceptance-conditions)
-- **SOURCE** — [current release-stop defects](release-evidence/current-v1-final-acceptance.md#current-release-stop-defects)
-- **SCOPE** — [current deferral disposition](release-evidence/current-v1-final-acceptance.md#mandatory-acceptance-conditions)
+- **RECON** — [current trusted-gate reconciliation](release-evidence/v1-completion-reconciliation.md)
+- **ENV** — [current trusted-gate boundary](release-evidence/v1-completion-reconciliation.md#trusted-completion-gate)
+- **CONTRACT/DB** — [current unit-gate disposition](release-evidence/v1-completion-reconciliation.md#automated-tests)
+- **CAPTURE** — [current capture and attribution disposition](release-evidence/v1-completion-reconciliation.md#capture-raw-fallback-and-humanai-attribution)
+- **REPORT/LIFE** — [current report and teardown disposition](release-evidence/v1-completion-reconciliation.md#findings-report-and-bundle)
+- **WEB** — [current dogfood/accessibility disposition](release-evidence/v1-completion-reconciliation.md#dogfood-and-accessibility)
+- **SECURITY/PERF** — [current security and performance disposition](release-evidence/v1-completion-reconciliation.md#security)
+- **SCOPE** — [current deferral disposition](release-evidence/v1-completion-reconciliation.md#explicit-v2-deferrals)
 
-Current final-acceptance commands (raw output and qualifications are retained in the linked artifact
-directory):
+Current completion-reconciliation commands (raw output and qualifications are retained in the linked
+artifact directory):
 
 ```sh
-python3 scripts/verify-contracts.py
+make release-test RELEASE_TEST_OUT_DIR=docs/release-evidence/v1-completion-reconciliation-artifacts/release-test
+go run ./cmd/release-test --mode unit --out-dir docs/release-evidence/v1-completion-reconciliation-artifacts/unit-gate
 python3 scripts/lint-architecture.py
-go vet ./...
 make lint
-go test -count=1 -json ./...
-go test -race -count=1 ./...
-go test -count=1 -v ./internal/egresspolicy
-go test -count=1 -v ./internal/server -run '<performance/fault gate set>'
-go test -count=1 -v ./internal/server -run '<export gate set>'
 npm --prefix web test
 npm --prefix web run build
-go build -trimpath -o /tmp/release-fix-008-final-g5-waypoint-a ./cmd/waypoint
-# repeat Go/web builds and compare bytes
+go test -count=1 ./internal/releasegate
 docker compose -f compose.yml config --quiet
 docker info
-docker compose -f compose.yml build --no-cache
-docker compose -f compose.yml up -d --wait
-go test -count=1 -v -run '^TestComposeStackPersistsDBAndEvidenceAcrossRestart$' .
-python3 scripts/g1-foundation-report.py --output /tmp/release-fix-008-final-g5-g1.md
-make smoke
-bash scripts/ux-dogfood-host.sh docs/release-evidence/current-v1-final-acceptance-artifacts/ux-dogfood-runtime
-docker compose -f compose.yml down -v --remove-orphans
-make test
 ```
 
 ## 1. Product, data, and audit requirements
@@ -106,14 +93,14 @@ make test
 | PRD-CAP-007 | Official REST ingestion | Authenticated, versioned, idempotent REST capture is the common application service used by collectors. | V1-002, V1-010 | OpenAPI conformance and retry/conflict tests; G2 | Unverified | CONTRACT, DB, SOURCE |
 | PRD-CAP-008 | Official MCP ingestion | One standard MCP Streamable HTTP endpoint implements initialize/discovery/tools-call; only capture/status tools exist and use the same auth, validation, idempotency, problem, action, evidence, and audit service as REST. | V1-002, V1-012 | protocol conformance plus REST/MCP parity fixture/suite and closed tool inventory; G0/G2 | Unverified | CONTRACT, DB, SOURCE |
 | PRD-CAP-009 | Best-effort out-of-band detection | Server-assigned entity/result claims without a valid engagement-scoped captured action remain pending review; link/dismiss is authoritative and audited, and no claim is silently presented as captured. | V1-002, V1-019 | pending/link/dismiss fixtures, queue/API tests, resolution audit, boundary docs; G0/G3/G5 | Unverified | DB, SOURCE |
-| PRD-CAP-010 | Honest external-AI boundary | Docs state that wholly out-of-band AI or human execution cannot be guaranteed captured. | V1-019, V1-036 | doc assertion/release review; G5 | Fail | DB, SOURCE |
+| PRD-CAP-010 | Honest external-AI boundary | Docs state that wholly out-of-band AI or human execution cannot be guaranteed captured. | V1-019, V1-036 | doc assertion/release review; G5 | Pass | RECON, SOURCE |
 | PRD-CAP-011 | At-least durable, exactly-once materialization | Collector persists an actor/source capture ID until ack; server idempotency maps retries to one action and rejects mismatched duplicates. | V1-010, V1-013, V1-014 | retry/race/payload-conflict/failure injection; G2 | Unverified | ENV, DB, SOURCE |
 
 ## 3. Identity, networking, and real-time requirements
 
 | ID | PRD source / requirement | Executable interpretation | Tasks | Verification / gate | Status | Latest retained evidence |
 |---|---|---|---|---|---|
-| PRD-ID-001 | No shared token; named operators/accounts | Bootstrap provisions actor-specific high-entropy credentials; no anonymous/default/shared credential; tokens are shown once, digest-stored, role/engagement scoped, revocable. | V1-007, V1-031 | auth matrix, DB/log secret checks, two-operator journey; G1/G5 | Fail | ENV, DB, SOURCE |
+| PRD-ID-001 | No shared token; named operators/accounts | Bootstrap provisions actor-specific high-entropy credentials; no anonymous/default/shared credential; tokens are shown once, digest-stored, role/engagement scoped, revocable. | V1-007, V1-031 | auth matrix, DB/log secret checks, two-operator journey; G1/G5 | Unverified | RECON, ENV, DB, SOURCE |
 | PRD-ID-002 | AI actor first class | `actor.kind=ai_agent`, own token, mandatory human authorization metadata, same role isolation. | V1-007 | provisioning rejection/authorization/revocation tests; G1 | Unverified | ENV, DB, SOURCE |
 | PRD-NET-001 | Per-action exec host IP | Collector sends selected local source address and collection method/uncertainty; server does not substitute HTTP peer. | V1-002, V1-010, V1-013 | multi-interface fixture and field round trip; G2 | Unverified | ENV, DB, SOURCE |
 | PRD-NET-002 | Per-action egress and pivot chain | Capture stores public/NAT egress value/status/observation and ordered validated optional pivots. | V1-002, V1-005, V1-010 | mode and malformed pivot tests; G2 | Unverified | ENV, DB, SOURCE |
@@ -132,8 +119,8 @@ make test
 | PRD-REP-003 | SHA-256 every artifact | Manifest lists unique safe path/size/hash for every payload file; manifest is excluded from self-reference and a receipt binds the separate outer archive hash. | V1-001, V1-002, V1-029 | manifest/receipt schema; mutate/add/remove/path attack tests and all-entry verification; G0/G4 | Unverified | DB, WEB, SOURCE |
 | PRD-REP-004 | Signing deferred with hook | Manifest schema requires a versioned empty signature extension; UI/report says hash-verified and makes no signer-identity claim. | V1-001, V1-002, V1-029, V1-036 | schema fixture and claim/content scan; G0/G4/G5 | Unverified | DB, WEB, SOURCE |
 | PRD-REP-005 | Export remains live-safe | Server-owned persisted job records consistent cutoff, capacity preflight, progress/cancel/failure/recovery, completion, and immutable verified receipt while capture continues outside the snapshot. | V1-002, V1-029, V1-030, V1-032 | job state fixture; reconnect, concurrent capture/export, disk-full/interruption tests; G0/G4/G5 | Unverified | DB, WEB, SOURCE |
-| PRD-LIFE-001 | Disposable after export | Supported destroy command re-verifies exact bundle bytes against a persisted completed receipt, consumes a short-lived bound authorization, removes app/DB/evidence volumes, and documents break-glass/direct-admin limits. | V1-002, V1-030, V1-036 | receipt/authorization fixture; blocked-before-export, mutation/replay, successful teardown, forced warning tests; G0/G4/G5 | Fail | DB, WEB, SOURCE |
-| PRD-DEP-001 | One-step Compose setup | Clean `docker compose up` starts app + one PostgreSQL container with fresh reachable empty engagement path. | V1-005, V1-031 | clean Linux/macOS/Windows host smoke tests; G1/G5 | Unverified | ENV, DB, DEPLOY, SOURCE |
+| PRD-LIFE-001 | Disposable after export | Supported destroy command re-verifies exact bundle bytes against a persisted completed receipt, consumes a short-lived bound authorization, removes app/DB/evidence volumes, and documents break-glass/direct-admin limits. | V1-002, V1-030, V1-036 | receipt/authorization fixture; blocked-before-export, mutation/replay, successful teardown, forced warning tests; G0/G4/G5 | Unverified | RECON, DB, WEB, SOURCE |
+| PRD-DEP-001 | One-step Compose setup | Clean `docker compose up` starts app + one PostgreSQL container with fresh reachable empty engagement path. | V1-005, V1-031 | clean Linux/macOS/Windows host smoke tests; G1/G5 | Fail | RECON, ENV, DB, DEPLOY, SOURCE |
 | PRD-DEP-002 | Install script supported hosts | Idempotent Ubuntu 22.04/24.04 x86_64 install validates config, provisions stack/accounts, and exposes rollback/diagnostics. | V1-031 | clean/repeated VM install tests; G5 | Unverified | ENV, DB, DEPLOY, SOURCE |
 | PRD-DEP-003 | Account provisioning | Operational path creates named actors/accounts and one-time credentials without database hand-editing. | V1-007, V1-031 | clean-host provision/revoke/rotate journey; G1/G5 | Unverified | ENV, DB, DEPLOY, SOURCE |
 | PRD-DEP-004 | Sensitive local deployment | TLS outside loopback, restrictive secret/data permissions, redacted logs, and explicit host/disk encryption responsibility. | V1-005, V1-007, V1-033, V1-036 | config rejection, permission/log checks, docs; G5 | Fail | ENV, DB, DEPLOY, SOURCE |
@@ -207,26 +194,26 @@ dedicated ADR.
 
 ## 8. Release evidence index
 
-Reconciled against the current merged-code final acceptance. Do not mark the release complete if any applicable row lacks a durable artifact. See the [final EV disposition](release-evidence/current-v1-final-acceptance.md#ev-01ev-16).
+Reconciled against the trusted completion gate and current durable artifacts. Do not mark the release complete if any applicable row lacks a durable artifact. See the [current EV disposition](release-evidence/v1-completion-reconciliation.md#ev-01ev-16-disposition).
 
 | Evidence ID | Required artifact | Covers | Current state / location |
 |---|---|---|---|
-| EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Unverified · current core contracts pass, but no retained plugins compatibility/parser/runtime report exists. |
-| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Fail · 50 PostgreSQL/Compose tests skip and stored digest text remains accepted directly as bearer input. |
-| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Unverified · no collector-to-PostgreSQL transcript exists. |
+| EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Unverified · current core contracts pass, but plugins compatibility/parser/runtime input is unavailable. |
+| EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Fail · the unit gate reports 48 release-critical PostgreSQL/Compose skips; migration, constraints, and auth isolation are not established. |
+| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Fail · retained live collector/Compose transcript failed at startup and current PostgreSQL capture tests skip. |
 | EV-04 | Offline replay + platform matrix | PRD-CAP-004/005/011 | Unverified · no plugins replay/native-platform artifact exists. |
 | EV-05 | Egress mode packet assertions | PRD-NET-001/002/003 | Pass · retained startup resolver tests cover auto/manual/off and packet traps prove manual/off send no discovery traffic. |
 | EV-06 | Entity dedup/merge/split provenance report | PRD-DATA-004/005 | Unverified · PostgreSQL tests skip and no operator journey is retained. |
 | EV-07 | Two-browser SSE/concurrency recording | PRD-DATA-006, PRD-RT-001/002 | Unverified · PostgreSQL tests skip and no browser recording exists. |
-| EV-08 | Finding-to-evidence-to-report trace report | PRD-FIND-001/002, PRD-REP-001 | Unverified · report source improved, but DB tests skip and no authoritative real-Chromium PDF exists. |
-| EV-09 | Bundle manifest, outer hash, clean-room restore log | PRD-REP-002/003/004/005 | Fail · production dump remains partial JSON and no complete clean-room restore exists. |
-| EV-10 | Guarded teardown and post-wipe bundle verification | PRD-LIFE-001 | Fail · installer destroy verifies status/path rather than exact bytes/bound authorization; no post-wipe reconstruction ran. |
-| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Unverified · definitions/build syntax pass, but no daemon-backed stack or supported Ubuntu VM run is retained. |
-| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Fail · no measured baseline performance/fault report exists. |
-| EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Fail · no retained security assessment; auth, TLS/runtime-control, and operator-boundary defects remain. |
-| EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Unverified · the browser host runner is blocked and produced no screenshots/checklist. |
+| EV-08 | Finding-to-evidence-to-report trace report | PRD-FIND-001/002, PRD-REP-001 | Unverified · the authoritative PostgreSQL/Chromium journey skips. |
+| EV-09 | Bundle manifest, outer hash, clean-room restore log | PRD-REP-002/003/004/005 | Fail · production dump is not the required PostgreSQL custom format and no complete clean-room restore exists. |
+| EV-10 | Guarded teardown and post-wipe bundle verification | PRD-LIFE-001 | Unverified · exact-byte/bound-authorization source is remediated, but no post-wipe reconstruction ran. |
+| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Fail · retained daemon-backed Compose attempts produced an unhealthy app and no supported Ubuntu VM run passed. |
+| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Fail · retained values are fixture samples, while blocker records confirm no live baseline measurements. |
+| EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Fail · the boundary guide now passes, but no security assessment exists and TLS/default exposure remains unresolved. |
+| EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Unverified · no browser is available and no screenshots/checklist were produced. |
 | EV-15 | Accessibility tree/keyboard/axe/reduced-motion report | PRD-A11Y-001/002 | Unverified · no browser accessibility artifact exists. |
-| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pass · current architecture lint over 171 claim-surface files and focused inventory prove all seven v2 deferrals. |
+| EV-16 | Route/dependency/copy inventory proving deferrals | PRD-DEF-001–007 | Pass · current architecture lint over 205 claim-surface files and focused inventory prove all seven v2 deferrals. |
 
 ## 9. Planning coverage check
 

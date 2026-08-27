@@ -1,0 +1,2 @@
+ok  	waypoint	0.391s
+ok  	waypoint/internal/releasegate	0.004s

@@ -1,0 +1,14 @@
+mode=unit
+trace=automated-tests,PRD-QUAL-001,EV-01,EV-02
+repo_root=/workspace
+out_dir=docs/release-evidence/v1-completion-reconciliation-artifacts/unit-gate
+compose_file=compose.yml
+browser_binary=
+plugins_root=../Waypoint-Plugins
+compose=Docker Compose version 2.26.1-4
+docker=Docker version 26.1.5+dfsg1, build a72d7cd
+go=go1.24.4
+goarch=amd64
+goos=linux
+node=v22.23.2
+npm=10.9.8

@@ -1,0 +1,7 @@
+go vet ./...
+npm --prefix web run lint
+
+> lint
+> node --no-warnings scripts/check.mjs
+
+web skeleton, bundle manifest, and report fixture check passed
