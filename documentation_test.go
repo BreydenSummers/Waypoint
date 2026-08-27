@@ -12,6 +12,7 @@ func TestOperatorDocumentationCoverageAndLinks(t *testing.T) {
 	guide := readDoc(t, "docs/operator-guide.md")
 	matrix := readDoc(t, "docs/release-evidence/documentation/README.md")
 	coverage := readDoc(t, "docs/release-evidence/documentation/coverage.md")
+	traceability := readDoc(t, "docs/v1-traceability.md")
 
 	for _, want := range []string{
 		"## Supported setup",
@@ -25,11 +26,11 @@ func TestOperatorDocumentationCoverageAndLinks(t *testing.T) {
 		"## Break-glass guidance",
 		"## Limits and exclusions",
 		"docker compose up -d --build",
-		"scripts/waypoint-installer.sh validate --config",
-		"scripts/waypoint-installer.sh install   --config",
-		"scripts/waypoint-installer.sh provision --config",
-		"scripts/waypoint-installer.sh diagnostics --config",
-		"scripts/waypoint-installer.sh destroy --bundle",
+		"Use the installer on supported Ubuntu hosts (22.04/24.04 x86_64).",
+		"The installer is the supported path for account provisioning, service files, rollout, and rollback.",
+		"Operator wrapper | Supported on Windows, Linux, and macOS",
+		"Offline remote agent | Supported on Linux and macOS",
+		"Windows offline agent | Deferred to v2 / fast-follow",
 		"WAYPOINT_EGRESS_MODE=auto",
 		"WAYPOINT_EGRESS_MODE=manual",
 		"WAYPOINT_EGRESS_MODE=off",
@@ -71,6 +72,23 @@ func TestOperatorDocumentationCoverageAndLinks(t *testing.T) {
 			t.Fatalf("documentation matrix missing %q", want)
 		}
 	}
+
+	for _, want := range []string{
+		"| PRD-DEP-001 | One-step Compose setup |",
+		"clean Linux/macOS/Windows host smoke tests",
+		"| PRD-DEP-002 | Install script supported hosts |",
+		"Ubuntu 22.04/24.04 x86_64",
+		"| PRD-DEP-003 | Account provisioning |",
+		"named actors/accounts and one-time credentials",
+		"| PRD-DEP-004 | Sensitive local deployment |",
+		"TLS outside loopback, restrictive secret/data permissions, redacted logs, and explicit host/disk encryption responsibility.",
+		"| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Unverified",
+	} {
+		if !strings.Contains(traceability, want) {
+			t.Fatalf("traceability matrix missing %q", want)
+		}
+	}
+
 	v2Exclusions := strings.Join([]string{
 		"graph, zone map, guided ",
 		"scan" + " library, offensive ",
