@@ -265,6 +265,18 @@ func TestExportStreamingHelpersStayFileBounded(t *testing.T) {
 			t.Fatalf("export source missing %q", want)
 		}
 	}
+	for _, want := range []string{
+		"ORDER BY j.updated_at DESC, j.id DESC",
+		"AND (j.updated_at, j.id) < ($2, $3)",
+		"LIMIT $",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("export page query missing %q", want)
+		}
+	}
+	if strings.Contains(text, "row_number() OVER") {
+		t.Fatal("export page query unexpectedly uses a windowed scan")
+	}
 	for _, bad := range []string{
 		"os.ReadFile(filepath.Join(filepath.FromSlash(bundleDir), strings.TrimPrefix(payload.Path, \"bundle/\")))",
 		"bytes.Buffer",

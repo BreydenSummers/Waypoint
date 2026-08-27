@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -60,6 +61,11 @@ type exportJobPageResponse struct {
 type exportPageMeta struct {
 	NextCursor string `json:"nextCursor,omitempty"`
 	HasMore    bool   `json:"hasMore"`
+}
+
+type exportJobPageCursor struct {
+	UpdatedAt time.Time `json:"updatedAt"`
+	ID        string    `json:"id"`
 }
 
 type exportJobProgress struct {
@@ -435,7 +441,7 @@ func handleExportList(w http.ResponseWriter, r *http.Request, db *sql.DB, actor 
 		writeProblem(w, *pb)
 		return
 	}
-	after, pb := parseAuditCursorParam(r.URL.Query().Get("after"))
+	after, pb := parseExportJobCursorParam(r.URL.Query().Get("after"))
 	if pb != nil {
 		pb.RequestID = reqID
 		writeProblem(w, *pb)
@@ -452,7 +458,23 @@ func handleExportList(w http.ResponseWriter, r *http.Request, db *sql.DB, actor 
 	writeJSONWithHeaders(w, http.StatusOK, page, reqID)
 }
 
-func loadExportJobPage(ctx context.Context, db *sql.DB, engagementID string, after *int64, limit int) (exportJobPageResponse, error) {
+func parseExportJobCursorParam(v string) (*exportJobPageCursor, *captureProblem) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return nil, nil
+	}
+	b, err := base64.RawURLEncoding.DecodeString(v)
+	if err != nil {
+		return nil, &captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "cursor_invalid", Retryable: false, Detail: "cursor must be a valid page token."}
+	}
+	var cursor exportJobPageCursor
+	if err := json.Unmarshal(b, &cursor); err != nil || cursor.UpdatedAt.IsZero() || cursor.ID == "" {
+		return nil, &captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "cursor_invalid", Retryable: false, Detail: "cursor must be a valid page token."}
+	}
+	return &cursor, nil
+}
+
+func loadExportJobPage(ctx context.Context, db *sql.DB, engagementID string, after *exportJobPageCursor, limit int) (exportJobPageResponse, error) {
 	if limit < 1 {
 		limit = 100
 	}
@@ -462,33 +484,25 @@ func loadExportJobPage(ctx context.Context, db *sql.DB, engagementID string, aft
 	}
 	defer tx.Rollback()
 
-	var afterValue any
-	if after != nil {
-		afterValue = *after
+	query := `
+		SELECT j.id, j.engagement_id, j.requested_by, COALESCE(j.retry_of_job_id::text, '') AS retry_of_job_id, j.format_version, j.state, j.progress_stage, j.progress_percent,
+		       j.processed_bytes, j.estimated_total_bytes, COALESCE(j.snapshot_id::text, '') AS snapshot_id, j.cutoff, COALESCE(j.bundle_archive_path::text, '') AS bundle_archive_path,
+		       COALESCE(j.bundle_archive_byte_length, 0) AS bundle_archive_byte_length, COALESCE(j.bundle_archive_sha256::text, '') AS bundle_archive_sha256, COALESCE(j.bundle_manifest_sha256::text, '') AS bundle_manifest_sha256, COALESCE(j.bundle_report_snapshot_id::text, '') AS bundle_report_snapshot_id,
+		       COALESCE(j.bundle_receipt_id::text, '') AS bundle_receipt_id, COALESCE(j.failure_code::text, '') AS failure_code, COALESCE(j.failure_message::text, '') AS failure_message, COALESCE(j.failure_retryable, false) AS failure_retryable,
+		       j.created_at, j.started_at, j.completed_at, j.updated_at, j.revision,
+		       a.kind, a.handle, a.role, COALESCE(a.agent_name, '') AS agent_name, COALESCE(a.model, '') AS model, COALESCE(a.version, '') AS version, COALESCE(a.authorized_by::text, '') AS authorized_by
+		FROM export_job j
+		JOIN actor a ON a.id = j.requested_by
+		WHERE j.engagement_id = $1`
+	args := []any{engagementID}
+	if after != nil && !after.UpdatedAt.IsZero() && after.ID != "" {
+		query += ` AND (j.updated_at, j.id) < ($2, $3)`
+		args = append(args, after.UpdatedAt.UTC(), after.ID)
 	}
-	rows, err := tx.QueryContext(ctx, `
-		WITH ordered AS (
-			SELECT j.id, j.engagement_id, j.requested_by, COALESCE(j.retry_of_job_id::text, '') AS retry_of_job_id, j.format_version, j.state, j.progress_stage, j.progress_percent,
-			       j.processed_bytes, j.estimated_total_bytes, COALESCE(j.snapshot_id::text, '') AS snapshot_id, j.cutoff, COALESCE(j.bundle_archive_path::text, '') AS bundle_archive_path,
-			       COALESCE(j.bundle_archive_byte_length, 0) AS bundle_archive_byte_length, COALESCE(j.bundle_archive_sha256::text, '') AS bundle_archive_sha256, COALESCE(j.bundle_manifest_sha256::text, '') AS bundle_manifest_sha256, COALESCE(j.bundle_report_snapshot_id::text, '') AS bundle_report_snapshot_id,
-			       COALESCE(j.bundle_receipt_id::text, '') AS bundle_receipt_id, COALESCE(j.failure_code::text, '') AS failure_code, COALESCE(j.failure_message::text, '') AS failure_message, COALESCE(j.failure_retryable, false) AS failure_retryable,
-			       j.created_at, j.started_at, j.completed_at, j.updated_at, j.revision,
-			       a.kind, a.handle, a.role, COALESCE(a.agent_name, '') AS agent_name, COALESCE(a.model, '') AS model, COALESCE(a.version, '') AS version, COALESCE(a.authorized_by::text, '') AS authorized_by,
-			       row_number() OVER (ORDER BY j.updated_at DESC, j.id DESC) AS rn
-			FROM export_job j
-			JOIN actor a ON a.id = j.requested_by
-			WHERE j.engagement_id = $1
-		)
-		SELECT id, engagement_id, requested_by, retry_of_job_id, format_version, state, progress_stage, progress_percent,
-		       processed_bytes, estimated_total_bytes, snapshot_id, cutoff, bundle_archive_path,
-		       bundle_archive_byte_length, bundle_archive_sha256, bundle_manifest_sha256, bundle_report_snapshot_id,
-		       bundle_receipt_id, failure_code, failure_message, failure_retryable,
-		       created_at, started_at, completed_at, updated_at, revision,
-		       kind, handle, role, agent_name, model, version, authorized_by, rn
-		FROM ordered
-		WHERE rn > COALESCE($2::bigint, 0)
-		ORDER BY rn ASC
-		LIMIT $3`, engagementID, afterValue, limit+1)
+	query += ` ORDER BY j.updated_at DESC, j.id DESC LIMIT $` + strconv.Itoa(len(args)+1)
+	args = append(args, limit+1)
+
+	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return exportJobPageResponse{}, err
 	}
@@ -507,7 +521,7 @@ func loadExportJobPage(ctx context.Context, db *sql.DB, engagementID string, aft
 			continue
 		}
 		items = append(items, exportJobResponseFromRow(row.record))
-		lastCursor = fmt.Sprint(row.pageCursor)
+		lastCursor = encodePageCursor(exportJobPageCursor{UpdatedAt: row.record.UpdatedAt.UTC(), ID: row.record.ID})
 	}
 	if err := rows.Err(); err != nil {
 		return exportJobPageResponse{}, err
@@ -523,18 +537,16 @@ func loadExportJobPage(ctx context.Context, db *sql.DB, engagementID string, aft
 }
 
 func scanExportJobPageRow(rows *sql.Rows) (struct {
-	record     exportJobRecord
-	pageCursor int64
+	record exportJobRecord
 }, error) {
 	var row exportJobRecord
-	var pageCursor int64
-	if err := rows.Scan(&row.ID, &row.EngagementID, &row.RequestedBy.ID, &row.RetryOfJobID.String, &row.FormatVersion, &row.State, &row.ProgressStage, &row.ProgressPercent, &row.ProcessedBytes, &row.EstimatedTotalBytes, &row.SnapshotID.String, &row.Cutoff, &row.BundleArchivePath.String, &row.BundleArchiveLen.Int64, &row.BundleArchiveSHA.String, &row.BundleManifestSHA.String, &row.BundleReportSnapID.String, &row.BundleReceiptID.String, &row.FailureCode.String, &row.FailureMessage.String, &row.FailureRetryable.Bool, &row.CreatedAt, &row.StartedAt, &row.CompletedAt, &row.UpdatedAt, &row.Revision, &row.RequestedBy.Kind, &row.RequestedBy.Handle, &row.RequestedBy.Role, &row.RequestedBy.AgentName, &row.RequestedBy.Model, &row.RequestedBy.Version, &row.RequestedBy.AuthorizedBy, &pageCursor); err != nil {
+	if err := rows.Scan(&row.ID, &row.EngagementID, &row.RequestedBy.ID, &row.RetryOfJobID.String, &row.FormatVersion, &row.State, &row.ProgressStage, &row.ProgressPercent, &row.ProcessedBytes, &row.EstimatedTotalBytes, &row.SnapshotID.String, &row.Cutoff, &row.BundleArchivePath.String, &row.BundleArchiveLen.Int64, &row.BundleArchiveSHA.String, &row.BundleManifestSHA.String, &row.BundleReportSnapID.String, &row.BundleReceiptID.String, &row.FailureCode.String, &row.FailureMessage.String, &row.FailureRetryable.Bool, &row.CreatedAt, &row.StartedAt, &row.CompletedAt, &row.UpdatedAt, &row.Revision, &row.RequestedBy.Kind, &row.RequestedBy.Handle, &row.RequestedBy.Role, &row.RequestedBy.AgentName, &row.RequestedBy.Model, &row.RequestedBy.Version, &row.RequestedBy.AuthorizedBy); err != nil {
 		return struct {
-			record     exportJobRecord
-			pageCursor int64
+			record exportJobRecord
 		}{}, err
 	}
 	row.RequestedBy.EngagementID = row.EngagementID
+	row.UpdatedAt = row.UpdatedAt.UTC()
 	if row.RetryOfJobID.String == "" {
 		row.RetryOfJobID.Valid = false
 	}
@@ -563,9 +575,8 @@ func scanExportJobPageRow(rows *sql.Rows) (struct {
 		row.FailureMessage.Valid = false
 	}
 	return struct {
-		record     exportJobRecord
-		pageCursor int64
-	}{record: row, pageCursor: pageCursor}, nil
+		record exportJobRecord
+	}{record: row}, nil
 }
 
 func handleExportCreate(w http.ResponseWriter, r *http.Request, db *sql.DB, mgr *exportManager, actor actorRecord, reqID string) {
