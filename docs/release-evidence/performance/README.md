@@ -1,10 +1,11 @@
 # performance benchmark evidence
 
-Status: blocked in this sandbox; the repeatable benchmark inputs and read-path indexes are in place, but a real PostgreSQL DSN was not available here.
+Status: blocked in this sandbox; the repeatable harness is retained as raw samples, but a real PostgreSQL DSN was not available here.
 
 ## Required profile
 
 - Source profile: `contracts/v1/fixtures/performance-profile.json`
+- Raw sample report: `samples/raw-profile.json`
 - Hardware: 4 vCPU / 8 GiB / Linux
 - Operators: 10
 - Actions: 100000
@@ -27,13 +28,13 @@ Status: blocked in this sandbox; the repeatable benchmark inputs and read-path i
 
 - `audit_event_engagement_id_idx` for keyset audit reads
 - `export_job_engagement_updated_at_idx` for export job list paging
-- retained sample outputs under `samples/`
+- raw samples under `samples/` tracing PRD-PERF-001 through PRD-PERF-003 and EV-12
 
 ## Reproducible run
 
 1. Set `WAYPOINT_TEST_PG_DSN` to a real PostgreSQL instance.
 2. Apply migrations.
-3. Run the benchmark harness and capture raw outputs under this directory.
+3. Run `python3 scripts/performance-report.py` to re-render the retained summary from the raw samples.
 4. Regenerate this summary from the retained samples.
 
 Current retained samples:
@@ -41,4 +42,5 @@ Current retained samples:
 - `samples/performance-gate.txt`
 - `samples/real-db-blocked.txt`
 - `samples/go-test-all.txt`
+- `samples/raw-profile.json`
 
