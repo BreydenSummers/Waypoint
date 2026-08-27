@@ -1,0 +1,2 @@
+BLOCKER: Playwright is unavailable on this host; install it to capture browser screenshots, accessibility trees, and keyboard-flow evidence.
+Cannot find package 'playwright' imported from /workspace/scripts/ux-dogfood-browser.mjs

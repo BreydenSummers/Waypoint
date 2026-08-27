@@ -1,8 +1,11 @@
 package server
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -185,15 +188,15 @@ func TestFindingsReportWorkflowAuthoritativeRealPostgresJourney(t *testing.T) {
 	if reportJSONRR.Code != http.StatusOK {
 		t.Fatalf("report json status = %d body=%s", reportJSONRR.Code, reportJSONRR.Body.String())
 	}
-	var reportSnapshot reportSnapshot
-	if err := json.Unmarshal(reportJSONRR.Body.Bytes(), &reportSnapshot); err != nil {
+	var liveReport reportSnapshot
+	if err := json.Unmarshal(reportJSONRR.Body.Bytes(), &liveReport); err != nil {
 		t.Fatalf("decode report snapshot: %v", err)
 	}
-	if len(reportSnapshot.Findings) != 1 || reportSnapshot.Findings[0].Evidence[0] != "Action 1" || reportSnapshot.Findings[0].AffectedEntityIDs[0] != entityID {
-		t.Fatalf("report snapshot findings = %#v", reportSnapshot.Findings)
+	if len(liveReport.Findings) != 1 || liveReport.Findings[0].Evidence[0] != "Action 1" || liveReport.Findings[0].AffectedEntityIDs[0] != entityID {
+		t.Fatalf("report snapshot findings = %#v", liveReport.Findings)
 	}
-	if len(reportSnapshot.Evidence) != 1 || !strings.Contains(reportSnapshot.Evidence[0].RawStdout, "stdout") || reportSnapshot.Evidence[0].Attribution == "" {
-		t.Fatalf("report snapshot evidence = %#v", reportSnapshot.Evidence[0])
+	if len(liveReport.Evidence) != 1 || !strings.Contains(liveReport.Evidence[0].RawStdout, "stdout") || liveReport.Evidence[0].Attribution == "" {
+		t.Fatalf("report snapshot evidence = %#v", liveReport.Evidence[0])
 	}
 
 	reportPDFReq := httptest.NewRequest(http.MethodGet, "/api/v1/engagements/"+engagementID+"/summit/report.pdf", nil)
@@ -241,7 +244,71 @@ func TestFindingsReportWorkflowAuthoritativeRealPostgresJourney(t *testing.T) {
 		t.Fatalf("completed export = %#v", completed)
 	}
 
+	receiptResp := httptest.NewRequest(http.MethodGet, "/api/v1/export-receipts/"+completed.Bundle.ReceiptID, nil)
+	receiptResp.Header.Set("Authorization", "Bearer "+humanToken)
+	receiptResp.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	receiptGetRR := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(receiptGetRR, receiptResp)
+	if receiptGetRR.Code != http.StatusOK {
+		t.Fatalf("export receipt status = %d body=%s", receiptGetRR.Code, receiptGetRR.Body.String())
+	}
+	var receipt exportReceiptResponse
+	if err := json.Unmarshal(receiptGetRR.Body.Bytes(), &receipt); err != nil {
+		t.Fatalf("decode export receipt: %v", err)
+	}
+	if receipt.ID != completed.Bundle.ReceiptID || receipt.ExportJobID != completed.ID || receipt.Status != "verified" || receipt.BundlePath != "bundle" || receipt.ArchiveSHA256 != completed.Bundle.ArchiveSHA256 || receipt.ManifestSHA256 != completed.Bundle.ManifestSHA256 || receipt.VerifiedBy.Kind != "human" || receipt.VerifiedBy.Handle != "alex.operator" {
+		t.Fatalf("export receipt = %#v", receipt)
+	}
+
 	bundleRoot := filepath.Join(exportRoot, completed.ID, "bundle")
+	archivePath := filepath.Join(exportRoot, completed.ID, completed.Bundle.ArchivePath)
+	archiveFile, err := os.Open(archivePath)
+	if err != nil {
+		t.Fatalf("open raw archive: %v", err)
+	}
+	defer archiveFile.Close()
+	gz, err := gzip.NewReader(archiveFile)
+	if err != nil {
+		t.Fatalf("open raw archive gzip: %v", err)
+	}
+	defer gz.Close()
+	archiveFiles := map[string]string{}
+	for tr := tar.NewReader(gz); ; {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("read raw archive entry: %v", err)
+		}
+		data, err := io.ReadAll(tr)
+		if err != nil {
+			t.Fatalf("read raw archive payload: %v", err)
+		}
+		archiveFiles[hdr.Name] = string(data)
+	}
+	for _, want := range []string{"bundle/database/engagement.dump", "bundle/report/frozen-report.pdf", "bundle/report/report-snapshot.json", "bundle/metadata/export-manifest.json"} {
+		if _, ok := archiveFiles[want]; !ok {
+			t.Fatalf("raw archive missing %q", want)
+		}
+	}
+	var rawDump struct {
+		Actions  []map[string]any `json:"actions"`
+		Findings []map[string]any `json:"findings"`
+	}
+	if err := json.Unmarshal([]byte(archiveFiles["bundle/database/engagement.dump"]), &rawDump); err != nil {
+		t.Fatalf("decode raw export dump: %v", err)
+	}
+	if len(rawDump.Actions) != 1 || rawDump.Actions[0]["id"] != attackAck.ActionID || rawDump.Actions[0]["actor_id"] != humanID || rawDump.Actions[0]["initiated_by"] != "manual" {
+		t.Fatalf("raw export action attribution = %#v", rawDump.Actions)
+	}
+	if len(rawDump.Findings) != 1 || rawDump.Findings[0]["evidence_action_ids"] == nil {
+		t.Fatalf("raw export findings = %#v", rawDump.Findings)
+	}
+	if ids, ok := rawDump.Findings[0]["evidence_action_ids"].([]any); !ok || len(ids) != 1 || ids[0] != attackAck.ActionID {
+		t.Fatalf("raw export finding evidence = %#v", rawDump.Findings[0]["evidence_action_ids"])
+	}
+
 	verifyCmd := exec.Command("node", filepath.Join(bundleRoot, "tools", "verify-restore.mjs"), ".")
 	verifyCmd.Dir = bundleRoot
 	verifyOut, err := verifyCmd.CombinedOutput()
@@ -266,6 +333,68 @@ func TestFindingsReportWorkflowAuthoritativeRealPostgresJourney(t *testing.T) {
 	regenHTML := string(regenBytes)
 	if !strings.Contains(regenHTML, "Hash verified, not signed") || !strings.Contains(regenHTML, "Anonymous shares exposed") || !strings.Contains(regenHTML, "bundle/tools/verify-restore.mjs") {
 		t.Fatalf("regenerated report missing frozen bundle details: %s", regenHTML)
+	}
+
+	reportSnapshotBytes, err := os.ReadFile(filepath.Join(bundleRoot, "report", "report-snapshot.json"))
+	if err != nil {
+		t.Fatalf("read frozen snapshot: %v", err)
+	}
+	var reportSnapshotData reportSnapshot
+	if err := json.Unmarshal(reportSnapshotBytes, &reportSnapshotData); err != nil {
+		t.Fatalf("decode frozen snapshot: %v", err)
+	}
+	if len(reportSnapshotData.Findings) != 1 || reportSnapshotData.Findings[0].Title != "Anonymous shares exposed" || len(reportSnapshotData.Findings[0].Evidence) != 1 || reportSnapshotData.Findings[0].Evidence[0] != "Action 1" {
+		t.Fatalf("frozen snapshot findings = %#v", reportSnapshotData.Findings)
+	}
+	if len(reportSnapshotData.Evidence) != 1 || reportSnapshotData.Evidence[0].Label != "Action 1" || reportSnapshotData.Evidence[0].Attribution == "" || !strings.Contains(reportSnapshotData.Evidence[0].Attribution, "10.0.0.12") {
+		t.Fatalf("frozen snapshot evidence = %#v", reportSnapshotData.Evidence[0])
+	}
+	if len(reportSnapshotData.Attribution) == 0 || len(reportSnapshotData.Attribution[0].Items) == 0 || reportSnapshotData.Attribution[0].Items[0] != "alex.operator" {
+		t.Fatalf("frozen snapshot attribution = %#v", reportSnapshotData.Attribution)
+	}
+
+	manifestBytes, err := os.ReadFile(filepath.Join(bundleRoot, "metadata", "export-manifest.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	var manifest struct {
+		FormatVersion string `json:"formatVersion"`
+		ExportJobID   string `json:"exportJobId"`
+		EngagementID  string `json:"engagementId"`
+		Cutoff        string `json:"cutoff"`
+		Payloads      []struct {
+			Path string `json:"path"`
+			Kind string `json:"kind"`
+		} `json:"payloads"`
+		Signatures struct {
+			Version string   `json:"version"`
+			Items   []string `json:"items"`
+		} `json:"signatures"`
+	}
+	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
+		t.Fatalf("decode manifest: %v", err)
+	}
+	if manifest.FormatVersion != "1.0.0" || manifest.ExportJobID != completed.ID || manifest.EngagementID != engagementID || manifest.Cutoff == "" || manifest.Signatures.Version != "v1" || len(manifest.Signatures.Items) != 0 {
+		t.Fatalf("manifest metadata = %#v", manifest)
+	}
+	for _, want := range []struct {
+		path string
+		kind string
+	}{
+		{path: "bundle/database/engagement.dump", kind: "database_dump"},
+		{path: "bundle/report/frozen-report.pdf", kind: "report_pdf"},
+		{path: "bundle/report/report-snapshot.json", kind: "report_snapshot"},
+	} {
+		seen := false
+		for _, payload := range manifest.Payloads {
+			if payload.Path == want.path && payload.Kind == want.kind {
+				seen = true
+				break
+			}
+		}
+		if !seen {
+			t.Fatalf("manifest missing %q/%q payload = %#v", want.path, want.kind, manifest.Payloads)
+		}
 	}
 
 	if completed.Bundle.ArchiveSHA256 == "" || completed.Bundle.ManifestSHA256 == "" {

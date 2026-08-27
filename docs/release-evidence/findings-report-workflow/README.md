@@ -9,3 +9,4 @@ Retained checkpoints for EV-08 / EV-09 / EV-10.
 Notes:
 - The authoritative real-PostgreSQL + real-Chromium journey is gated by `WAYPOINT_TEST_PG_DSN` and `WAYPOINT_CHROMIUM`.
 - Local verification here covers compilation plus bundle/tooling contract tests.
+- Sandbox blocker artifacts from the host/browser dogfood attempt are retained in `ux-dogfood-host/blocker.txt` and `ux-dogfood-browser/blocker.txt`.
