@@ -50,3 +50,15 @@
 
 ## Blocker
 This sandbox does not provide a runnable browser or a live PostgreSQL service, so I could not capture authoritative screenshots, accessibility tree output, keyboard transcript, axe report, or reduced-motion playback from the running app. The visual dogfood pass therefore remains unverified here and must be completed in a browser-enabled environment.
+
+## Current attempt
+- `go test ./...` → passed
+- `cd web && npm test` → passed
+- `cd web && npm run build` → passed
+- `bash scripts/ux-dogfood-host.sh /tmp/waypoint-ux-dogfood-check` → blocked (`Docker daemon unavailable`)
+- `node scripts/ux-dogfood-browser.mjs --base-url http://127.0.0.1:8080 --out-dir /tmp/waypoint-ux-browser-check` → blocked (`Playwright is unavailable on this host`)
+- `curl -fsS http://127.0.0.1:8080/readyz` → no service listening
+
+## Notes
+- I could not validate the required light/dark/mobile screenshots, accessibility tree, keyboard transcript, axe report, contrast run, or reduced-motion evidence because the app could not be launched in this sandbox.
+- No product defects were directly observed in a live UI session; the only confirmed blockers were environment-level.
