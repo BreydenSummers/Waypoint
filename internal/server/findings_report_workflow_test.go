@@ -262,6 +262,13 @@ func TestFindingsReportWorkflowAuthoritativeRealPostgresJourney(t *testing.T) {
 
 	bundleRoot := filepath.Join(exportRoot, completed.ID, "bundle")
 	archivePath := filepath.Join(exportRoot, completed.ID, completed.Bundle.ArchivePath)
+	archiveSHA, _, err := fileSHA256(archivePath)
+	if err != nil {
+		t.Fatalf("hash raw archive: %v", err)
+	}
+	if archiveSHA != completed.Bundle.ArchiveSHA256 {
+		t.Fatalf("raw archive sha256 = %s, want %s", archiveSHA, completed.Bundle.ArchiveSHA256)
+	}
 	archiveFile, err := os.Open(archivePath)
 	if err != nil {
 		t.Fatalf("open raw archive: %v", err)
@@ -371,6 +378,9 @@ func TestFindingsReportWorkflowAuthoritativeRealPostgresJourney(t *testing.T) {
 			Items   []string `json:"items"`
 		} `json:"signatures"`
 	}
+	if sha256HexBytes(manifestBytes) != completed.Bundle.ManifestSHA256 {
+		t.Fatalf("raw manifest sha256 mismatch: %s, want %s", sha256HexBytes(manifestBytes), completed.Bundle.ManifestSHA256)
+	}
 	if err := json.Unmarshal(manifestBytes, &manifest); err != nil {
 		t.Fatalf("decode manifest: %v", err)
 	}
@@ -438,11 +448,24 @@ func TestFindingsReportWorkflowAuthoritativeRealPostgresJourney(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post-wipe verify failed: %v output=%s", err, string(postWipeOut))
 	}
-	postWipeRegen := exec.Command("node", filepath.Join(bundleRoot, "tools", "regenerate-report.mjs"), ".", filepath.Join(bundleRoot, "post-wipe-report.html"))
+	postWipeReportPath := filepath.Join(bundleRoot, "post-wipe-report.html")
+	postWipeRegen := exec.Command("node", filepath.Join(bundleRoot, "tools", "regenerate-report.mjs"), ".", postWipeReportPath)
 	postWipeRegen.Dir = bundleRoot
 	postWipeRegenOut, err := postWipeRegen.CombinedOutput()
 	if err != nil {
 		t.Fatalf("post-wipe regenerate failed: %v output=%s", err, string(postWipeRegenOut))
+	}
+	postWipeReportBytes, err := os.ReadFile(postWipeReportPath)
+	if err != nil {
+		t.Fatalf("read post-wipe regenerated report: %v", err)
+	}
+	if string(postWipeReportBytes) != regenHTML {
+		t.Fatalf("post-wipe regenerated report changed:\npre-wipe=%s\npost-wipe=%s", regenHTML, string(postWipeReportBytes))
+	}
+	replayRR := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(replayRR, consumeReq)
+	if replayRR.Code != http.StatusConflict || !strings.Contains(replayRR.Body.String(), "teardown authorization is not available for consumption") {
+		t.Fatalf("replay consume = %d body=%s", replayRR.Code, replayRR.Body.String())
 	}
 }
 
