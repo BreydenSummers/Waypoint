@@ -61,14 +61,18 @@ func TestComposeStackStartsCleanlyTwice(t *testing.T) {
 	})
 
 	for i := 0; i < 2; i++ {
-		runCompose("up", "-d", "--wait", "--build")
+		buildOut := mustComposeBuildNoCache(t, ctx, project, overridePath)
+		t.Logf("docker compose build --no-cache (cycle %d):\n%s", i+1, strings.TrimSpace(buildOut))
+		upOut := runCompose("up", "-d", "--wait")
+		t.Logf("docker compose up --wait (cycle %d):\n%s", i+1, strings.TrimSpace(upOut))
 		port := waitForComposePort(t, ctx, project, overridePath)
 		baseURL := "http://127.0.0.1:" + port
 
 		waitForHTTP(t, baseURL+"/readyz", http.StatusOK)
 		assertHTTPBodyContains(t, baseURL+"/engagements/demo", http.StatusOK, `id="root"`)
 
-		runCompose("down", "-v", "--remove-orphans")
+		downOut := runCompose("down", "-v", "--remove-orphans")
+		t.Logf("docker compose down -v --remove-orphans (cycle %d):\n%s", i+1, strings.TrimSpace(downOut))
 		if got := strings.TrimSpace(runCompose("ps", "-q")); got != "" {
 			t.Fatalf("cycle %d compose ps = %q, want empty", i+1, got)
 		}
@@ -113,7 +117,10 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 		_, _ = composeOutput(cleanupCtx, project, overridePath, "down", "-v", "--remove-orphans")
 	})
 
-	runCompose("up", "-d", "--wait", "--build")
+	buildOut := mustComposeBuildNoCache(t, ctx, project, overridePath)
+	t.Logf("docker compose build --no-cache:\n%s", strings.TrimSpace(buildOut))
+	upOut := runCompose("up", "-d", "--wait")
+	t.Logf("docker compose up --wait:\n%s", strings.TrimSpace(upOut))
 	port := waitForComposePort(t, ctx, project, overridePath)
 	baseURL := "http://127.0.0.1:" + port
 
@@ -222,7 +229,8 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 		t.Fatalf("stderr evidence = %q, want %q", got, stderr)
 	}
 
-	runCompose("down", "-v", "--remove-orphans")
+	downOut := runCompose("down", "-v", "--remove-orphans")
+	t.Logf("docker compose down -v --remove-orphans:\n%s", strings.TrimSpace(downOut))
 	if got := strings.TrimSpace(runCompose("ps", "-q")); got != "" {
 		t.Fatalf("post-teardown compose ps = %q, want empty", got)
 	}
@@ -245,6 +253,15 @@ func mustComposeExec(t *testing.T, ctx context.Context, project, overridePath st
 	if err != nil {
 		t.Fatalf("docker compose %s failed: %v\n%s", strings.Join(args, " "), err, out)
 	}
+}
+
+func mustComposeBuildNoCache(t *testing.T, ctx context.Context, project, overridePath string) string {
+	t.Helper()
+	out, err := composeOutput(ctx, project, overridePath, "build", "--no-cache", "--progress", "plain")
+	if err != nil {
+		t.Fatalf("docker compose build --no-cache failed: %v\n%s", err, out)
+	}
+	return out
 }
 
 func waitForComposePort(t *testing.T, ctx context.Context, project, overridePath string) string {
