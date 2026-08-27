@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -825,11 +824,11 @@ func TestExportJobListIsPagedAndResumable(t *testing.T) {
 	if len(page.Items) != 1 || !page.Page.HasMore || page.Page.NextCursor == "" {
 		t.Fatalf("page = %#v", page)
 	}
-	after, err := strconv.ParseInt(page.Page.NextCursor, 10, 64)
-	if err != nil {
-		t.Fatalf("parse next cursor: %v", err)
+	after, pb := parseExportJobCursorParam(page.Page.NextCursor)
+	if pb != nil {
+		t.Fatalf("parse next cursor: %#v", pb)
 	}
-	resumed, err := loadExportJobPage(ctx, db, engagementID, &after, 1)
+	resumed, err := loadExportJobPage(ctx, db, engagementID, after, 1)
 	if err != nil {
 		t.Fatalf("load resumed export page: %v", err)
 	}
