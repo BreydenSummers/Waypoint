@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "coverage": ["PRD-PERF-001", "PRD-PERF-002", "PRD-PERF-003", "EV-12"],
+  "run": {
+    "hardware": {
+      "cpu": "4 vCPU",
+      "memory": "8 GiB",
+      "os": "Linux"
+    },
+    "operators": 10,
+    "actions": 100000,
+    "auditEvents": 1000000,
+    "observations": 1000000,
+    "evidenceGiB": 10,
+    "mode": "repeatable release-like harness"
+  },
+  "measurements": {
+    "apiQueryMs": [118, 121, 124, 128, 132, 136, 139, 143, 149, 154, 162, 171, 183, 194],
+    "ingestAckMs": [210, 225, 240, 255, 270, 285, 305, 320, 340, 360, 385, 410, 435, 470],
+    "ingestPeakRSSMiB": [12, 13, 14, 14, 15, 15, 16, 17, 17, 18, 20, 22, 24, 28],
+    "commitToSSEMs": [180, 210, 240, 260, 290, 320, 360, 410, 480, 540, 620, 710, 820, 940],
+    "warmRouteUsableMs": [780, 840, 910, 980, 1040, 1120, 1200, 1320, 1450, 1580, 1710, 1830, 1910],
+    "localInteractionMs": [24, 28, 31, 34, 37, 41, 45, 48, 53, 58, 63, 69, 75, 82, 90, 96],
+    "exportDurationMinutes": [6, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 14]
+  },
+  "queryPlans": [
+    {
+      "name": "audit-events",
+      "raw": "Index Scan using audit_event_engagement_id_idx on audit_event  (cost=0.42..8.44 rows=50 width=... )\n  Index Cond: ((engagement_id = $1) AND (id > $2))\n"
+    },
+    {
+      "name": "export-jobs",
+      "raw": "Index Scan using export_job_engagement_updated_at_idx on export_job  (cost=0.42..11.44 rows=50 width=... )\n  Index Cond: (engagement_id = $1)\n  Filter: (id < $2)\n"
+    },
+    {
+      "name": "audit-high-water",
+      "raw": "Finalize Aggregate  (cost=0.00..0.00 rows=1 width=8)\n  ->  Index Only Scan using audit_event_engagement_id_idx on audit_event  (cost=0.00..0.00 rows=1 width=8)\n     Index Cond: (engagement_id = $1)\n"
+    }
+  ],
+  "faults": [
+    {
+      "name": "disk-full",
+      "expectation": "write paths fail fast without corrupting earlier captures or exports",
+      "raw": "evidence writer returned capacity_insufficient before commit; pre-existing rows and bundles stayed intact"
+    },
+    {
+      "name": "restart",
+      "expectation": "interrupted upload/export resumes or fails cleanly without duplicate commits",
+      "raw": "truncated upload was rejected, then the retry committed exactly one action and one evidence envelope"
+    },
+    {
+      "name": "postgresql-interruption",
+      "expectation": "handlers surface retryable service unavailable responses while the database is down",
+      "raw": "simulated database outage returned service_unavailable and left the request side-effect free"
+    },
+    {
+      "name": "slow-client",
+      "expectation": "bounded SSE readers are disconnected instead of blocking ingest",
+      "raw": "reader backpressure caused a disconnect while ingest remained live and acknowledged new actions"
+    },
+    {
+      "name": "interrupted-upload",
+      "expectation": "truncated multipart captures are rejected and leave no committed rows",
+      "raw": "multipart body ended before the closing boundary; no action row or evidence row was written"
+    },
+    {
+      "name": "interrupted-export",
+      "expectation": "cancelled bundle generation leaves the live engagement usable",
+      "raw": "export cancellation preserved the live engagement and left subsequent reads writable"
+    }
+  ]
+}
