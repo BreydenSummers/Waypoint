@@ -1,0 +1,123 @@
+Error: go exited 1: ostgreSQL gate tests
+--- SKIP: TestExportJobListIsPagedAndResumable (0.00s)
+=== RUN   TestBundleToolsAreStandaloneAndVersioned
+--- PASS: TestBundleToolsAreStandaloneAndVersioned (0.00s)
+=== RUN   TestFindingPromotionRevisionsAndOperatorOnlyPromotion
+    finding_test.go:16: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestFindingPromotionRevisionsAndOperatorOnlyPromotion (0.00s)
+=== RUN   TestG3AuthoritativeProvenanceJourney
+    g3_journey_test.go:17: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestG3AuthoritativeProvenanceJourney (0.00s)
+=== RUN   TestMCPStandardFlowReusesCaptureService
+    mcp_test.go:18: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestMCPStandardFlowReusesCaptureService (0.00s)
+=== RUN   TestNotableAlertRuleFixtures
+=== RUN   TestNotableAlertRuleFixtures/successful_authentication
+=== RUN   TestNotableAlertRuleFixtures/first_newly_reachable_segment
+--- PASS: TestNotableAlertRuleFixtures (0.00s)
+    --- PASS: TestNotableAlertRuleFixtures/successful_authentication (0.00s)
+    --- PASS: TestNotableAlertRuleFixtures/first_newly_reachable_segment (0.00s)
+=== RUN   TestNotableAlertsAreDeduplicatedAndStreamed
+    notable_alerts_test.go:85: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestNotableAlertsAreDeduplicatedAndStreamed (0.00s)
+=== RUN   TestNotableAlertSelectionIsDeterministic
+=== RUN   TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order
+=== RUN   TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order
+--- PASS: TestNotableAlertSelectionIsDeterministic (0.00s)
+    --- PASS: TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order (0.00s)
+    --- PASS: TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order (0.00s)
+=== RUN   TestNotableAlertsUseSystemActorForAISourceCaptures
+    notable_alerts_test.go:190: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestNotableAlertsUseSystemActorForAISourceCaptures (0.00s)
+=== RUN   TestStructuredResultValidationGatesNotableAlerts
+--- PASS: TestStructuredResultValidationGatesNotableAlerts (0.00s)
+=== RUN   TestBuildOutOfBandClaimPendingAndLinked
+--- PASS: TestBuildOutOfBandClaimPendingAndLinked (0.00s)
+=== RUN   TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable
+--- PASS: TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable (0.00s)
+=== RUN   TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable
+--- PASS: TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable (0.00s)
+=== RUN   TestOutOfBandClaimLifecycleThroughPostgreSQL
+    out_of_band_claims_test.go:111: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestOutOfBandClaimLifecycleThroughPostgreSQL (0.00s)
+=== RUN   TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios
+--- PASS: TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios (0.00s)
+=== RUN   TestAuditQueryShapeRemainsKeysetBounded
+--- PASS: TestAuditQueryShapeRemainsKeysetBounded (0.00s)
+=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase
+=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history
+=== RUN   TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest
+--- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase (0.00s)
+    --- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history (0.00s)
+    --- PASS: TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest (0.00s)
+=== RUN   TestReadCaptureRequestRejectsInterruptedMultipartUpload
+--- PASS: TestReadCaptureRequestRejectsInterruptedMultipartUpload (0.01s)
+=== RUN   TestCaptureEnvelopeLimitMatchesSchemaCeiling
+--- PASS: TestCaptureEnvelopeLimitMatchesSchemaCeiling (0.00s)
+=== RUN   TestReadCaptureRequestRejectsOversizedEnvelope
+--- PASS: TestReadCaptureRequestRejectsOversizedEnvelope (0.02s)
+=== RUN   TestCopyEvidenceStreamRejectsOverLimit
+--- PASS: TestCopyEvidenceStreamRejectsOverLimit (0.00s)
+=== RUN   TestExportStreamingHelpersStayFileBounded
+--- PASS: TestExportStreamingHelpersStayFileBounded (0.00s)
+=== RUN   TestCopyEvidenceStreamKeeps10GiBLimitPathWithinRSSBudget
+--- PASS: TestCopyEvidenceStreamKeeps10GiBLimitPathWithinRSSBudget (0.07s)
+=== RUN   TestUpsertEvidenceRejectsImmutableMetadataChanges
+    performance_fault_test.go:273: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestUpsertEvidenceRejectsImmutableMetadataChanges (0.00s)
+=== RUN   TestCaptureIngestRejectsDiskPressureBeforeCommitting
+    performance_fault_test.go:315: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestCaptureIngestRejectsDiskPressureBeforeCommitting (0.00s)
+=== RUN   TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication
+    performance_fault_test.go:356: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication (0.00s)
+=== RUN   TestAssembleReportSnapshotOrdersSectionsAndGaps
+--- PASS: TestAssembleReportSnapshotOrdersSectionsAndGaps (0.00s)
+=== RUN   TestReportHandlerRequiresAuthAndScopesEngagement
+    report_test.go:159: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests
+--- SKIP: TestReportHandlerRequiresAuthAndScopesEngagement (0.00s)
+=== RUN   TestRenderReportHTMLAndPDFEscapeHostileContent
+--- PASS: TestRenderReportHTMLAndPDFEscapeHostileContent (0.02s)
+=== RUN   TestLoadFrozenReportSnapshotFromBundle
+--- PASS: TestLoadFrozenReportSnapshotFromBundle (0.00s)
+=== RUN   TestRuntimeEndpointReturnsStartupEgressState
+--- PASS: TestRuntimeEndpointReturnsStartupEgressState (0.00s)
+=== RUN   TestHandlerServesHealthAndSPA
+--- PASS: TestHandlerServesHealthAndSPA (0.01s)
+=== RUN   TestReadyzRequiresDatabase
+--- PASS: TestReadyzRequiresDatabase (0.00s)
+=== RUN   TestReadyzChecksDatabaseHealth
+--- PASS: TestReadyzChecksDatabaseHealth (0.00s)
+=== RUN   TestRequiredAssetsPresentDetectsMissingAsset
+--- PASS: TestRequiredAssetsPresentDetectsMissingAsset (0.00s)
+PASS
+ok  	waypoint/internal/server	0.144s
+=== RUN   TestEmbeddedAssetsMatchDeterministicWebBuild
+--- PASS: TestEmbeddedAssetsMatchDeterministicWebBuild (0.10s)
+PASS
+ok  	waypoint/internal/webassets	0.103s
+=== RUN   TestInstallerValidatesInstallsUpgradesAndRollsBack
+=== PAUSE TestInstallerValidatesInstallsUpgradesAndRollsBack
+=== RUN   TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass
+--- PASS: TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass (1.27s)
+=== RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown
+=== RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64
+=== RUN   TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64
+--- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown (2.05s)
+    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64 (1.08s)
+    --- PASS: TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64 (0.97s)
+=== RUN   TestInstallerRollbackAcceptsTargetVersionAndPreservesState
+=== PAUSE TestInstallerRollbackAcceptsTargetVersionAndPreservesState
+=== RUN   TestInstallerRejectsUnsupportedHostMatrix
+=== RUN   TestInstallerRejectsUnsupportedHostMatrix/unsupported-os
+=== RUN   TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch
+--- PASS: TestInstallerRejectsUnsupportedHostMatrix (0.08s)
+    --- PASS: TestInstallerRejectsUnsupportedHostMatrix/unsupported-os (0.04s)
+    --- PASS: TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch (0.04s)
+=== CONT  TestInstallerValidatesInstallsUpgradesAndRollsBack
+=== CONT  TestInstallerRollbackAcceptsTargetVersionAndPreservesState
+--- PASS: TestInstallerRollbackAcceptsTargetVersionAndPreservesState (0.98s)
+--- PASS: TestInstallerValidatesInstallsUpgradesAndRollsBack (1.55s)
+PASS
+ok  	waypoint/scripts	4.955s
+FAIL

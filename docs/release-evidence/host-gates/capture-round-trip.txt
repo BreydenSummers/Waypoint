@@ -1,0 +1,7 @@
+Error: go exited 1: === RUN   TestComposeLiveCollectorInteropTranscripts
+    compose_live_interop_test.go:86: docker compose up -d --wait --build failed: exit status 17
+        open /home/breyden/.docker/buildx/refs/default/default/.tmp-wucm4cwzc2hx84zq41ouyxoam1920778374: read-only file system
+--- FAIL: TestComposeLiveCollectorInteropTranscripts (0.46s)
+FAIL
+FAIL	waypoint	0.469s
+FAIL
