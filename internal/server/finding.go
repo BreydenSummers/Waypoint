@@ -325,6 +325,9 @@ func applyFindingPromotion(ctx context.Context, tx *sql.Tx, actor actorRecord, r
 		}
 		affected = derived
 	}
+	if len(affected) == 0 {
+		return findingItem{}, badField("/affectedEntityIds", "missing_field", "affectedEntityIds is required."), nil
+	}
 
 	findingID := newUUID()
 	now := time.Now().UTC()
@@ -403,6 +406,9 @@ func applyFindingUpdate(ctx context.Context, tx *sql.Tx, actor actorRecord, find
 			return findingItem{}, pb, nil
 		}
 		affected := normalizeUUIDs(*req.AffectedEntityIDs)
+		if len(affected) == 0 {
+			return findingItem{}, badField("/affectedEntityIds", "missing_field", "affectedEntityIds is required."), nil
+		}
 		if !equalStringSlices(affected, updated.AffectedEntityIDs) {
 			updated.AffectedEntityIDs = affected
 			changed = true
