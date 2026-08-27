@@ -1,0 +1,8 @@
+Attempted benchmark run could not connect to PostgreSQL in this sandbox.
+
+Required environment:
+- WAYPOINT_TEST_PG_DSN
+- PostgreSQL 16+ with the v1 migrations applied
+
+Observed blocker:
+- no database service available, so no live p95/p99, RSS, SSE, warm-route, or export timings were collected

@@ -1,0 +1,4 @@
+Expected plan shape for audit pagination:
+- index-backed keyset scan on audit_event using (engagement_id, id)
+- no OFFSET or full engagement sort
+- high-water cursor read remains a bounded MAX(id) lookup

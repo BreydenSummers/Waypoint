@@ -1,0 +1,8 @@
+=== RUN   TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios
+--- PASS: TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios (0.00s)
+=== RUN   TestPerformanceReadIndexesCoverBudgetedListPaths
+--- PASS: TestPerformanceReadIndexesCoverBudgetedListPaths (0.00s)
+=== RUN   TestAuditQueryShapeRemainsKeysetBounded
+--- PASS: TestAuditQueryShapeRemainsKeysetBounded (0.00s)
+PASS
+ok  	waypoint/internal/server	0.010s

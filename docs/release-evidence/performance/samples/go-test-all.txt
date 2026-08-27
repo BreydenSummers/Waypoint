@@ -1,0 +1,7 @@
+ok  	waypoint	0.459s
+ok  	waypoint/cmd/waypoint	0.005s
+ok  	waypoint/internal/db	0.005s
+ok  	waypoint/internal/egresspolicy	0.407s
+ok  	waypoint/internal/server	0.114s
+ok  	waypoint/internal/webassets	0.090s
+ok  	waypoint/scripts	4.720s
