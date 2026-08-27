@@ -42,5 +42,10 @@
 | EV-14 | Unverified | No live light/dark desktop/mobile screenshots could be captured. |
 | EV-15 | Unverified | No live accessibility-tree, keyboard, axe, or reduced-motion browser artifact could be captured. |
 
+## Remediation note
+- Fixed the trail-map accessibility duplication: the decorative SVG map is now hidden from the accessibility tree, leaving the ordered waypoint list and live shortcut buttons as the non-visual equivalent.
+- Before: the SVG announced as an image in addition to the waypoint navigation, which would have cluttered the screen-reader path.
+- After: the accessible trail remains the ordered list / shortcut buttons only, matching the design spec more cleanly.
+
 ## Conclusion
 The web bundle and source checks are current, but the required real-browser dogfood pass still needs a host with Docker, PostgreSQL, and a browser automation runtime.

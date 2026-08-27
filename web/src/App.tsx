@@ -1768,7 +1768,7 @@ export function App() {
         <section className="map-column">
           <section className="map-card" aria-label="Engagement trail map">
             <div className="map-stage">
-              <svg viewBox="0 0 640 300" role="img" aria-label="Trail map with waypoint buttons">
+              <svg viewBox="0 0 640 300" aria-hidden="true" focusable="false">
                 <rect width="640" height="300" className="map-terrain" />
                 <path d="M60 252 C 132 234, 148 194, 206 182 C 270 168, 286 220, 350 204 C 402 190, 420 148, 472 126 C 516 108, 548 84, 590 60" className="trail-path" />
                 <path d="M0 84 Q 138 44, 250 76 T 470 62 T 640 84" className="contours" />
