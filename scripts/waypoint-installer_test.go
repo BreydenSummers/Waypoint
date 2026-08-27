@@ -1,15 +1,22 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
@@ -320,6 +327,192 @@ func mustWriteJSON(t *testing.T, path string, value any) {
 	mustWriteFile(t, path, string(b)+"\n")
 }
 
+func mustWriteVerifiedBundle(t *testing.T, root string) (string, string, string) {
+	t.Helper()
+	bundleDir := filepath.Join(root, "bundle-src")
+	mustMkdirAll(t, filepath.Join(bundleDir, "database"))
+	mustMkdirAll(t, filepath.Join(bundleDir, "metadata"))
+	mustMkdirAll(t, filepath.Join(bundleDir, "report"))
+	mustMkdirAll(t, filepath.Join(bundleDir, "tools"))
+
+	mustWriteFile(t, filepath.Join(bundleDir, "database", "engagement.dump"), "dump\n")
+	mustWriteFile(t, filepath.Join(bundleDir, "metadata", "export-metadata.json"), "{\"export\":\"metadata\"}\n")
+	mustWriteFile(t, filepath.Join(bundleDir, "report", "report-snapshot.json"), "snapshot\n")
+	mustWriteFile(t, filepath.Join(bundleDir, "report", "frozen-report.pdf"), "%PDF-1.4\n")
+	mustWriteFile(t, filepath.Join(bundleDir, "tools", "verify-restore.mjs"), "console.log('verify')\n")
+
+	payloads := []map[string]any{
+		{"path": "bundle/database/engagement.dump", "byteLength": int64(len("dump\n")), "sha256": sha256HexString("dump\n"), "kind": "database"},
+		{"path": "bundle/metadata/export-metadata.json", "byteLength": int64(len("{\"export\":\"metadata\"}\n")), "sha256": sha256HexString("{\"export\":\"metadata\"}\n"), "kind": "metadata"},
+		{"path": "bundle/report/report-snapshot.json", "byteLength": int64(len("snapshot\n")), "sha256": sha256HexString("snapshot\n"), "kind": "report_snapshot"},
+		{"path": "bundle/report/frozen-report.pdf", "byteLength": int64(len("%PDF-1.4\n")), "sha256": sha256HexString("%PDF-1.4\n"), "kind": "pdf"},
+		{"path": "bundle/tools/verify-restore.mjs", "byteLength": int64(len("console.log('verify')\n")), "sha256": sha256HexString("console.log('verify')\n"), "kind": "tool"},
+	}
+	manifest := map[string]any{
+		"formatVersion": "1.0.0",
+		"exportJobId":   "77777777-7777-4777-8777-777777777777",
+		"engagementId":  "11111111-1111-4111-8111-111111111111",
+		"cutoff":        "2025-01-10T09:02:14Z",
+		"payloads":      payloads,
+		"signatures":    map[string]any{"version": "v1", "items": []string{}},
+	}
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal bundle manifest: %v", err)
+	}
+	manifestBytes = append(manifestBytes, '\n')
+	mustWriteFile(t, filepath.Join(bundleDir, "metadata", "export-manifest.json"), string(manifestBytes))
+
+	archivePath := filepath.Join(root, "bundle", "verified-export.tar.gz")
+	mustWriteTarGz(t, archivePath, bundleDir)
+	return archivePath, sha256HexFile(t, archivePath), sha256HexBytes(manifestBytes)
+}
+
+func mustWriteTamperedBundleWithExtraEntry(t *testing.T, sourceArchivePath, destinationArchivePath string) string {
+	t.Helper()
+	src, err := os.Open(sourceArchivePath)
+	if err != nil {
+		t.Fatalf("open source archive: %v", err)
+	}
+	defer src.Close()
+	gz, err := gzip.NewReader(src)
+	if err != nil {
+		t.Fatalf("read source archive: %v", err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+
+	if err := os.MkdirAll(filepath.Dir(destinationArchivePath), 0o755); err != nil {
+		t.Fatalf("mkdir destination archive dir: %v", err)
+	}
+	dst, err := os.Create(destinationArchivePath)
+	if err != nil {
+		t.Fatalf("create destination archive: %v", err)
+	}
+	defer dst.Close()
+	gw := gzip.NewWriter(dst)
+	gw.Header.ModTime = zeroTime
+	gw.Header.OS = 255
+	zw := tar.NewWriter(gw)
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("read source tar entry: %v", err)
+		}
+		copyHdr := *hdr
+		copyHdr.ModTime = zeroTime
+		copyHdr.AccessTime = time.Time{}
+		copyHdr.ChangeTime = time.Time{}
+		if err := zw.WriteHeader(&copyHdr); err != nil {
+			t.Fatalf("write source tar header %s: %v", hdr.Name, err)
+		}
+		if hdr.Size > 0 {
+			if _, err := io.Copy(zw, tr); err != nil {
+				t.Fatalf("copy source tar entry %s: %v", hdr.Name, err)
+			}
+		}
+	}
+
+	extra := []byte("teardown review note\n")
+	if err := zw.WriteHeader(&tar.Header{Name: "bundle/notes/teardown-review.txt", Mode: 0o600, Size: int64(len(extra)), ModTime: zeroTime, Uid: 0, Gid: 0}); err != nil {
+		t.Fatalf("write extra tar header: %v", err)
+	}
+	if _, err := zw.Write(extra); err != nil {
+		t.Fatalf("write extra tar entry: %v", err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close tar writer: %v", err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatalf("close gzip writer: %v", err)
+	}
+	return sha256HexFile(t, destinationArchivePath)
+}
+
+func mustWriteTarGz(t *testing.T, archivePath, bundleDir string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(archivePath), 0o755); err != nil {
+		t.Fatalf("mkdir archive dir: %v", err)
+	}
+	f, err := os.Create(archivePath)
+	if err != nil {
+		t.Fatalf("create archive: %v", err)
+	}
+	gw := gzip.NewWriter(f)
+	gw.Header.ModTime = zeroTime
+	gw.Header.OS = 255
+	zw := tar.NewWriter(gw)
+	var files []string
+	if err := filepath.Walk(bundleDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if path == bundleDir || info.IsDir() {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	}); err != nil {
+		t.Fatalf("walk bundle dir: %v", err)
+	}
+	sort.Strings(files)
+	for _, path := range files {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat %s: %v", path, err)
+		}
+		rel, err := filepath.Rel(bundleDir, path)
+		if err != nil {
+			t.Fatalf("rel %s: %v", path, err)
+		}
+		hdr := &tar.Header{Name: filepath.ToSlash(filepath.Join("bundle", rel)), Mode: int64(info.Mode().Perm()), Size: info.Size(), ModTime: zeroTime, AccessTime: zeroTime, ChangeTime: zeroTime, Uid: 0, Gid: 0}
+		if err := zw.WriteHeader(hdr); err != nil {
+			t.Fatalf("write header %s: %v", path, err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if _, err := zw.Write(data); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("close tar: %v", err)
+	}
+	if err := gw.Close(); err != nil {
+		t.Fatalf("close gzip: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("close archive: %v", err)
+	}
+}
+
+func sha256HexString(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+func sha256HexBytes(value []byte) string {
+	sum := sha256.Sum256(value)
+	return hex.EncodeToString(sum[:])
+}
+
+func sha256HexFile(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return sha256HexBytes(data)
+}
+
+var zeroTime = time.Unix(0, 0).UTC()
+
 func mustWriteExecutable(t *testing.T, path, content string) {
 	t.Helper()
 	mustWriteFile(t, path, content)
@@ -362,8 +555,69 @@ type destroyFixture struct {
 }
 
 func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing.T) {
-	blocked := setupDestroyFixture(t)
-	wrongBundle := filepath.Join(filepath.Dir(blocked.bundlePath), "wrong.tar")
+	var createReqBody, consumeReqBody []byte
+	var createSeen, consumeSeen bool
+	var expectedArchiveSHA, expectedManifestSHA, expectedBundlePath string
+	teardownServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/readyz":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"ready"}`))
+		case r.URL.Path == "/api/v1/teardown-authorizations" && r.Method == http.MethodPost:
+			if got := r.Header.Get("Authorization"); got != "Bearer destroy-token" {
+				t.Fatalf("create authorization auth header = %q", got)
+			}
+			if got := r.Header.Get("Waypoint-Contract-Version"); got != "1.0.0" {
+				t.Fatalf("create authorization contract version = %q", got)
+			}
+			createSeen = true
+			createReqBody, _ = io.ReadAll(r.Body)
+			var req struct {
+				ReceiptID      string `json:"receiptId"`
+				BundlePath     string `json:"bundlePath"`
+				ArchiveSHA256  string `json:"archiveSha256"`
+				ManifestSHA256 string `json:"manifestSha256"`
+				Confirmation   string `json:"confirmation"`
+			}
+			if err := json.Unmarshal(createReqBody, &req); err != nil {
+				t.Fatalf("decode create authorization body: %v", err)
+			}
+			if req.BundlePath != expectedBundlePath || req.ArchiveSHA256 != expectedArchiveSHA || req.ManifestSHA256 != expectedManifestSHA || req.Confirmation != "destroy verified engagement data" {
+				t.Fatalf("create authorization body = %#v expected bundle=%q archive=%q manifest=%q", req, expectedBundlePath, expectedArchiveSHA, expectedManifestSHA)
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"contractVersion":"1.0.0","id":"grant-1","engagementId":"11111111-1111-4111-8111-111111111111","receiptId":"receipt-q3-2025-01-10","exportJobId":"77777777-7777-4777-8777-777777777777","bundlePath":"` + expectedBundlePath + `","archiveSha256":"` + expectedArchiveSHA + `","manifestSha256":"` + expectedManifestSHA + `","requestedBy":{"id":"00000000-0000-0000-0000-000000000010","kind":"human","handle":"alice","role":"owner"},"requestedAt":"2025-01-10T09:02:14Z","expiresAt":"2025-01-10T09:07:14Z","status":"authorized"}`))
+		case r.URL.Path == "/api/v1/teardown-authorizations/grant-1/consume" && r.Method == http.MethodPost:
+			if got := r.Header.Get("Authorization"); got != "Bearer destroy-token" {
+				t.Fatalf("consume authorization auth header = %q", got)
+			}
+			consumeSeen = true
+			consumeReqBody, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"contractVersion":"1.0.0","id":"grant-1","engagementId":"11111111-1111-4111-8111-111111111111","receiptId":"receipt-q3-2025-01-10","exportJobId":"77777777-7777-4777-8777-777777777777","bundlePath":"` + expectedBundlePath + `","archiveSha256":"` + expectedArchiveSHA + `","manifestSha256":"` + expectedManifestSHA + `","requestedBy":{"id":"00000000-0000-0000-0000-000000000010","kind":"human","handle":"alice","role":"owner"},"requestedAt":"2025-01-10T09:02:14Z","expiresAt":"2025-01-10T09:07:14Z","status":"consumed","consumedAt":"2025-01-10T09:02:15Z"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(teardownServer.Close)
+
+	blocked := setupDestroyFixtureForHost(t, "24.04", "x86_64", teardownServer.URL)
+	var receipt struct {
+		BundlePath     string `json:"bundlePath"`
+		ArchiveSHA256  string `json:"archiveSha256"`
+		ManifestSHA256 string `json:"manifestSha256"`
+	}
+	receiptBytes, err := os.ReadFile(blocked.receiptPath)
+	if err != nil {
+		t.Fatalf("read receipt: %v", err)
+	}
+	if err := json.Unmarshal(receiptBytes, &receipt); err != nil {
+		t.Fatalf("decode receipt: %v", err)
+	}
+	expectedBundlePath = receipt.BundlePath
+	expectedArchiveSHA = receipt.ArchiveSHA256
+	expectedManifestSHA = receipt.ManifestSHA256
+	wrongBundle := filepath.Join(filepath.Dir(blocked.bundlePath), "wrong.tar.gz")
 	mustWriteFile(t, wrongBundle, "wrong bundle")
 
 	failed := runInstallerExpectFailure(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", blocked.bundlePath)
@@ -382,10 +636,54 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 		t.Fatalf("install root removed on failed destroy: %v", err)
 	}
 
-	runInstaller(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", blocked.bundlePath, "--receipt", blocked.receiptPath)
+	tamperedBundle := filepath.Join(filepath.Dir(blocked.bundlePath), "tampered.tar.gz")
+	tamperedArchiveSHA := mustWriteTamperedBundleWithExtraEntry(t, blocked.bundlePath, tamperedBundle)
+	mustWriteJSON(t, blocked.receiptPath, map[string]any{
+		"status":         "verified",
+		"receiptId":      "receipt-q3-2025-01-10",
+		"verifiedAt":     "2025-01-10T09:02:14Z",
+		"bundlePath":     tamperedBundle,
+		"archiveSha256":  tamperedArchiveSHA,
+		"manifestSha256": expectedManifestSHA,
+	})
+	expectedBundlePath = tamperedBundle
+	expectedArchiveSHA = tamperedArchiveSHA
+
+	failed = runInstallerExpectFailure(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", tamperedBundle, "--receipt", blocked.receiptPath)
+	if !strings.Contains(failed, "unexpected archive entry") {
+		t.Fatalf("destroy with extra archive entry failed with %q, want archive inventory guard", failed)
+	}
+	if _, err := os.Stat(blocked.installRoot); err != nil {
+		t.Fatalf("install root removed on archive guard failure: %v", err)
+	}
+
+	mustWriteJSON(t, blocked.receiptPath, map[string]any{
+		"status":         "verified",
+		"receiptId":      "receipt-q3-2025-01-10",
+		"verifiedAt":     "2025-01-10T09:02:14Z",
+		"bundlePath":     receipt.BundlePath,
+		"archiveSha256":  receipt.ArchiveSHA256,
+		"manifestSha256": receipt.ManifestSHA256,
+	})
+	expectedBundlePath = receipt.BundlePath
+	expectedArchiveSHA = receipt.ArchiveSHA256
+	expectedManifestSHA = receipt.ManifestSHA256
+
+	destroyOutput := runInstaller(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", blocked.bundlePath, "--receipt", blocked.receiptPath)
+	if !strings.Contains(destroyOutput, "teardown authorization requested") || !strings.Contains(destroyOutput, "teardown authorization consumed") {
+		t.Fatalf("destroy output missing authorization lifecycle:\n%s", destroyOutput)
+	}
 	for _, path := range []string{blocked.installRoot, blocked.stateRoot, blocked.logRoot} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("expected %s to be removed, got err=%v", path, err)
+		}
+	}
+	if !createSeen || !consumeSeen {
+		t.Fatalf("teardown authorization calls missing: create=%q consume=%q", createReqBody, consumeReqBody)
+	}
+	for _, want := range []string{`"receiptId":`, `"archiveSha256":`, `"manifestSha256":`} {
+		if !strings.Contains(string(createReqBody), want) {
+			t.Fatalf("create authorization body missing %q: %s", want, createReqBody)
 		}
 	}
 	installedLog, err := os.ReadFile(filepath.Join(filepath.Dir(blocked.configPath), "installer-calls.log"))
@@ -417,7 +715,16 @@ func TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown(t *testing.
 		{name: "ubuntu-24.04-x86_64", osVer: "24.04", machine: "x86_64"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			fixture := setupDestroyFixtureForHost(t, tc.osVer, tc.machine)
+			readyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/readyz" {
+					http.NotFound(w, r)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"status":"ready"}`))
+			}))
+			t.Cleanup(readyServer.Close)
+			fixture := setupDestroyFixtureForHost(t, tc.osVer, tc.machine, readyServer.URL)
 			statePath := filepath.Join(fixture.stateRoot, "install.state")
 			firstHumanToken := readToken(t, filepath.Join(fixture.stateRoot, "tokens", "00000000-0000-0000-0000-000000000010.token"))
 			firstAIToken := readToken(t, filepath.Join(fixture.stateRoot, "tokens", "00000000-0000-0000-0000-000000000011.token"))
@@ -437,7 +744,7 @@ func TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown(t *testing.
 				}
 			}
 
-			runInstaller(t, fixture.scriptPath, fixture.env, fixture.workDir, "destroy", "--config", fixture.configPath, "--bundle", fixture.bundlePath, "--receipt", fixture.receiptPath)
+			runInstaller(t, fixture.scriptPath, fixture.env, fixture.workDir, "destroy", "--config", fixture.configPath, "--bundle", fixture.bundlePath, "--receipt", fixture.receiptPath, "--force")
 			for _, path := range []string{fixture.installRoot, fixture.stateRoot, fixture.logRoot} {
 				if _, err := os.Stat(path); !os.IsNotExist(err) {
 					t.Fatalf("expected %s to be removed after teardown, got err=%v", path, err)
@@ -467,7 +774,16 @@ func TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown(t *testing.
 func TestInstallerRollbackAcceptsTargetVersionAndPreservesState(t *testing.T) {
 	t.Parallel()
 
-	fixture := setupDestroyFixtureForHost(t, "24.04", "x86_64")
+	readyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/readyz" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	}))
+	t.Cleanup(readyServer.Close)
+	fixture := setupDestroyFixtureForHost(t, "24.04", "x86_64", readyServer.URL)
 	before, err := os.ReadFile(filepath.Join(fixture.stateRoot, "install.state"))
 	if err != nil {
 		t.Fatalf("read state before rollback: %v", err)
@@ -552,10 +868,19 @@ func TestInstallerRejectsUnsupportedHostMatrix(t *testing.T) {
 }
 
 func setupDestroyFixture(t *testing.T) destroyFixture {
-	return setupDestroyFixtureForHost(t, "24.04", "x86_64")
+	readyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/readyz" {
+			http.NotFound(w, r)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ready"}`))
+	}))
+	t.Cleanup(readyServer.Close)
+	return setupDestroyFixtureForHost(t, "24.04", "x86_64", readyServer.URL)
 }
 
-func setupDestroyFixtureForHost(t *testing.T, osVersion, machine string) destroyFixture {
+func setupDestroyFixtureForHost(t *testing.T, osVersion, machine, publicURL string) destroyFixture {
 	t.Helper()
 
 	root := t.TempDir()
@@ -582,20 +907,10 @@ func setupDestroyFixtureForHost(t *testing.T, osVersion, machine string) destroy
 	mustWriteExecutable(t, filepath.Join(stubDir, "psql"), "#!/bin/sh\necho psql \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
 	mustWriteExecutable(t, filepath.Join(stubDir, "pg_isready"), "#!/bin/sh\necho pg_isready \"$*\" >> \"$INSTALLER_STUB_LOG\"\nexit 0\n")
 
-	readyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/readyz" {
-			http.NotFound(w, r)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ready"}`))
-	}))
-	t.Cleanup(readyServer.Close)
-
 	configPath := filepath.Join(root, "installer.env")
 	mustWriteFile(t, configPath, strings.Join([]string{
 		"WAYPOINT_VERSION=1.0.0",
-		"WAYPOINT_PUBLIC_URL=" + readyServer.URL,
+		"WAYPOINT_PUBLIC_URL=" + publicURL,
 		"WAYPOINT_DB_DSN=postgres://waypoint:waypoint@localhost:5432/waypoint?sslmode=disable",
 		"WAYPOINT_PACKAGE_PATH=" + packagePath,
 		"WAYPOINT_INSTALL_ROOT=" + installRoot,
@@ -633,20 +948,21 @@ func setupDestroyFixtureForHost(t *testing.T, osVersion, machine string) destroy
 		},
 	})
 
-	bundlePath := filepath.Join(root, "bundle", "verified-export.tar")
-	mustWriteFile(t, bundlePath, "bundle")
+	bundlePath, archiveSHA, manifestSHA := mustWriteVerifiedBundle(t, root)
 	receiptPath := filepath.Join(root, "receipt.json")
 	mustWriteJSON(t, receiptPath, map[string]any{
-		"status":       "verified",
-		"receiptId":    "receipt-q3-2025-01-10",
-		"verifiedAt":   "2025-01-10T09:02:14Z",
-		"bundlePath":   bundlePath,
-		"manifestHash": "8e0f1d2c3b4a59687766554433221100ffeeddccbbaa99887766554433221100",
+		"status":         "verified",
+		"receiptId":      "receipt-q3-2025-01-10",
+		"verifiedAt":     "2025-01-10T09:02:14Z",
+		"bundlePath":     bundlePath,
+		"archiveSha256":  archiveSHA,
+		"manifestSha256": manifestSHA,
 	})
 
 	env := baseInstallerEnv(osRelease)
 	env = append(env,
 		"WAYPOINT_INSTALLER_UNAME_MACHINE="+machine,
+		"WAYPOINT_DESTROY_TOKEN=destroy-token",
 		"PATH="+stubDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"INSTALLER_STUB_LOG="+stubLog,
 	)

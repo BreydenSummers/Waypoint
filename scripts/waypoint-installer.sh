@@ -14,6 +14,7 @@ LOG_ROOT=""
 DRY_RUN=0
 DESTROY_FORCE=0
 ROLLBACK_VERSION=""
+DESTROY_TOKEN=${WAYPOINT_DESTROY_TOKEN:-}
 
 FAIL_AT=${WAYPOINT_INSTALLER_FAIL_AT:-}
 OS_RELEASE_FILE=${WAYPOINT_INSTALLER_OS_RELEASE_FILE:-/etc/os-release}
@@ -655,13 +656,15 @@ rollback() {
   echo "$backup_dir"
 }
 
-verify_export_receipt() {
+verify_destroy_bundle() {
   local receipt_file=$1
   local bundle_path=$2
   python3 - "$receipt_file" "$bundle_path" <<'PY'
+import hashlib
 import json
 import pathlib
 import sys
+import tarfile
 
 receipt_path = pathlib.Path(sys.argv[1]).resolve(strict=False)
 bundle_path = pathlib.Path(sys.argv[2]).resolve(strict=False)
@@ -681,9 +684,149 @@ if not receipt_bundle and isinstance(data.get('bundle'), dict):
     receipt_bundle = data['bundle'].get('path')
 if not receipt_bundle:
     raise SystemExit('receipt missing bundlePath')
-
 if pathlib.Path(str(receipt_bundle)).resolve(strict=False) != bundle_path:
     raise SystemExit('receipt bundle path does not match the requested bundle')
+
+archive_sha = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
+with tarfile.open(bundle_path, 'r:*') as archive:
+    archive_members = [member for member in archive.getmembers() if member.isfile()]
+    members = {member.name: member for member in archive_members}
+    manifest_name = next((name for name in ('bundle/metadata/export-manifest.json', 'metadata/export-manifest.json') if name in members), None)
+    if manifest_name is None:
+        raise SystemExit('bundle manifest missing from archive')
+    manifest_member = members[manifest_name]
+    manifest_bytes = archive.extractfile(manifest_member).read()
+    manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+    manifest = json.loads(manifest_bytes)
+    if not isinstance(manifest, dict):
+        raise SystemExit('bundle manifest must be a JSON object')
+    if str(manifest.get('formatVersion', '')).strip() != '1.0.0':
+        raise SystemExit('unsupported bundle manifest version')
+    if not isinstance(manifest.get('exportJobId'), str) or not manifest['exportJobId'].strip():
+        raise SystemExit('bundle manifest missing exportJobId')
+    if not isinstance(manifest.get('engagementId'), str) or not manifest['engagementId'].strip():
+        raise SystemExit('bundle manifest missing engagementId')
+    if not isinstance(manifest.get('cutoff'), str) or not manifest['cutoff'].strip():
+        raise SystemExit('bundle manifest missing cutoff')
+    signatures = manifest.get('signatures')
+    if not isinstance(signatures, dict) or signatures.get('version') != 'v1' or signatures.get('items') != []:
+        raise SystemExit('bundle manifest signature hook must be versioned and empty')
+    payloads = manifest.get('payloads')
+    if not isinstance(payloads, list) or not payloads:
+        raise SystemExit('bundle manifest has no payloads')
+    expected = {manifest_name}
+    for payload in payloads:
+        if not isinstance(payload, dict):
+            raise SystemExit('bundle manifest payload must be an object')
+        path = payload.get('path')
+        kind = payload.get('kind')
+        if not isinstance(path, str) or not path.strip():
+            raise SystemExit('bundle manifest payload missing path')
+        if path.startswith('/') or path.startswith('./') or path.startswith('../') or '\\' in path:
+            raise SystemExit(f'unsafe bundle path: {path}')
+        if not isinstance(kind, str) or not kind.strip():
+            raise SystemExit(f'bundle manifest payload missing kind: {path}')
+        if path in expected:
+            raise SystemExit(f'duplicate bundle path: {path}')
+        expected.add(path)
+        member = members.get(path)
+        if member is None:
+            raise SystemExit(f'missing archive entry: {path}')
+        if not isinstance(payload.get('byteLength'), int) or member.size != payload['byteLength']:
+            raise SystemExit(f'size mismatch for {path}')
+        payload_bytes = archive.extractfile(member).read()
+        if hashlib.sha256(payload_bytes).hexdigest() != payload.get('sha256'):
+            raise SystemExit(f'sha256 mismatch for {path}')
+
+    seen = set()
+    for member in archive_members:
+        if member.name in seen:
+            raise SystemExit(f'duplicate archive entry: {member.name}')
+        if member.name not in expected:
+            raise SystemExit(f'unexpected archive entry: {member.name}')
+        seen.add(member.name)
+    for name in expected:
+        if name not in seen:
+            raise SystemExit(f'missing archive entry: {name}')
+
+    receipt_archive_sha = str(data.get('archiveSha256') or data.get('archiveHash') or '').strip().lower()
+    receipt_manifest_sha = str(data.get('manifestSha256') or data.get('manifestHash') or '').strip().lower()
+    if receipt_archive_sha and receipt_archive_sha != archive_sha:
+        raise SystemExit('receipt archive hash does not match the requested bundle')
+    if receipt_manifest_sha and receipt_manifest_sha != manifest_sha:
+        raise SystemExit('receipt manifest hash does not match the requested bundle')
+
+print(data.get('receiptId') or data.get('id') or '')
+print(archive_sha)
+print(manifest_sha)
+PY
+}
+
+request_teardown_authorization() {
+  local base_url=$1
+  local token=$2
+  local receipt_id=$3
+  local bundle_path=$4
+  local archive_sha=$5
+  local manifest_sha=$6
+  python3 - "$base_url" "$token" "$receipt_id" "$bundle_path" "$archive_sha" "$manifest_sha" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+base_url, token, receipt_id, bundle_path, archive_sha, manifest_sha = sys.argv[1:]
+request = json.dumps({
+    'receiptId': receipt_id,
+    'bundlePath': bundle_path,
+    'archiveSha256': archive_sha,
+    'manifestSha256': manifest_sha,
+    'confirmation': 'destroy verified engagement data',
+}).encode('utf-8')
+url = base_url.rstrip('/') + '/api/v1/teardown-authorizations'
+req = urllib.request.Request(url, data=request, method='POST', headers={
+    'Authorization': f'Bearer {token}',
+    'Content-Type': 'application/json',
+    'Waypoint-Contract-Version': '1.0.0',
+})
+try:
+    with urllib.request.urlopen(req, timeout=15) as response:
+        payload = response.read()
+except urllib.error.HTTPError as err:
+    detail = err.read().decode('utf-8', 'replace').strip()
+    raise SystemExit(detail or f'failed to request teardown authorization: HTTP {err.code}')
+response = json.loads(payload)
+if response.get('status') != 'authorized':
+    raise SystemExit('teardown authorization was not authorized')
+print(response.get('id', ''))
+PY
+}
+
+consume_teardown_authorization() {
+  local base_url=$1
+  local token=$2
+  local authorization_id=$3
+  python3 - "$base_url" "$token" "$authorization_id" <<'PY'
+import json
+import sys
+import urllib.error
+import urllib.request
+
+base_url, token, authorization_id = sys.argv[1:]
+url = base_url.rstrip('/') + '/api/v1/teardown-authorizations/' + authorization_id + '/consume'
+req = urllib.request.Request(url, data=b'', method='POST', headers={
+    'Authorization': f'Bearer {token}',
+    'Waypoint-Contract-Version': '1.0.0',
+})
+try:
+    with urllib.request.urlopen(req, timeout=15) as response:
+        payload = response.read()
+except urllib.error.HTTPError as err:
+    detail = err.read().decode('utf-8', 'replace').strip()
+    raise SystemExit(detail or f'failed to consume teardown authorization: HTTP {err.code}')
+response = json.loads(payload)
+if response.get('status') != 'consumed':
+    raise SystemExit('teardown authorization was not consumed')
 PY
 }
 
@@ -693,7 +836,24 @@ destroy() {
     [[ -n ${DESTROY_RECEIPT_FILE:-} ]] || die "--receipt is required unless --force is used"
     [[ -f $DESTROY_RECEIPT_FILE ]] || die "missing receipt file: $DESTROY_RECEIPT_FILE"
     [[ -e $DESTROY_BUNDLE_PATH ]] || die "missing bundle path: $DESTROY_BUNDLE_PATH"
-    verify_export_receipt "$DESTROY_RECEIPT_FILE" "$DESTROY_BUNDLE_PATH"
+    [[ -n ${DESTROY_TOKEN:-} ]] || die "WAYPOINT_DESTROY_TOKEN is required unless --force is used"
+    local teardown_bundle_output
+    if ! teardown_bundle_output=$(verify_destroy_bundle "$DESTROY_RECEIPT_FILE" "$DESTROY_BUNDLE_PATH" 2>&1); then
+      die "$teardown_bundle_output"
+    fi
+    mapfile -t teardown_bundle <<<"$teardown_bundle_output"
+    local receipt_id=${teardown_bundle[0]}
+    local archive_sha=${teardown_bundle[1]}
+    local manifest_sha=${teardown_bundle[2]}
+    [[ -n $receipt_id ]] || die "receipt missing receiptId"
+    [[ -n $archive_sha ]] || die "bundle archive hash could not be computed"
+    [[ -n $manifest_sha ]] || die "bundle manifest hash could not be computed"
+    local authorization_id
+    authorization_id=$(request_teardown_authorization "$(cfg WAYPOINT_PUBLIC_URL)" "$DESTROY_TOKEN" "$receipt_id" "$DESTROY_BUNDLE_PATH" "$archive_sha" "$manifest_sha")
+    [[ -n $authorization_id ]] || die "teardown authorization request did not return an id"
+    log "teardown authorization requested: $authorization_id"
+    consume_teardown_authorization "$(cfg WAYPOINT_PUBLIC_URL)" "$DESTROY_TOKEN" "$authorization_id"
+    log "teardown authorization consumed: $authorization_id"
   else
     log "BREAK-GLASS: destroy proceeding without verified receipt"
   fi
@@ -721,6 +881,7 @@ load_config() {
   INSTALL_ROOT=${INSTALL_ROOT:-$(cfg WAYPOINT_INSTALL_ROOT)}
   STATE_ROOT=${STATE_ROOT:-$(cfg WAYPOINT_STATE_ROOT)}
   LOG_ROOT=${LOG_ROOT:-$(cfg WAYPOINT_LOG_ROOT)}
+  DESTROY_TOKEN=${DESTROY_TOKEN:-$(cfg WAYPOINT_DESTROY_TOKEN)}
   INSTALL_ROOT=${INSTALL_ROOT:-/opt/waypoint}
   STATE_ROOT=${STATE_ROOT:-/var/lib/waypoint}
   LOG_ROOT=${LOG_ROOT:-/var/log/waypoint}

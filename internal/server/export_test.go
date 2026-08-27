@@ -584,6 +584,22 @@ func TestExportTeardownAuthorizationRoundTrip(t *testing.T) {
 	if consumed.Status != "consumed" || consumed.ConsumedAt == "" {
 		t.Fatalf("consumed teardown authorization = %#v", consumed)
 	}
+
+	replayRR := httptest.NewRecorder()
+	h.ServeHTTP(replayRR, consumeReq)
+	if replayRR.Code != http.StatusConflict || !strings.Contains(replayRR.Body.String(), "teardown authorization is not available for consumption") {
+		t.Fatalf("replay consume = %d body=%s", replayRR.Code, replayRR.Body.String())
+	}
+
+	mustExec(t, db, `INSERT INTO teardown_authorization (id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, revision) VALUES ($1, $2, $3, $4, 'bundle', $5, $6, $7, now() - interval '10 minutes', now() - interval '1 minute', 'authorized', 1)`, "99999999-9999-4999-8999-999999999999", engagementID, "88888888-8888-4888-8888-888888888888", "77777777-7777-4777-8777-777777777778", strings.Repeat("1", 64), strings.Repeat("2", 64), humanID)
+	expiredReq := httptest.NewRequest(http.MethodPost, "/api/v1/teardown-authorizations/99999999-9999-4999-8999-999999999999/consume", nil)
+	expiredReq.Header.Set("Authorization", "Bearer "+actorToken)
+	expiredReq.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	expiredRR := httptest.NewRecorder()
+	h.ServeHTTP(expiredRR, expiredReq)
+	if expiredRR.Code != http.StatusConflict || !strings.Contains(expiredRR.Body.String(), "teardown authorization expired") {
+		t.Fatalf("expired consume = %d body=%s", expiredRR.Code, expiredRR.Body.String())
+	}
 }
 
 func TestBuildExportDumpIncludesAllAuthoritativeEngagementState(t *testing.T) {
