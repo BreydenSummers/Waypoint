@@ -363,11 +363,11 @@ function routeFromPath(pathname: string): { view: RouteView; phase: PhaseId } {
     return { view: 'report', phase: 'summit' };
   }
   const match = pathname.match(/^\/engagements\/[^/]+\/(recon|attacks|findings|summit)\/?$/);
-  return match ? { view: 'trail', phase: match[1] as PhaseId } : { view: 'trail', phase: 'attacks' };
+  return match ? { view: 'trail', phase: match[1] as PhaseId } : { view: 'trail', phase: 'recon' };
 }
 
 function getInitialRoute(): { view: RouteView; phase: PhaseId } {
-  if (typeof window === 'undefined') return { view: 'trail', phase: 'attacks' };
+  if (typeof window === 'undefined') return { view: 'trail', phase: 'recon' };
   return routeFromPath(window.location.pathname);
 }
 

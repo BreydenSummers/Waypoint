@@ -1,4 +1,4 @@
-const sourceHash = "c2863654211874b5258791ae664c48eda551abe6829419da5c3399da40b2e9d8";
+const sourceHash = "14d0f06a706a63cf4a69ce4ce1eba959afff6402178d769444dd2f592de026b6";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
