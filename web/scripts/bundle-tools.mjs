@@ -172,6 +172,268 @@ function validateBundleManifest(manifest) {
   }
 }
 
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function getRowId(row) {
+  const value = row?.id ?? row?.ID ?? row?.claimId ?? row?.claimID;
+  return value === undefined || value === null ? '' : String(value);
+}
+
+function getRowEngagementId(row) {
+  return row?.engagement_id ?? row?.engagementId ?? row?.engagementID ?? '';
+}
+
+function validateEngagementDump(dump) {
+  if (!isPlainObject(dump)) {
+    throw new Error('database dump must be a JSON object');
+  }
+  if (dump.formatVersion !== '1.0.0') {
+    throw new Error(`unsupported database dump version: ${dump.formatVersion ?? 'unknown'}`);
+  }
+  if (dump.dumpFormat !== 'postgresql-custom-reconstruction') {
+    throw new Error(`unsupported database dump format: ${dump.dumpFormat ?? 'unknown'}`);
+  }
+  if (typeof dump.engagementId !== 'string' || dump.engagementId.trim() === '') {
+    throw new Error('database dump missing engagementId');
+  }
+  if (!isPlainObject(dump.engagement) || dump.engagement.id !== dump.engagementId) {
+    throw new Error('database dump engagement row mismatch');
+  }
+
+  const requiredArrays = [
+    'actors', 'actions', 'auditEvents', 'entities', 'results', 'observations', 'evidence', 'claims', 'findings', 'findingRevisions', 'exports', 'receipts', 'grants',
+  ];
+  const rowSets = new Map();
+  for (const key of requiredArrays) {
+    if (!Array.isArray(dump[key])) {
+      throw new Error(`database dump missing ${key}`);
+    }
+    rowSets.set(key, new Map());
+  }
+  if (!isPlainObject(dump.rowCounts)) {
+    throw new Error('database dump missing rowCounts');
+  }
+
+  const expectedCounts = {
+    engagement: 1,
+    actors: dump.actors.length,
+    actions: dump.actions.length,
+    auditEvents: dump.auditEvents.length,
+    entities: dump.entities.length,
+    results: dump.results.length,
+    observations: dump.observations.length,
+    evidence: dump.evidence.length,
+    claims: dump.claims.length,
+    findings: dump.findings.length,
+    findingRevisions: dump.findingRevisions.length,
+    exports: dump.exports.length,
+    receipts: dump.receipts.length,
+    grants: dump.grants.length,
+  };
+  for (const [key, want] of Object.entries(expectedCounts)) {
+    if (dump.rowCounts[key] !== want) {
+      throw new Error(`database dump row count mismatch for ${key}`);
+    }
+  }
+
+  const registerRows = (section, rows, opts = {}) => {
+    const seen = rowSets.get(section);
+    for (const row of rows) {
+      if (!isPlainObject(row)) {
+        throw new Error(`database dump section ${section} contains a non-object row`);
+      }
+      const id = getRowId(row);
+      if (typeof id !== 'string' || id.trim() === '') {
+        throw new Error(`database dump section ${section} missing row id`);
+      }
+      if (seen.has(id)) {
+        throw new Error(`database dump section ${section} contains a duplicate row id: ${id}`);
+      }
+      seen.set(id, row);
+      if (opts.requireEngagement !== false && getRowEngagementId(row) !== dump.engagementId) {
+        throw new Error(`database dump section ${section} leaked another engagement: ${id}`);
+      }
+    }
+  };
+
+  registerRows('actors', dump.actors);
+  registerRows('actions', dump.actions);
+  registerRows('auditEvents', dump.auditEvents);
+  registerRows('entities', dump.entities);
+  registerRows('results', dump.results);
+  registerRows('observations', dump.observations);
+  registerRows('evidence', dump.evidence);
+  registerRows('findings', dump.findings);
+  registerRows('findingRevisions', dump.findingRevisions);
+  registerRows('exports', dump.exports);
+  registerRows('receipts', dump.receipts);
+  registerRows('grants', dump.grants);
+
+  const actorIds = rowSets.get('actors');
+  const actionIds = rowSets.get('actions');
+  const evidenceIds = rowSets.get('evidence');
+  const entityIds = rowSets.get('entities');
+  const resultIds = rowSets.get('results');
+  const findingIds = rowSets.get('findings');
+  const findingById = new Map(dump.findings.map((row) => [getRowId(row), row]));
+  const exportIds = rowSets.get('exports');
+  const receiptIds = rowSets.get('receipts');
+  const claimIds = new Set();
+
+  for (const row of dump.actors) {
+    if (row.authorized_by && !actorIds.has(row.authorized_by)) {
+      throw new Error(`database dump actor authorization target missing: ${row.id}`);
+    }
+  }
+  for (const row of dump.actions) {
+    if (!actorIds.has(row.actor_id)) {
+      throw new Error(`database dump action actor missing: ${row.id}`);
+    }
+    if (!evidenceIds.has(row.stdout_evidence_id) || !evidenceIds.has(row.stderr_evidence_id)) {
+      throw new Error(`database dump action evidence missing: ${row.id}`);
+    }
+  }
+  for (const row of dump.results) {
+    if (!actionIds.has(row.action_id)) {
+      throw new Error(`database dump result action missing: ${row.id}`);
+    }
+  }
+  for (const row of dump.observations) {
+    if (!actionIds.has(row.action_id) || !resultIds.has(row.result_id)) {
+      throw new Error(`database dump observation source missing: ${row.id}`);
+    }
+    if (row.entity_id && !entityIds.has(row.entity_id)) {
+      throw new Error(`database dump observation entity missing: ${row.id}`);
+    }
+  }
+  for (const row of dump.findings) {
+    if (row.promoted_by && !actorIds.has(row.promoted_by)) {
+      throw new Error(`database dump finding promoter missing: ${row.id}`);
+    }
+    for (const entityID of row.affected_entity_ids ?? []) {
+      if (!entityIds.has(entityID)) {
+        throw new Error(`database dump finding affected entity missing: ${row.id}`);
+      }
+    }
+    for (const actionID of row.evidence_action_ids ?? []) {
+      if (!actionIds.has(actionID)) {
+        throw new Error(`database dump finding evidence action missing: ${row.id}`);
+      }
+    }
+  }
+  for (const row of dump.findingRevisions) {
+    if (row.subject_type === 'finding' && !findingIds.has(row.subject_id)) {
+      throw new Error(`database dump finding revision missing finding: ${row.id}`);
+    }
+  }
+  for (const row of dump.exports) {
+    if (!actorIds.has(row.requested_by)) {
+      throw new Error(`database dump export requester missing: ${row.id}`);
+    }
+    if (row.retry_of_job_id && !exportIds.has(row.retry_of_job_id)) {
+      throw new Error(`database dump export retry target missing: ${row.id}`);
+    }
+    if (row.bundle_receipt_id && !receiptIds.has(row.bundle_receipt_id)) {
+      throw new Error(`database dump export receipt missing: ${row.id}`);
+    }
+  }
+  for (const row of dump.receipts) {
+    if (!exportIds.has(row.export_job_id)) {
+      throw new Error(`database dump receipt export missing: ${row.id}`);
+    }
+    if (!actorIds.has(row.verified_by)) {
+      throw new Error(`database dump receipt verifier missing: ${row.id}`);
+    }
+  }
+  for (const row of dump.grants) {
+    if (!actorIds.has(row.requested_by)) {
+      throw new Error(`database dump grant requester missing: ${row.id}`);
+    }
+    if (!exportIds.has(row.export_job_id)) {
+      throw new Error(`database dump grant export missing: ${row.id}`);
+    }
+    if (!receiptIds.has(row.receipt_id)) {
+      throw new Error(`database dump grant receipt missing: ${row.id}`);
+    }
+  }
+  for (const claim of dump.claims) {
+    if (!isPlainObject(claim)) {
+      throw new Error('database dump claims must be objects');
+    }
+    if (typeof claim.id !== 'string' || claim.id.trim() === '') {
+      throw new Error('database dump claim missing row id');
+    }
+    if (claim.contractVersion !== '1.0.0') {
+      throw new Error(`database dump claim contract version mismatch: ${claim.id}`);
+    }
+    if (claim.engagementId !== dump.engagementId) {
+      throw new Error(`database dump claim leaked another engagement: ${claim.id}`);
+    }
+    if (claim.observedBy?.id && !actorIds.has(claim.observedBy.id)) {
+      throw new Error(`database dump claim observedBy missing: ${claim.id}`);
+    }
+    if (claim.resolvedBy?.id && !actorIds.has(claim.resolvedBy.id)) {
+      throw new Error(`database dump claim resolvedBy missing: ${claim.id}`);
+    }
+    if (claim.sourceActionId && !actionIds.has(claim.sourceActionId)) {
+      throw new Error(`database dump claim source action missing: ${claim.id}`);
+    }
+    claimIds.add(claim.id);
+  }
+
+  for (const row of dump.auditEvents) {
+    if (!isPlainObject(row)) {
+      throw new Error('database dump auditEvents must be objects');
+    }
+    if (!actorIds.has(row.actor_id)) {
+      throw new Error(`database dump audit event actor missing: ${row.id}`);
+    }
+    if (row.causation_action_id && !actionIds.has(row.causation_action_id)) {
+      throw new Error(`database dump audit event causation action missing: ${row.id}`);
+    }
+    const subjectID = String(row.subject_id ?? '');
+    switch (row.subject_type) {
+      case 'action':
+        if (!actionIds.has(subjectID)) {
+          throw new Error(`database dump audit event action target missing: ${row.id}`);
+        }
+        break;
+      case 'entity':
+        if (!entityIds.has(subjectID)) {
+          throw new Error(`database dump audit event entity target missing: ${row.id}`);
+        }
+        break;
+      case 'finding': {
+        if (!findingIds.has(subjectID)) {
+          throw new Error(`database dump audit event finding target missing: ${row.id}`);
+        }
+        const finding = findingById.get(subjectID);
+        if (finding && row.subject_revision !== finding.revision) {
+          throw new Error(`database dump finding revision mismatch: ${row.id}`);
+        }
+        break;
+      }
+      case 'export':
+        if (!exportIds.has(subjectID)) {
+          throw new Error(`database dump audit event export target missing: ${row.id}`);
+        }
+        break;
+      case 'out_of_band_claim':
+        if (!claimIds.has(subjectID)) {
+          throw new Error(`database dump audit event claim target missing: ${row.id}`);
+        }
+        break;
+    }
+  }
+}
+
+function validateExportDumpBytes(bytes) {
+  const dump = JSON.parse(bytes.toString('utf8'));
+  validateEngagementDump(dump);
+}
+
 export async function computeArchiveHash(root, manifest, options = {}) {
   const excluded = new Set(Array.from(options.excludedPaths ?? []).map(String));
   const hasher = createHash('sha256');
@@ -206,6 +468,7 @@ export async function verifyBundle(root, options = {}) {
   validateBundleManifest(manifest);
 
   const payloads = canonicalizePayloadList(manifest.payloads);
+  let dumpBytes = null;
   for (const [index, payload] of payloads.entries()) {
     if (signal?.aborted) throw bundleAbortError(signal.reason);
     bundleProgress(onProgress, { phase: 'payload', index: index + 1, total: payloads.length, path: payload.path });
@@ -219,7 +482,15 @@ export async function verifyBundle(root, options = {}) {
     if (digest !== payload.sha256) {
       throw new Error(`sha256 mismatch for ${payload.path}`);
     }
+    if (payload.path === 'bundle/database/engagement.dump') {
+      dumpBytes = bytes;
+    }
   }
+
+  if (!dumpBytes) {
+    throw new Error('bundle manifest missing database dump');
+  }
+  validateExportDumpBytes(dumpBytes);
 
   const archiveSha256 = await computeArchiveHash(bundleRoot, manifest, {
     includeManifestBytes: true,

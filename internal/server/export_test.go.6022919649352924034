@@ -519,10 +519,10 @@ func TestBuildExportDumpIncludesAllAuthoritativeEngagementState(t *testing.T) {
 		t.Fatalf("build export dump: %v", err)
 	}
 	var dump struct {
-		FormatVersion string `json:"formatVersion"`
-		DumpFormat    string `json:"dumpFormat"`
-		EngagementID  string `json:"engagementId"`
-		RowCounts     struct {
+		FormatVersion   string `json:"formatVersion"`
+		DumpFormat      string `json:"dumpFormat"`
+		EngagementID    string `json:"engagementId"`
+		RowCounts       struct {
 			Engagement       int `json:"engagement"`
 			Actors           int `json:"actors"`
 			Actions          int `json:"actions"`
@@ -538,14 +538,14 @@ func TestBuildExportDumpIncludesAllAuthoritativeEngagementState(t *testing.T) {
 			Receipts         int `json:"receipts"`
 			Grants           int `json:"grants"`
 		} `json:"rowCounts"`
-		Actors       []map[string]any `json:"actors"`
-		Actions      []map[string]any `json:"actions"`
-		AuditEvents  []map[string]any `json:"auditEvents"`
-		Entities     []map[string]any `json:"entities"`
-		Results      []map[string]any `json:"results"`
-		Observations []map[string]any `json:"observations"`
-		Evidence     []map[string]any `json:"evidence"`
-		Claims       []struct {
+		Actors          []map[string]any `json:"actors"`
+		Actions         []map[string]any `json:"actions"`
+		AuditEvents     []map[string]any `json:"auditEvents"`
+		Entities        []map[string]any `json:"entities"`
+		Results         []map[string]any `json:"results"`
+		Observations    []map[string]any `json:"observations"`
+		Evidence        []map[string]any `json:"evidence"`
+		Claims          []struct {
 			ID           string `json:"id"`
 			EngagementID string `json:"engagementId"`
 			Status       string `json:"status"`
