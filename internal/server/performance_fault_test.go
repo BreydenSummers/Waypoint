@@ -301,8 +301,14 @@ func TestUpsertEvidenceRejectsImmutableMetadataChanges(t *testing.T) {
 		t.Fatalf("begin conflict tx: %v", err)
 	}
 	defer tx.Rollback()
-	if _, err := upsertEvidence(ctx, tx, engagementID, "stdout", "application/octet-stream", sha, int64(len("same bytes"))); err == nil {
-		t.Fatal("expected immutable evidence metadata conflict")
+	// A differing media type for byte-identical evidence is allowed (dedups to
+	// the existing blob); only a byte-length mismatch for the same content hash
+	// is an integrity conflict.
+	if _, err := upsertEvidence(ctx, tx, engagementID, "stdout", "application/octet-stream", sha, int64(len("same bytes"))); err != nil {
+		t.Fatalf("differing media type should dedup, not conflict: %#v", err)
+	}
+	if _, err := upsertEvidence(ctx, tx, engagementID, "stdout", "text/plain", sha, int64(len("same bytes"))+1); err == nil {
+		t.Fatal("expected evidence byte-length conflict")
 	} else {
 		var pb captureRequestProblem
 		if !errors.As(err, &pb) || pb.problem.Code != "evidence_metadata_conflict" {

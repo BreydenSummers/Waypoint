@@ -888,8 +888,13 @@ func upsertEvidence(ctx context.Context, tx *sql.Tx, engagementID, kind, mediaTy
 		if err := tx.QueryRowContext(ctx, `SELECT id, byte_length, media_type FROM evidence WHERE engagement_id = $1 AND kind = $2 AND sha256 = $3`, engagementID, kind, sha).Scan(&id, &existingByteLength, &existingMediaType); err != nil {
 			return "", err
 		}
-		if existingByteLength != byteLength || existingMediaType != mediaType {
-			return "", captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "evidence_metadata_conflict", Retryable: false, Detail: "evidence metadata changed for an existing content-addressed blob."}}
+		// Content-addressed dedup keys on the bytes. byte_length is intrinsic to
+		// the sha (and verifyEvidence guarantees declared == actual), so a
+		// mismatch signals corruption and is rejected. media_type is a per-capture
+		// declaration that may legitimately differ between two captures that share
+		// byte-identical evidence, so it is not a conflict.
+		if existingByteLength != byteLength {
+			return "", captureRequestProblem{problem: captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "evidence_metadata_conflict", Retryable: false, Detail: "evidence byte length changed for an existing content-addressed blob."}}
 		}
 	}
 	return id, nil
