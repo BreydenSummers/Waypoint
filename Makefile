@@ -4,7 +4,7 @@ WEB_DIR := web
 BIN_DIR := bin
 BIN := $(BIN_DIR)/waypoint
 
-.PHONY: lint test build smoke clean
+.PHONY: lint test build smoke clean release-test
 
 lint:
 	$(GO) vet ./...
@@ -30,6 +30,9 @@ smoke: build
 	curl -fsS http://127.0.0.1:18080/ >/tmp/waypoint-index.html; \
 	grep -q "Waypoint" /tmp/waypoint-index.html; \
 	grep -q '"status":"ready"' /tmp/waypoint-ready.json
+
+release-test:
+	$(GO) run ./cmd/release-test --mode release --out-dir $(or $(RELEASE_TEST_OUT_DIR),docs/release-evidence/release-tests)
 
 clean:
 	rm -rf $(BIN_DIR)
