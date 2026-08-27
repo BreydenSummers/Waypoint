@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -253,11 +254,189 @@ func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 	}
 }
 
+func TestLoadCaptureTranscriptFixtureResolvesMutations(t *testing.T) {
+	parserFailed := loadCaptureTranscriptFixture(t, "valid/human-known-parser-failed.json")
+	if got := parserFailed.Request["parsing"].(map[string]any)["status"]; got != "parse-failed" {
+		t.Fatalf("parser-failed status = %v, want parse-failed", got)
+	}
+	if _, ok := parserFailed.Request["parsing"].(map[string]any)["failure"]; !ok {
+		t.Fatal("parser-failed fixture missing failure payload")
+	}
+
+	aiManual := loadCaptureTranscriptFixture(t, "invalid/ai-manual-initiation.json")
+	if got := aiManual.Request["initiatedBy"]; got != "manual" {
+		t.Fatalf("ai-manual initiatedBy = %v, want manual", got)
+	}
+	if _, ok := aiManual.Request["decisionContext"]; ok {
+		t.Fatal("ai-manual fixture unexpectedly retained decisionContext")
+	}
+}
+
 func loadCaptureTranscriptFixture(t *testing.T, rel string) captureTranscriptFixture {
 	t.Helper()
 	var out captureTranscriptFixture
-	decodeJSONFile(t, filepath.Join("contracts", "v1", "fixtures", "captures", rel), &out)
+	materialized := loadCaptureFixtureDocument(t, filepath.Join("contracts", "v1", "fixtures", "captures", rel), map[string]bool{})
+	data, err := json.Marshal(materialized)
+	if err != nil {
+		t.Fatalf("marshal %s: %v", rel, err)
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("decode %s: %v", rel, err)
+	}
 	return out
+}
+
+func loadCaptureFixtureDocument(t *testing.T, path string, seen map[string]bool) map[string]any {
+	t.Helper()
+	var out map[string]any
+	decodeJSONFile(t, path, &out)
+	baseRel, ok := out["base"].(string)
+	if !ok {
+		return out
+	}
+	basePath := filepath.Clean(filepath.Join(filepath.Dir(path), baseRel))
+	if seen[basePath] {
+		t.Fatalf("fixture base cycle detected at %s", path)
+	}
+	seen[basePath] = true
+	defer delete(seen, basePath)
+
+	base := loadCaptureFixtureDocument(t, basePath, seen)
+	materialized, err := applyCaptureFixtureMutations(base, out["mutations"])
+	if err != nil {
+		t.Fatalf("materialize %s: %v", path, err)
+	}
+	if name, ok := out["name"].(string); ok {
+		materialized["name"] = name
+	}
+	if description, ok := out["description"].(string); ok {
+		materialized["description"] = description
+	}
+	if expected, ok := out["expected"]; ok {
+		materialized["expected"] = expected
+	}
+	return materialized
+}
+
+func applyCaptureFixtureMutations(document map[string]any, mutations any) (map[string]any, error) {
+	if mutations == nil {
+		return document, nil
+	}
+	rawMutations, ok := mutations.([]any)
+	if !ok {
+		return nil, fmt.Errorf("fixture mutations must be an array, got %T", mutations)
+	}
+	for _, rawMutation := range rawMutations {
+		mutation, ok := rawMutation.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("fixture mutation must be an object, got %T", rawMutation)
+		}
+		op, _ := mutation["op"].(string)
+		path, _ := mutation["path"].(string)
+		if path == "" {
+			return nil, fmt.Errorf("fixture mutation missing path: %v", mutation)
+		}
+		if op != "add" && op != "remove" && op != "replace" {
+			return nil, fmt.Errorf("unsupported fixture mutation op %q", op)
+		}
+		updated, err := applyCaptureFixtureMutation(document, path, op, mutation["value"])
+		if err != nil {
+			return nil, err
+		}
+		document = updated.(map[string]any)
+	}
+	return document, nil
+}
+
+func applyCaptureFixtureMutation(node any, pointer string, op string, value any) (any, error) {
+	if !strings.HasPrefix(pointer, "/") {
+		return nil, fmt.Errorf("fixture mutation is not a JSON Pointer: %q", pointer)
+	}
+	return applyCaptureFixtureMutationTokens(node, strings.Split(pointer[1:], "/"), op, value)
+}
+
+func applyCaptureFixtureMutationTokens(node any, rawTokens []string, op string, value any) (any, error) {
+	if len(rawTokens) == 0 {
+		return nil, fmt.Errorf("fixture mutation has an empty path")
+	}
+	key := strings.NewReplacer("~1", "/", "~0", "~").Replace(rawTokens[0])
+	if len(rawTokens) == 1 {
+		switch container := node.(type) {
+		case map[string]any:
+			switch op {
+			case "remove":
+				if _, ok := container[key]; !ok {
+					return nil, fmt.Errorf("fixture mutation path does not exist: /%s", strings.Join(rawTokens, "/"))
+				}
+				delete(container, key)
+			default:
+				container[key] = value
+			}
+			return container, nil
+		case []any:
+			idx, err := fixtureMutationIndex(key, len(container), op == "add")
+			if err != nil {
+				return nil, err
+			}
+			switch op {
+			case "remove":
+				return append(container[:idx], container[idx+1:]...), nil
+			case "replace":
+				container[idx] = value
+				return container, nil
+			case "add":
+				container = append(container, nil)
+				copy(container[idx+1:], container[idx:])
+				container[idx] = value
+				return container, nil
+			default:
+				return nil, fmt.Errorf("unsupported fixture mutation op %q", op)
+			}
+		default:
+			return nil, fmt.Errorf("fixture mutation parent is not a container")
+		}
+	}
+
+	switch container := node.(type) {
+	case map[string]any:
+		child, ok := container[key]
+		if !ok {
+			return nil, fmt.Errorf("fixture mutation path does not exist: /%s", strings.Join(rawTokens, "/"))
+		}
+		updated, err := applyCaptureFixtureMutationTokens(child, rawTokens[1:], op, value)
+		if err != nil {
+			return nil, err
+		}
+		container[key] = updated
+		return container, nil
+	case []any:
+		idx, err := fixtureMutationIndex(key, len(container), false)
+		if err != nil {
+			return nil, err
+		}
+		updated, err := applyCaptureFixtureMutationTokens(container[idx], rawTokens[1:], op, value)
+		if err != nil {
+			return nil, err
+		}
+		container[idx] = updated
+		return container, nil
+	default:
+		return nil, fmt.Errorf("fixture mutation parent is not a container")
+	}
+}
+
+func fixtureMutationIndex(token string, length int, allowAppend bool) (int, error) {
+	if allowAppend && token == "-" {
+		return length, nil
+	}
+	idx, err := strconv.Atoi(token)
+	if err != nil {
+		return 0, fmt.Errorf("fixture mutation array index %q is not numeric", token)
+	}
+	if idx < 0 || idx > length || (!allowAppend && idx == length) {
+		return 0, fmt.Errorf("fixture mutation array index %d out of range", idx)
+	}
+	return idx, nil
 }
 
 func loadMCPTranscriptFixture(t *testing.T) mcpTranscriptFixture {
