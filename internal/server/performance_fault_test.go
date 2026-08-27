@@ -89,7 +89,7 @@ func TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios(t *testing.T) {
 }
 
 func TestPerformanceReadIndexesCoverBudgetedListPaths(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "internal", "db", "migrations", "0008_performance_read_indexes.up.sql"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "internal", "db", "migrations", "0009_performance_read_indexes.up.sql"))
 	if err != nil {
 		t.Fatalf("read performance index migration: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestPerformanceReadIndexesCoverBudgetedListPaths(t *testing.T) {
 			t.Fatalf("performance index migration missing %q", want)
 		}
 	}
-	downData, err := os.ReadFile(filepath.Join("..", "..", "internal", "db", "migrations", "0008_performance_read_indexes.down.sql"))
+	downData, err := os.ReadFile(filepath.Join("..", "..", "internal", "db", "migrations", "0009_performance_read_indexes.down.sql"))
 	if err != nil {
 		t.Fatalf("read performance index down migration: %v", err)
 	}

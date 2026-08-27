@@ -3,7 +3,10 @@ package db
 import (
 	"context"
 	"database/sql"
+	"io/fs"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -49,11 +52,12 @@ func TestApplyMigrationsOnRealPostgreSQL(t *testing.T) {
 		t.Fatalf("reapply migrations: %v", err)
 	}
 
-	mustHaveTables(t, db, []string{"engagement", "actor", "evidence", "action", "entity", "result", "observation", "finding", "audit_event", "audit", "schema_migrations"})
+	mustHaveTables(t, db, []string{"engagement", "actor", "evidence", "action", "entity", "result", "observation", "finding", "export_job", "export_receipt", "teardown_authorization", "audit_event", "audit", "schema_migrations"})
 	mustHaveIndexes(t, db, []string{
 		"action_engagement_started_at_idx",
 		"action_engagement_actor_started_at_idx",
 		"actor_engagement_handle_idx",
+		"audit_event_engagement_id_idx",
 		"audit_event_engagement_occurred_at_idx",
 		"audit_event_engagement_subject_idx",
 		"audit_event_request_id_idx",
@@ -77,6 +81,14 @@ func TestApplyMigrationsOnRealPostgreSQL(t *testing.T) {
 		"observation_engagement_observed_at_idx",
 		"result_action_unique",
 		"evidence_engagement_created_at_idx",
+		"export_job_state_updated_at_idx",
+		"export_job_engagement_updated_at_idx",
+		"export_job_bundle_receipt_unique",
+		"export_receipt_export_job_unique",
+		"export_receipt_id_export_job_unique",
+		"teardown_authorization_engagement_requested_at_idx",
+		"teardown_authorization_receipt_idx",
+		"teardown_authorization_status_expires_idx",
 	})
 }
 
@@ -108,13 +120,63 @@ func TestApplyMigrationsSerializesConcurrentStarters(t *testing.T) {
 		}
 	}
 
-	var count int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&count); err != nil {
-		t.Fatalf("count schema migrations: %v", err)
+	wantVersions := embeddedMigrationVersions(t)
+	gotVersions := schemaMigrationVersions(t, db)
+	if !slices.Equal(gotVersions, wantVersions) {
+		t.Fatalf("schema migrations = %v, want %v", gotVersions, wantVersions)
 	}
-	if count != 4 {
-		t.Fatalf("schema migration count = %d, want 4", count)
+}
+
+func TestExportLifecycleMigrationsUpgradeAndRollbackOnRealPostgreSQL(t *testing.T) {
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+
+	versions := embeddedMigrationVersions(t)
+	schemaVersion := "0008_export_lifecycle_schema.up.sql"
+	schemaIndex := migrationVersionIndex(t, versions, schemaVersion)
+	applyHistoricalMigrations(t, db, versions[:schemaIndex])
+	if err := ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("upgrade migrations: %v", err)
 	}
+	mustHaveTables(t, db, []string{"export_job", "export_receipt", "teardown_authorization"})
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	actorID := "22222222-2222-4222-8222-222222222222"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Export demo', 'Client', 'Scope', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', repeat('a', 64), 'operator')`, actorID, engagementID)
+
+	baseJobID := "33333333-3333-4333-8333-333333333333"
+	retryJobID := "44444444-4444-4444-8444-444444444444"
+	completedJobID := "55555555-5555-4555-8555-555555555555"
+	receiptID := "66666666-6666-4666-8666-666666666666"
+	authorizationID := "77777777-7777-4777-8777-777777777777"
+	longBundlePath := strings.Repeat("a", 1025)
+	mustExec(t, db, `INSERT INTO export_job (id, engagement_id, requested_by, format_version, state, progress_stage, progress_percent, processed_bytes, estimated_total_bytes, created_at, updated_at, revision) VALUES ($1, $2, $3, '1.0.0', 'queued', 'queued', 0, 0, 0, now(), now(), 1)`, baseJobID, engagementID, actorID)
+	mustExec(t, db, `INSERT INTO export_job (id, engagement_id, requested_by, retry_of_job_id, format_version, state, progress_stage, progress_percent, processed_bytes, estimated_total_bytes, created_at, updated_at, revision) VALUES ($1, $2, $3, $4, '1.0.0', 'queued', 'queued', 0, 0, 0, now(), now(), 1)`, retryJobID, engagementID, actorID, baseJobID)
+	mustReject(t, db, `INSERT INTO export_job (id, engagement_id, requested_by, retry_of_job_id, format_version, state, progress_stage, progress_percent, processed_bytes, estimated_total_bytes, created_at, updated_at, revision) VALUES ($1, $2, $3, $1, '1.0.0', 'queued', 'queued', 0, 0, 0, now(), now(), 1)`, "88888888-8888-4888-8888-888888888888", engagementID, actorID)
+	mustExec(t, db, `INSERT INTO export_job (id, engagement_id, requested_by, format_version, state, progress_stage, progress_percent, processed_bytes, estimated_total_bytes, snapshot_id, cutoff, bundle_archive_path, bundle_archive_byte_length, bundle_archive_sha256, bundle_manifest_sha256, bundle_report_snapshot_id, created_at, started_at, updated_at, revision) VALUES ($1, $2, $3, '1.0.0', 'verifying', 'verification', 92, 10, 10, $4, now(), 'bundle', 10, $5, $6, $4, now(), now(), now(), 2)`, completedJobID, engagementID, actorID, "12121212-1212-4212-8212-121212121212", strings.Repeat("1", 64), strings.Repeat("2", 64))
+	mustExec(t, db, `INSERT INTO export_receipt (id, export_job_id, engagement_id, status, bundle_path, archive_byte_length, archive_sha256, manifest_sha256, cutoff, verified_at, verified_by, verifier_version, revision) VALUES ($1, $2, $3, 'verified', 'bundle', 10, $4, $5, now(), now(), $6, 'waypoint-verify/1.0.0', 1)`, receiptID, completedJobID, engagementID, strings.Repeat("1", 64), strings.Repeat("2", 64), actorID)
+	mustReject(t, db, `INSERT INTO export_receipt (id, export_job_id, engagement_id, status, bundle_path, archive_byte_length, archive_sha256, manifest_sha256, cutoff, verified_at, verified_by, verifier_version, revision) VALUES ($1, $2, $3, 'verified', $4, 10, $5, $6, now(), now(), $7, 'waypoint-verify/1.0.0', 1)`, "88888888-8888-4888-8888-888888888887", baseJobID, engagementID, longBundlePath, strings.Repeat("1", 64), strings.Repeat("2", 64), actorID)
+	mustExec(t, db, `UPDATE export_job SET state = 'completed', progress_stage = 'complete', progress_percent = 100, bundle_receipt_id = $2, completed_at = now(), updated_at = now(), revision = 3 WHERE id = $1`, completedJobID, receiptID)
+	mustExec(t, db, `INSERT INTO teardown_authorization (id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, revision) VALUES ($1, $2, $3, $4, 'bundle', $5, $6, $7, now(), now() + interval '5 minutes', 'authorized', 1)`, authorizationID, engagementID, receiptID, completedJobID, strings.Repeat("1", 64), strings.Repeat("2", 64), actorID)
+	mustReject(t, db, `INSERT INTO teardown_authorization (id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, revision) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now(), now() + interval '5 minutes', 'authorized', 1)`, "88888888-8888-4888-8888-888888888889", engagementID, receiptID, completedJobID, longBundlePath, strings.Repeat("1", 64), strings.Repeat("2", 64), actorID)
+
+	for i := len(versions) - 1; i >= schemaIndex; i-- {
+		rollbackMigration(t, db, versions[i])
+	}
+	mustHaveTables(t, db, []string{"engagement", "actor", "evidence", "action", "entity", "result", "observation", "finding", "teardown_authorization", "audit_event", "audit", "schema_migrations"})
+	mustNotHaveTables(t, db, []string{"export_job", "export_receipt"})
+	mustExec(t, db, `DELETE FROM teardown_authorization`)
+
+	if err := ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("reapply after rollback: %v", err)
+	}
+	mustHaveTables(t, db, []string{"export_job", "export_receipt", "teardown_authorization"})
 }
 
 func TestDatabaseProtectionsRejectMutations(t *testing.T) {
@@ -355,6 +417,82 @@ func mustReject(t *testing.T, db *sql.DB, query string, args ...any) {
 	}
 }
 
+func embeddedMigrationVersions(t *testing.T) []string {
+	t.Helper()
+	entries, err := fs.ReadDir(migrationFS, "migrations")
+	if err != nil {
+		t.Fatalf("read embedded migrations: %v", err)
+	}
+	versions := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".up.sql") {
+			continue
+		}
+		versions = append(versions, entry.Name())
+	}
+	slices.Sort(versions)
+	return versions
+}
+
+func migrationVersionIndex(t *testing.T, versions []string, want string) int {
+	t.Helper()
+	for i, version := range versions {
+		if version == want {
+			return i
+		}
+	}
+	t.Fatalf("migration %q not found in %v", want, versions)
+	return -1
+}
+
+func schemaMigrationVersions(t *testing.T, db *sql.DB) []string {
+	t.Helper()
+	rows, err := db.Query(`SELECT version FROM schema_migrations ORDER BY version`)
+	if err != nil {
+		t.Fatalf("query schema migrations: %v", err)
+	}
+	defer rows.Close()
+	var versions []string
+	for rows.Next() {
+		var version string
+		if err := rows.Scan(&version); err != nil {
+			t.Fatalf("scan schema migration: %v", err)
+		}
+		versions = append(versions, version)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate schema migrations: %v", err)
+	}
+	return versions
+}
+
+func applyHistoricalMigrations(t *testing.T, db *sql.DB, versions []string) {
+	t.Helper()
+	mustExec(t, db, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		version text PRIMARY KEY,
+		applied_at timestamptz NOT NULL DEFAULT now()
+	)`)
+	for _, version := range versions {
+		body, err := os.ReadFile(filepath.Join("migrations", version))
+		if err != nil {
+			t.Fatalf("read migration %s: %v", version, err)
+		}
+		mustExec(t, db, string(body))
+		mustExec(t, db, `INSERT INTO schema_migrations (version) VALUES ($1)`, version)
+	}
+}
+
+func rollbackMigration(t *testing.T, db *sql.DB, version string) {
+	t.Helper()
+	down := strings.TrimSuffix(version, ".up.sql") + ".down.sql"
+	body, err := os.ReadFile(filepath.Join("migrations", down))
+	if err != nil {
+		t.Fatalf("read rollback migration %s: %v", down, err)
+	}
+	mustExec(t, db, string(body))
+	mustExec(t, db, `DELETE FROM schema_migrations WHERE version = $1`, version)
+}
+
 func mustHaveTables(t *testing.T, db *sql.DB, names []string) {
 	t.Helper()
 	for _, name := range names {
@@ -368,6 +506,23 @@ func mustHaveTables(t *testing.T, db *sql.DB, names []string) {
 		}
 		if !exists {
 			t.Fatalf("expected table %s to exist", name)
+		}
+	}
+}
+
+func mustNotHaveTables(t *testing.T, db *sql.DB, names []string) {
+	t.Helper()
+	for _, name := range names {
+		var exists bool
+		if err := db.QueryRow(`SELECT EXISTS (
+            SELECT 1 FROM information_schema.tables
+            WHERE table_schema = current_schema()
+              AND table_name = $1
+        )`, name).Scan(&exists); err != nil {
+			t.Fatalf("lookup table %s: %v", name, err)
+		}
+		if exists {
+			t.Fatalf("expected table %s to be absent", name)
 		}
 	}
 }
