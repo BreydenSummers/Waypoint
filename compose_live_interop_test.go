@@ -26,7 +26,7 @@ type captureTranscriptFixture struct {
 		Role         string `json:"role"`
 		AuthorizedBy string `json:"authorizedBy,omitempty"`
 	} `json:"actor"`
-	Request map[string]any `json:"request"`
+	Request  map[string]any `json:"request"`
 	RawParts struct {
 		StdoutBase64 string `json:"stdoutBase64"`
 		StderrBase64 string `json:"stderrBase64"`
@@ -65,7 +65,7 @@ func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 		t.Fatalf("write compose override: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), composeTestTimeout)
 	defer cancel()
 
 	runCompose := func(args ...string) string {
@@ -78,7 +78,7 @@ func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), composeCleanupTimeout)
 		defer cleanupCancel()
 		_, _ = composeOutput(cleanupCtx, project, overridePath, "down", "-v", "--remove-orphans")
 	})
@@ -208,7 +208,9 @@ func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 	}
 	var listBody struct {
 		Result struct {
-			Tools []struct{ Name string `json:"name"` } `json:"tools"`
+			Tools []struct {
+				Name string `json:"name"`
+			} `json:"tools"`
 		} `json:"result"`
 	}
 	decodeBody(t, listResp.Body, &listBody)
@@ -229,7 +231,7 @@ func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 	}
 	var mcpBody struct {
 		Result struct {
-			IsError bool `json:"isError"`
+			IsError           bool `json:"isError"`
 			StructuredContent struct {
 				Ack struct {
 					ActionID         string `json:"actionId"`

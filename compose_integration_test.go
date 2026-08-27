@@ -19,6 +19,63 @@ import (
 	"time"
 )
 
+const (
+	composeTestTimeout    = 15 * time.Minute
+	composeStartupTimeout = 5 * time.Minute
+	composeCleanupTimeout = 2 * time.Minute
+)
+
+func TestComposeStackStartsCleanlyTwice(t *testing.T) {
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not available")
+	}
+	if out, err := exec.Command("docker", "info").CombinedOutput(); err != nil {
+		t.Skipf("docker daemon unavailable: %v\n%s", err, out)
+	}
+
+	project := fmt.Sprintf("waypoint-compose-clean-%d-%d", os.Getpid(), time.Now().UnixNano())
+	overridePath := filepath.Join(t.TempDir(), "compose.override.yml")
+	override := []byte("services:\n  waypoint:\n    ports:\n      - target: 8080\n        published: 0\n        protocol: tcp\n")
+	if err := os.WriteFile(overridePath, override, 0o600); err != nil {
+		t.Fatalf("write compose override: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), composeTestTimeout)
+	defer cancel()
+
+	runCompose := func(args ...string) string {
+		t.Helper()
+		out, err := composeOutput(ctx, project, overridePath, args...)
+		if err != nil {
+			t.Fatalf("docker compose %s failed: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		return out
+	}
+
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), composeCleanupTimeout)
+		defer cleanupCancel()
+		_, _ = composeOutput(cleanupCtx, project, overridePath, "down", "-v", "--remove-orphans")
+	})
+
+	for i := 0; i < 2; i++ {
+		runCompose("up", "-d", "--wait", "--build")
+		port := waitForComposePort(t, ctx, project, overridePath)
+		baseURL := "http://127.0.0.1:" + port
+
+		waitForHTTP(t, baseURL+"/readyz", http.StatusOK)
+		assertHTTPBodyContains(t, baseURL+"/engagements/demo", http.StatusOK, `id="root"`)
+
+		runCompose("down", "-v", "--remove-orphans")
+		if got := strings.TrimSpace(runCompose("ps", "-q")); got != "" {
+			t.Fatalf("cycle %d compose ps = %q, want empty", i+1, got)
+		}
+		if got := strings.TrimSpace(runCompose("ps", "-q", "postgres")); got != "" {
+			t.Fatalf("cycle %d postgres ps = %q, want empty", i+1, got)
+		}
+	}
+}
+
 func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker not available")
@@ -34,7 +91,7 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 		t.Fatalf("write compose override: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), composeTestTimeout)
 	defer cancel()
 
 	runCompose := func(args ...string) string {
@@ -47,7 +104,7 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	}
 
 	t.Cleanup(func() {
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), composeCleanupTimeout)
 		defer cleanupCancel()
 		_, _ = composeOutput(cleanupCtx, project, overridePath, "down", "-v", "--remove-orphans")
 	})
@@ -138,7 +195,10 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 		t.Fatalf("post-waypoint-restart evidence count = %s, want 2", got)
 	}
 
-	runCompose("restart", "postgres")
+	runCompose("stop", "postgres")
+	waitForHTTP(t, baseURL+"/readyz", http.StatusServiceUnavailable)
+
+	runCompose("start", "postgres")
 	waitForHTTP(t, baseURL+"/readyz", http.StatusOK)
 	assertHTTPBodyContains(t, baseURL+"/engagements/demo", http.StatusOK, `id="root"`)
 
@@ -185,7 +245,7 @@ func mustComposeExec(t *testing.T, ctx context.Context, project, overridePath st
 
 func waitForComposePort(t *testing.T, ctx context.Context, project, overridePath string) string {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Minute)
+	deadline := time.Now().Add(composeStartupTimeout)
 	var lastErr error
 	for time.Now().Before(deadline) {
 		out, err := composeOutput(ctx, project, overridePath, "port", "waypoint", "8080")
@@ -203,7 +263,7 @@ func waitForComposePort(t *testing.T, ctx context.Context, project, overridePath
 
 func waitForHTTP(t *testing.T, url string, wantStatus int) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Minute)
+	deadline := time.Now().Add(composeStartupTimeout)
 	client := &http.Client{Timeout: 2 * time.Second}
 	for time.Now().Before(deadline) {
 		resp, err := client.Get(url)

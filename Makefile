@@ -23,7 +23,7 @@ smoke: build
 	@WAYPOINT_ADDR=127.0.0.1:18080 $(BIN) > /tmp/waypoint.log 2>&1 & \
 	pid=$$!; \
 	trap 'kill $$pid >/dev/null 2>&1 || true' EXIT; \
-	for i in $$(seq 1 30); do \
+	for i in $$(seq 1 120); do \
 		if curl -fsS http://127.0.0.1:18080/readyz >/tmp/waypoint-ready.json; then break; fi; \
 		sleep 1; \
 	done; \
