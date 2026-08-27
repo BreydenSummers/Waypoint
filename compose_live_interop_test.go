@@ -88,7 +88,7 @@ func TestComposeLiveCollectorInteropTranscripts(t *testing.T) {
 	baseURL := "http://127.0.0.1:" + port
 
 	waitForHTTP(t, baseURL+"/readyz", http.StatusOK)
-	assertHTTPBodyContains(t, baseURL+"/engagements/demo", http.StatusOK, "Journey log")
+	assertHTTPBodyContains(t, baseURL+"/engagements/demo", http.StatusOK, `id="root"`)
 
 	engagementID := "11111111-1111-4111-8111-111111111111"
 	humanAID := "22222222-2222-4222-8222-222222222222"
