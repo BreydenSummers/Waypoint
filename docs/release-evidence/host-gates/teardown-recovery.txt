@@ -1,122 +1,115 @@
-Error: go exited 1: === RUN   TestComposeStackPersistsDBAndEvidenceAcrossRestart
-    compose_integration_test.go:116: docker compose up -d --wait --build failed: exit status 1
-        #0 building with "default" instance using docker driver
+Error: go exited 1: nitialize frontend: Readline
+        #12 215.4 debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.36.0 /usr/local/share/perl/5.36.0 /usr/lib/x86_64-linux-gnu/perl5/5.36 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.36 /usr/share/perl/5.36 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+        #12 215.4 debconf: falling back to frontend: Teletype
+        #12 216.1 Setting up libcurl4:amd64 (7.88.1-10+deb12u15) ...
+        #12 216.3 Setting up libx11-6:amd64 (2:1.8.4-2+deb12u2) ...
+        #12 216.5 Setting up libharfbuzz0b:amd64 (6.0.0+dfsg-3) ...
+        #12 216.8 Setting up libgdk-pixbuf-2.0-0:amd64 (2.42.10+dfsg-1+deb12u4) ...
+        #12 217.1 Setting up curl (7.88.1-10+deb12u15) ...
+        #12 217.3 Setting up libfontconfig1:amd64 (2.14.1-4) ...
+        #12 217.6 Setting up libsndfile1:amd64 (1.2.0-1+deb12u1) ...
+        #12 217.9 Setting up libxkbfile1:amd64 (1:1.1.0-1) ...
+        #12 218.2 Setting up libxcomposite1:amd64 (1:0.4.5-1) ...
+        #12 218.4 Setting up libsm6:amd64 (2:1.2.3-1) ...
+        #12 218.6 Setting up libavahi-client3:amd64 (0.8-10+deb12u1) ...
+        #12 218.9 Setting up libxmuu1:amd64 (2:1.1.3-3) ...
+        #12 219.1 Setting up libdrm-amdgpu1:amd64 (2.4.114-1+b1) ...
+        #12 219.3 Setting up libxcb-dri3-0:amd64 (1.15-1) ...
+        #12 219.5 Setting up gtk-update-icon-cache (3.24.38-2~deb12u3) ...
+        #12 219.7 Setting up libx11-xcb1:amd64 (2:1.8.4-2+deb12u2) ...
+        #12 219.9 Setting up fontconfig (2.14.1-4) ...
+        #12 220.0 Regenerating fonts cache... done.
+        #12 222.1 Setting up libdrm-nouveau2:amd64 (2.4.114-1+b1) ...
+        #12 222.3 Setting up libxdamage1:amd64 (1:1.1.6-1) ...
+        #12 222.4 Setting up libxpm4:amd64 (1:3.5.12-1.1+deb12u1) ...
+        #12 222.6 Setting up libxrender1:amd64 (1:0.9.10-1.1) ...
+        #12 222.8 Setting up libgbm1:amd64 (22.3.6-1+deb12u2) ...
+        #12 223.0 Setting up libpulse0:amd64 (16.1+dfsg1-2+b1) ...
+        #12 223.3 Setting up libdrm-radeon1:amd64 (2.4.114-1+b1) ...
+        #12 223.5 Setting up libpango-1.0-0:amd64 (1.50.12+ds-1) ...
+        #12 223.7 Setting up libdrm-intel1:amd64 (2.4.114-1+b1) ...
+        #12 224.0 Setting up libgl1-mesa-dri:amd64 (22.3.6-1+deb12u2) ...
+        #12 224.2 Setting up libxext6:amd64 (2:1.3.4-1+b1) ...
+        #12 224.5 Setting up libcairo2:amd64 (1.16.0-7) ...
+        #12 224.7 Setting up libxxf86vm1:amd64 (1:1.1.4-1+b2) ...
+        #12 224.9 Setting up libxnvctrl0:amd64 (525.85.05-3~deb12u1) ...
+        #12 225.1 Setting up dbus-user-session (1.14.10-1~deb12u1) ...
+        #12 225.4 Setting up adwaita-icon-theme (43-1) ...
+        #12 225.6 update-alternatives: using /usr/share/icons/Adwaita/cursor.theme to provide /usr/share/icons/default/index.theme (x-cursor-theme) in auto mode
+        #12 225.7 Setting up libxfixes3:amd64 (1:6.0.0-2) ...
+        #12 225.9 Setting up libxinerama1:amd64 (2:1.1.4-3) ...
+        #12 226.1 Setting up libxv1:amd64 (2:1.0.11-1.1) ...
+        #12 226.4 Setting up libxrandr2:amd64 (2:1.5.2-2+b1) ...
+        #12 226.6 Setting up libxt6:amd64 (1:1.2.1-1.1) ...
+        #12 226.7 Setting up libcups2:amd64 (2.4.2-3+deb12u9) ...
+        #12 226.9 Setting up libharfbuzz-subset0:amd64 (6.0.0+dfsg-3) ...
+        #12 227.2 Setting up libcairo-gobject2:amd64 (1.16.0-7) ...
+        #12 227.4 Setting up libpangoft2-1.0-0:amd64 (1.50.12+ds-1) ...
+        #12 227.5 Setting up libpangocairo-1.0-0:amd64 (1.50.12+ds-1) ...
+        #12 227.7 Setting up libxft2:amd64 (2.3.6-1) ...
+        #12 228.0 Setting up libxmu6:amd64 (2:1.1.3-3) ...
+        #12 228.2 Setting up libglx-mesa0:amd64 (22.3.6-1+deb12u2) ...
+        #12 228.3 Setting up libxi6:amd64 (2:1.8-1+b1) ...
+        #12 228.4 Setting up libglx0:amd64 (1.6.0-1) ...
+        #12 228.6 Setting up libxtst6:amd64 (2:1.2.3-1.1) ...
+        #12 228.7 Setting up libxcursor1:amd64 (1:1.2.1-1) ...
+        #12 228.8 Setting up libxxf86dga1:amd64 (2:1.1.5-1) ...
+        #12 229.0 Setting up dconf-service (0.40.0-4) ...
+        #12 229.1 Setting up libxaw7:amd64 (2:1.0.14-1) ...
+        #12 229.2 Setting up libatspi2.0-0:amd64 (2.46.0-5) ...
+        #12 229.4 Setting up libatk-bridge2.0-0:amd64 (2.46.0-5) ...
+        #12 229.5 Setting up libgl1:amd64 (1.6.0-1) ...
+        #12 229.6 Setting up x11-utils (7.7+5) ...
+        #12 230.1 Setting up chromium-common (151.0.7922.173-1~deb12u1) ...
+        #12 230.2 Setting up dconf-gsettings-backend:amd64 (0.40.0-4) ...
+        #12 230.4 Setting up libgtk-3-common (3.24.38-2~deb12u3) ...
+        #12 230.5 Setting up libgtk-3-0:amd64 (3.24.38-2~deb12u3) ...
+        #12 230.7 Setting up chromium (151.0.7922.173-1~deb12u1) ...
+        #12 231.1 update-alternatives: using /usr/bin/chromium to provide /usr/bin/x-www-browser (x-www-browser) in auto mode
+        #12 231.2 update-alternatives: using /usr/bin/chromium to provide /usr/bin/gnome-www-browser (gnome-www-browser) in auto mode
+        #12 231.2 Processing triggers for libc-bin (2.36-9+deb12u14) ...
+        #12 231.4 Processing triggers for ca-certificates (20250419~deb12u1) ...
+        #12 231.5 Updating certificates in /etc/ssl/certs...
+        #12 232.2 0 added, 0 removed; done.
+        #12 232.2 Running hooks in /etc/ca-certificates/update.d...
+        #12 232.2 done.
+        #12 DONE 232.9s
         
-        #1 [waypoint internal] load build definition from Dockerfile
-        #1 transferring dockerfile:
-        #1 transferring dockerfile: 1.00kB done
-        #1 DONE 2.7s
-        
-        #2 [waypoint internal] load metadata for docker.io/library/golang:1.22-bookworm
-        #2 ...
-        
-        #3 [waypoint internal] load metadata for docker.io/library/debian:bookworm-slim
-        #3 DONE 0.6s
-        
-        #4 [waypoint internal] load metadata for docker.io/library/node:22-bookworm
-        #4 DONE 0.7s
-        
-        #2 [waypoint internal] load metadata for docker.io/library/golang:1.22-bookworm
-        #2 DONE 0.8s
-        
-        #5 [waypoint internal] load .dockerignore
-        #5 transferring context:
-        #5 transferring context: 2B done
-        #5 DONE 0.3s
-        
-        #6 [waypoint web 1/8] FROM docker.io/library/node:22-bookworm@sha256:8a34c4ab3ea2c5cd194f07e317b2a8f09461d3c8b05c4e34c8ccd56d56024c4d
-        #6 DONE 0.0s
-        
-        #7 [waypoint stage-2 1/4] FROM docker.io/library/debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
-        #7 DONE 0.0s
-        
-        #8 [waypoint build 1/9] FROM docker.io/library/golang:1.22-bookworm@sha256:3d699e4d15d0f8f13c9195c0632a16702b8cbdece2955af1c23b37ae5d55a253
-        #8 DONE 0.0s
-        
-        #9 [waypoint internal] load build context
-        #9 transferring context: 1.69MB 0.0s done
-        #9 DONE 3.0s
-        
-        #10 [waypoint web 7/8] COPY contracts ./contracts
-        #10 CACHED
-        
-        #11 [waypoint build 9/9] RUN CGO_ENABLED=0 go build -o /out/waypoint ./cmd/waypoint
-        #11 CACHED
-        
-        #12 [waypoint stage-2 2/4] RUN apt-get update  && apt-get install -y --no-install-recommends curl ca-certificates chromium  && rm -rf /var/lib/apt/lists/*
-        #12 CACHED
-        
-        #13 [waypoint web 2/8] WORKDIR /src
-        #13 CACHED
-        
-        #14 [waypoint web 5/8] COPY web ./web
-        #14 CACHED
-        
-        #15 [waypoint build 6/9] COPY internal ./internal
-        #15 CACHED
-        
-        #16 [waypoint web 3/8] COPY web/package*.json ./web/
-        #16 CACHED
-        
-        #17 [waypoint build 2/9] WORKDIR /src
-        #17 CACHED
-        
-        #18 [waypoint web 6/8] COPY internal ./internal
-        #18 CACHED
-        
-        #19 [waypoint stage-2 3/4] WORKDIR /app
-        #19 CACHED
-        
-        #20 [waypoint build 4/9] COPY third_party ./third_party
-        #20 CACHED
-        
-        #21 [waypoint build 7/9] COPY contracts ./contracts
-        #21 CACHED
-        
-        #22 [waypoint build 3/9] COPY go.mod ./
-        #22 CACHED
-        
-        #23 [waypoint build 5/9] COPY cmd ./cmd
-        #23 CACHED
-        
-        #24 [waypoint web 8/8] RUN cd web && npm run build
-        #24 CACHED
-        
-        #25 [waypoint web 4/8] RUN npm ci --prefix web
-        #25 CACHED
-        
-        #26 [waypoint build 8/9] COPY --from=web /src/internal/webassets/dist ./internal/webassets/dist
-        #26 CACHED
+        #26 [waypoint stage-2 3/4] WORKDIR /app
+        #26 DONE 0.6s
         
         #27 [waypoint stage-2 4/4] COPY --from=build /out/waypoint /usr/local/bin/waypoint
-        #27 CACHED
+        #27 DONE 0.8s
         
         #28 [waypoint] exporting to image
-        #28 exporting layers done
-        #28 writing image sha256:6e0e031c74bb30d21cf570de4ebc32ed7d52b94d96d8b74e9d6c8bca4085f083 0.0s done
-        #28 naming to docker.io/library/waypoint:compose 0.1s done
-        #28 DONE 0.3s
-         Network waypoint-compose-2525998-1787835839517510294_default  Creating
-         Network waypoint-compose-2525998-1787835839517510294_default  Created
-         Volume "waypoint-compose-2525998-1787835839517510294_waypoint-evidence"  Creating
-         Volume "waypoint-compose-2525998-1787835839517510294_waypoint-evidence"  Created
-         Volume "waypoint-compose-2525998-1787835839517510294_waypoint-postgres"  Creating
-         Volume "waypoint-compose-2525998-1787835839517510294_waypoint-postgres"  Created
-         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Creating
-         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Created
-         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Creating
-         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Created
-         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Starting
-         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Started
-         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Waiting
-         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Healthy
-         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Starting
-         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Started
-         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Waiting
-         Container waypoint-compose-2525998-1787835839517510294-waypoint-1  Waiting
-         Container waypoint-compose-2525998-1787835839517510294-postgres-1  Healthy
-        container waypoint-compose-2525998-1787835839517510294-waypoint-1 is unhealthy
---- FAIL: TestComposeStackPersistsDBAndEvidenceAcrossRestart (32.24s)
+        #28 exporting layers
+        #28 exporting layers 4.9s done
+        #28 writing image sha256:b1a946775734884e24a1e9c27884e74fa296caec1232c0995168cd1f93b81f2d 0.0s done
+        #28 naming to docker.io/library/waypoint:compose 0.0s done
+        #28 DONE 5.3s
+    compose_integration_test.go:123: docker compose up --wait:
+        Network waypoint-compose-3034228-1787870133371152974_default  Creating
+         Network waypoint-compose-3034228-1787870133371152974_default  Created
+         Volume "waypoint-compose-3034228-1787870133371152974_waypoint-evidence"  Creating
+         Volume "waypoint-compose-3034228-1787870133371152974_waypoint-evidence"  Created
+         Volume "waypoint-compose-3034228-1787870133371152974_waypoint-postgres"  Creating
+         Volume "waypoint-compose-3034228-1787870133371152974_waypoint-postgres"  Created
+         Container waypoint-compose-3034228-1787870133371152974-postgres-1  Creating
+         Container waypoint-compose-3034228-1787870133371152974-postgres-1  Created
+         Container waypoint-compose-3034228-1787870133371152974-waypoint-1  Creating
+         Container waypoint-compose-3034228-1787870133371152974-waypoint-1  Created
+         Container waypoint-compose-3034228-1787870133371152974-postgres-1  Starting
+         Container waypoint-compose-3034228-1787870133371152974-postgres-1  Started
+         Container waypoint-compose-3034228-1787870133371152974-postgres-1  Waiting
+         Container waypoint-compose-3034228-1787870133371152974-postgres-1  Healthy
+         Container waypoint-compose-3034228-1787870133371152974-waypoint-1  Starting
+         Container waypoint-compose-3034228-1787870133371152974-waypoint-1  Started
+         Container waypoint-compose-3034228-1787870133371152974-postgres-1  Waiting
+         Container waypoint-compose-3034228-1787870133371152974-waypoint-1  Waiting
+         Container waypoint-compose-3034228-1787870133371152974-postgres-1  Healthy
+         Container waypoint-compose-3034228-1787870133371152974-waypoint-1  Healthy
+    compose_integration_test.go:137: schema_migrations count = 9, want 7
+--- FAIL: TestComposeStackPersistsDBAndEvidenceAcrossRestart (267.38s)
 FAIL
-FAIL	waypoint	32.242s
+FAIL	waypoint	267.381s
 FAIL
