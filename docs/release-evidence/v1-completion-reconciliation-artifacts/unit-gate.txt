@@ -1,0 +1,1 @@
+command=go run ./cmd/release-test --mode unit --out-dir docs/release-evidence/v1-completion-reconciliation-artifacts/unit-gate

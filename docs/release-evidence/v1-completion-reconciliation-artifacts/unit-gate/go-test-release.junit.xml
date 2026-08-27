@@ -1,0 +1,253 @@
+<testsuites>
+  <testsuite name="waypoint-release-tests" tests="137" failures="0" skipped="56">
+    <testcase name="TestActionAttributionSchemaRoundTrip" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestActionAttributionSchemaRoundTrip&#xA;migrations_test.go:273: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestActionAttributionSchemaRoundTrip (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestActionHandlerRejectsMissingAuthorizationBeforeQuerying" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestActionHandlerWithoutDatabaseIsUnavailable" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestActionListQueryIsKeysetBoundedAndFilterable" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestActionListTimeParsingRejectsBadTimestamp" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestActorAuthorizationConstraint" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestActorAuthorizationConstraint&#xA;migrations_test.go:248: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestActorAuthorizationConstraint (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestActorLifecycleProvisionRotateRevokeAndAuthorization" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestActorLifecycleProvisionRotateRevokeAndAuthorization&#xA;actor_test.go:12: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestActorLifecycleProvisionRotateRevokeAndAuthorization (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestAppendAuditEventCapturesOutOfBandReviewLifecycle" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestAppendAuditEventCapturesOutOfBandReviewLifecycle&#xA;audit_test.go:35: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestAppendAuditEventCapturesOutOfBandReviewLifecycle (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly&#xA;audit_test.go:214: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestAppendAuditEventCommitsConcurrentlyAndRollsBackCleanly (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestAppendAuditEventRedactsSensitiveMetadata" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestAppendAuditEventRedactsSensitiveMetadata&#xA;audit_test.go:139: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestAppendAuditEventRedactsSensitiveMetadata (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestApplyMigrationsOnRealPostgreSQL" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestApplyMigrationsOnRealPostgreSQL&#xA;migrations_test.go:40: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestApplyMigrationsOnRealPostgreSQL (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestApplyMigrationsSerializesConcurrentStarters" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestApplyMigrationsSerializesConcurrentStarters&#xA;migrations_test.go:96: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestApplyMigrationsSerializesConcurrentStarters (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestAssembleReportSnapshotOrdersSectionsAndGaps" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestAttributionHostGateHumanAndAIActorsAcrossProvisionCaptureRotateRevokeAndReport" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestAttributionHostGateHumanAndAIActorsAcrossProvisionCaptureRotateRevokeAndReport&#xA;attribution_host_gate_test.go:21: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestAttributionHostGateHumanAndAIActorsAcrossProvisionCaptureRotateRevokeAndReport (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestAuditEventViewAndTableRemainAppendOnly" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestAuditEventViewAndTableRemainAppendOnly&#xA;audit_test.go:311: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestAuditEventViewAndTableRemainAppendOnly (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestAuditEventsCursorExpiredReturnsResyncLink" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestAuditEventsCursorExpiredReturnsResyncLink&#xA;audit_test.go:105: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestAuditEventsCursorExpiredReturnsResyncLink (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation&#xA;audit_test.go:21: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestAuditHistoryPaginationSSEReconnectFilteringAndRevocation (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestAuditQueryShapeRemainsKeysetBounded" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestAuditSSEHeartbeatAndCommittedCaptureVisibility" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestAuditSSEHeartbeatAndCommittedCaptureVisibility&#xA;audit_test.go:179: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestAuditSSEHeartbeatAndCommittedCaptureVisibility (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestBuildExportDumpIncludesAllAuthoritativeEngagementState" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestBuildExportDumpIncludesAllAuthoritativeEngagementState&#xA;export_test.go:607: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestBuildExportDumpIncludesAllAuthoritativeEngagementState (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestBuildExportEvidenceTarIsDeterministicAcrossMtimeDrift" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestBuildExportEvidenceTarIsDeterministicAcrossMtimeDrift&#xA;export_test.go:389: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestBuildExportEvidenceTarIsDeterministicAcrossMtimeDrift (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestBuildExportEvidenceTarStreamsAttachmentRoles" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestBuildExportEvidenceTarStreamsAttachmentRoles&#xA;export_test.go:731: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestBuildExportEvidenceTarStreamsAttachmentRoles (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestBuildOutOfBandClaimPendingAndLinked" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestBuildPlatformArtifactIncludesTraceTagsAndToolVersions" classname="waypoint/internal/releasegate"></testcase>
+    <testcase name="TestBundleToolsAreStandaloneAndVersioned" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestCaptureAcceptsAIInitiationWithDecisionContext" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCaptureAcceptsAIInitiationWithDecisionContext&#xA;capture_test.go:422: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCaptureAcceptsAIInitiationWithDecisionContext (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCaptureEnvelopeLimitMatchesSchemaCeiling" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestCaptureEvidenceDeduplicatesAndSurvivesRestart" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCaptureEvidenceDeduplicatesAndSurvivesRestart&#xA;capture_test.go:283: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCaptureEvidenceDeduplicatesAndSurvivesRestart (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCaptureIngestCreatesReplaysAndRejectsChangedPayload" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCaptureIngestCreatesReplaysAndRejectsChangedPayload&#xA;capture_test.go:49: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCaptureIngestCreatesReplaysAndRejectsChangedPayload (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCaptureIngestRejectsDiskPressureBeforeCommitting" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCaptureIngestRejectsDiskPressureBeforeCommitting&#xA;performance_fault_test.go:362: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCaptureIngestRejectsDiskPressureBeforeCommitting (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication&#xA;performance_fault_test.go:403: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCaptureIngestRetriesAfterInterruptedUploadWithoutDuplication (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCapturePersistsEvidenceAndRecoversOrphans" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCapturePersistsEvidenceAndRecoversOrphans&#xA;capture_test.go:188: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCapturePersistsEvidenceAndRecoversOrphans (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput&#xA;capture_test.go:490: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCapturePersistsStructuredResultsAndRollsBackInvalidOutput (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCapturePropagatesOrderedPivotsThroughAuditAndAPI" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCapturePropagatesOrderedPivotsThroughAuditAndAPI&#xA;capture_pivot_test.go:19: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCapturePropagatesOrderedPivotsThroughAuditAndAPI (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCaptureRejectsConflictingStableEntityKinds" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCaptureRejectsConflictingStableEntityKinds&#xA;capture_test.go:647: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCaptureRejectsConflictingStableEntityKinds (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCaptureRejectsUnsupportedContractVersion" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCaptureRejectsUnsupportedContractVersion&#xA;capture_test.go:168: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCaptureRejectsUnsupportedContractVersion (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestCaptureRoundTripGateG2Transcript" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestCaptureRoundTripGateG2Transcript&#xA;capture_g2_test.go:42: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestCaptureRoundTripGateG2Transcript (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestComposeConfigValidatesWhenDockerComposeIsAvailable" classname="waypoint"></testcase>
+    <testcase name="TestComposeDeploymentFilesCoverOneStepDeployment" classname="waypoint"></testcase>
+    <testcase name="TestComposeLiveCollectorInteropTranscripts" classname="waypoint">
+      <skipped message="skipped">=== RUN   TestComposeLiveCollectorInteropTranscripts&#xA;compose_live_interop_test.go:101: docker daemon unavailable: exit status 1&#xA;Client:&#xA;Version:    26.1.5+dfsg1&#xA;Context:    default&#xA;Debug Mode: false&#xA;Plugins:&#xA;buildx: Docker Buildx (Docker Inc.)&#xA;Version:  0.13.1+ds1&#xA;Path:     /usr/libexec/docker/cli-plugins/docker-buildx&#xA;compose: Docker Compose (Docker Inc.)&#xA;Version:  2.26.1-4&#xA;Path:     /usr/libexec/docker/cli-plugins/docker-compose&#xA;&#xA;Server:&#xA;ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?&#xA;errors pretty printing info&#xA;--- SKIP: TestComposeLiveCollectorInteropTranscripts (0.05s)</skipped>
+    </testcase>
+    <testcase name="TestComposeStackPersistsDBAndEvidenceAcrossRestart" classname="waypoint">
+      <skipped message="skipped">=== RUN   TestComposeStackPersistsDBAndEvidenceAcrossRestart&#xA;compose_integration_test.go:90: docker daemon unavailable: exit status 1&#xA;Client:&#xA;Version:    26.1.5+dfsg1&#xA;Context:    default&#xA;Debug Mode: false&#xA;Plugins:&#xA;buildx: Docker Buildx (Docker Inc.)&#xA;Version:  0.13.1+ds1&#xA;Path:     /usr/libexec/docker/cli-plugins/docker-buildx&#xA;compose: Docker Compose (Docker Inc.)&#xA;Version:  2.26.1-4&#xA;Path:     /usr/libexec/docker/cli-plugins/docker-compose&#xA;&#xA;Server:&#xA;ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?&#xA;errors pretty printing info&#xA;--- SKIP: TestComposeStackPersistsDBAndEvidenceAcrossRestart (0.05s)</skipped>
+    </testcase>
+    <testcase name="TestComposeStackStartsCleanlyTwice" classname="waypoint">
+      <skipped message="skipped">=== RUN   TestComposeStackStartsCleanlyTwice&#xA;compose_integration_test.go:33: docker daemon unavailable: exit status 1&#xA;Client:&#xA;Version:    26.1.5+dfsg1&#xA;Context:    default&#xA;Debug Mode: false&#xA;Plugins:&#xA;buildx: Docker Buildx (Docker Inc.)&#xA;Version:  0.13.1+ds1&#xA;Path:     /usr/libexec/docker/cli-plugins/docker-buildx&#xA;compose: Docker Compose (Docker Inc.)&#xA;Version:  2.26.1-4&#xA;Path:     /usr/libexec/docker/cli-plugins/docker-compose&#xA;&#xA;Server:&#xA;ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?&#xA;errors pretty printing info&#xA;--- SKIP: TestComposeStackStartsCleanlyTwice (0.05s)</skipped>
+    </testcase>
+    <testcase name="TestCopyEvidenceStreamKeeps10GiBLimitPathWithinRSSBudget" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestCopyEvidenceStreamRejectsOverLimit" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestDatabaseProtectionsRejectMutations" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestDatabaseProtectionsRejectMutations&#xA;migrations_test.go:183: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestDatabaseProtectionsRejectMutations (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestDetectFlakesReportsOutcomeChanges" classname="waypoint/internal/releasegate"></testcase>
+    <testcase name="TestEmbeddedAssetsMatchDeterministicWebBuild" classname="waypoint/internal/webassets"></testcase>
+    <testcase name="TestEntityIdentityNormalizationConflictAndConcurrentDeduplication" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestEntityIdentityNormalizationConflictAndConcurrentDeduplication&#xA;entity_test.go:181: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestEntityIdentityNormalizationConflictAndConcurrentDeduplication (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestEntityIdentityNormalizationPrecedenceAndConcurrency" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestEntityIdentityNormalizationPrecedenceAndConcurrency/fqdn_trims_dot" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestEntityIdentityNormalizationPrecedenceAndConcurrency/hostname_ip_pair_normalizes" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestEntityIdentityNormalizationPrecedenceAndConcurrency/mac_normalizes" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestEntityIdentityNormalizationPrecedenceAndConcurrency/sid_wins_and_trims" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestEntityMergeConflictIsOptimisticUnderConcurrency" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestEntityMergeConflictIsOptimisticUnderConcurrency&#xA;entity_test.go:380: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestEntityMergeConflictIsOptimisticUnderConcurrency (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestEntityMergeSplitPreviewUndoAndProvenance" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestEntityMergeSplitPreviewUndoAndProvenance&#xA;entity_test.go:19: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestEntityMergeSplitPreviewUndoAndProvenance (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL&#xA;entity_test.go:293: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestEntityReadProvenanceTracksCanonicalLineageOnRealPostgreSQL (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestEvidenceHelpers" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestEvidenceMetadataAndContentReadsStayEngagementScoped" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestEvidenceMetadataAndContentReadsStayEngagementScoped&#xA;evidence_test.go:17: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestEvidenceMetadataAndContentReadsStayEngagementScoped (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship&#xA;export_test.go:24: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestExportJobListIsPagedAndResumable" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestExportJobListIsPagedAndResumable&#xA;export_test.go:813: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestExportJobListIsPagedAndResumable (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestExportJobPreflightRejectsInsufficientCapacity" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestExportJobPreflightRejectsInsufficientCapacity&#xA;export_test.go:456: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestExportJobPreflightRejectsInsufficientCapacity (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestExportLifecycleMigrationsUpgradeAndRollbackOnRealPostgreSQL" classname="waypoint/internal/db">
+      <skipped message="skipped">=== RUN   TestExportLifecycleMigrationsUpgradeAndRollbackOnRealPostgreSQL&#xA;migrations_test.go:131: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestExportLifecycleMigrationsUpgradeAndRollbackOnRealPostgreSQL (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestExportStreamingHelpersStayFileBounded" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestExportTeardownAuthorizationRoundTrip" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestExportTeardownAuthorizationRoundTrip&#xA;export_test.go:524: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestExportTeardownAuthorizationRoundTrip (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestExportWorkerRecoveryCompletesVerifiedReceiptAndCancellation" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestExportWorkerRecoveryCompletesVerifiedReceiptAndCancellation&#xA;export_test.go:221: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestExportWorkerRecoveryCompletesVerifiedReceiptAndCancellation (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestFindingPromotionRevisionsAndOperatorOnlyPromotion" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestFindingPromotionRevisionsAndOperatorOnlyPromotion&#xA;finding_test.go:16: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestFindingPromotionRevisionsAndOperatorOnlyPromotion (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestFindingsReportWorkflowAuthoritativeRealPostgresJourney" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestFindingsReportWorkflowAuthoritativeRealPostgresJourney&#xA;findings_report_workflow_test.go:22: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestFindingsReportWorkflowAuthoritativeRealPostgresJourney (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestG3AuthoritativeProvenanceJourney" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestG3AuthoritativeProvenanceJourney&#xA;g3_journey_test.go:17: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestG3AuthoritativeProvenanceJourney (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestHandlerServesHealthAndSPA" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestHandlersReturnServiceUnavailableWithoutDatabase" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestHandlersReturnServiceUnavailableWithoutDatabase/audit_history" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestHandlersReturnServiceUnavailableWithoutDatabase/capture_ingest" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass" classname="waypoint/scripts"></testcase>
+    <testcase name="TestInstallerRejectsUnsupportedHostMatrix" classname="waypoint/scripts"></testcase>
+    <testcase name="TestInstallerRejectsUnsupportedHostMatrix/unsupported-arch" classname="waypoint/scripts"></testcase>
+    <testcase name="TestInstallerRejectsUnsupportedHostMatrix/unsupported-os" classname="waypoint/scripts"></testcase>
+    <testcase name="TestInstallerRollbackAcceptsTargetVersionAndPreservesState" classname="waypoint/scripts"></testcase>
+    <testcase name="TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown" classname="waypoint/scripts"></testcase>
+    <testcase name="TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-22.04-x86_64" classname="waypoint/scripts"></testcase>
+    <testcase name="TestInstallerSupportsSupportedHostsAndFreshRestartAfterTeardown/ubuntu-24.04-x86_64" classname="waypoint/scripts"></testcase>
+    <testcase name="TestInstallerValidatesInstallsUpgradesAndRollsBack" classname="waypoint/scripts"></testcase>
+    <testcase name="TestLiveMultiActorRESTCaptureJourneys" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestLiveMultiActorRESTCaptureJourneys&#xA;capture_live_test.go:22: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestLiveMultiActorRESTCaptureJourneys (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestLoadCaptureTranscriptFixtureResolvesMutations" classname="waypoint"></testcase>
+    <testcase name="TestLoadFrozenReportSnapshotFromBundle" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestMCPStandardFlowReusesCaptureService" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestMCPStandardFlowReusesCaptureService&#xA;mcp_test.go:18: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestMCPStandardFlowReusesCaptureService (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestMeasuredPerformanceHarnessRetainsRawSamplesAndDerivedBudgets" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestNotableAlertRuleFixtures" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestNotableAlertRuleFixtures/first_newly_reachable_segment" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestNotableAlertRuleFixtures/successful_authentication" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestNotableAlertSelectionIsDeterministic" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestNotableAlertSelectionIsDeterministic/reachable_segment_prefers_stable_key_order" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestNotableAlertSelectionIsDeterministic/successful_authentication_prefers_stable_key_order" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestNotableAlertsAreDeduplicatedAndStreamed" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestNotableAlertsAreDeduplicatedAndStreamed&#xA;notable_alerts_test.go:85: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestNotableAlertsAreDeduplicatedAndStreamed (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestNotableAlertsUseSystemActorForAISourceCaptures" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestNotableAlertsUseSystemActorForAISourceCaptures&#xA;notable_alerts_test.go:190: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestNotableAlertsUseSystemActorForAISourceCaptures (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestOpenConfiguredDatabaseAppliesMigrations" classname="waypoint/cmd/waypoint">
+      <skipped message="skipped">=== RUN   TestOpenConfiguredDatabaseAppliesMigrations&#xA;main_test.go:16: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestOpenConfiguredDatabaseAppliesMigrations (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestOpenConfiguredDatabaseRequiresDSN" classname="waypoint/cmd/waypoint"></testcase>
+    <testcase name="TestOperatorDocumentationCoverageAndLinks" classname="waypoint"></testcase>
+    <testcase name="TestOutOfBandClaimLifecycleThroughPostgreSQL" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestOutOfBandClaimLifecycleThroughPostgreSQL&#xA;out_of_band_claims_test.go:111: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestOutOfBandClaimLifecycleThroughPostgreSQL (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestOutOfBandClaimRoutesWithoutDatabaseAreUnavailable" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestOutOfBandReviewRoutesWithoutDatabaseAreUnavailable" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestParseAuditCursorCanonical" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestParseConfigFromEnv" classname="waypoint/internal/egresspolicy"></testcase>
+    <testcase name="TestParseConfigFromEnv/auto_requires_endpoint" classname="waypoint/internal/egresspolicy"></testcase>
+    <testcase name="TestParseConfigFromEnv/manual_requires_an_explicit_address" classname="waypoint/internal/egresspolicy"></testcase>
+    <testcase name="TestParseConfigFromEnv/off_is_the_default" classname="waypoint/internal/egresspolicy"></testcase>
+    <testcase name="TestParseGoTestJSONDistinguishesReleaseCriticalAndUnitSkips" classname="waypoint/internal/releasegate"></testcase>
+    <testcase name="TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestPerformanceReadIndexesCoverBudgetedListPaths" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestReadCaptureRequestRejectsInterruptedMultipartUpload" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestReadCaptureRequestRejectsOversizedEnvelope" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestReadyzChecksDatabaseHealth" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestReadyzRequiresDatabase" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage&#xA;entity_recon_test.go:140: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestReconPreviewAndSplitProvenanceReadsFollowCanonicalLineage (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestReconReadApisAreKeysetPaginatedAndEngagementIsolated" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestReconReadApisAreKeysetPaginatedAndEngagementIsolated&#xA;entity_recon_test.go:18: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestReconReadApisAreKeysetPaginatedAndEngagementIsolated (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestReconReadQueryShapesRemainKeysetBounded" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestRedactAuditData" classname="waypoint/internal/db"></testcase>
+    <testcase name="TestRenderJUnitIncludesSkipAndFlakeMarkers" classname="waypoint/internal/releasegate"></testcase>
+    <testcase name="TestRenderReportHTMLAndPDFEscapeHostileContent" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestReportHandlerRequiresAuthAndScopesEngagement" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestReportHandlerRequiresAuthAndScopesEngagement&#xA;report_test.go:159: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestReportHandlerRequiresAuthAndScopesEngagement (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestRequiredAssetsPresentDetectsMissingAsset" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestResolveAutoManualAndOff" classname="waypoint/internal/egresspolicy"></testcase>
+    <testcase name="TestResolveAutoManualAndOff/auto_resolves_through_a_configured_endpoint" classname="waypoint/internal/egresspolicy"></testcase>
+    <testcase name="TestResolveAutoManualAndOff/manual_sends_no_discovery_traffic" classname="waypoint/internal/egresspolicy"></testcase>
+    <testcase name="TestResolveAutoManualAndOff/off_sends_no_discovery_traffic" classname="waypoint/internal/egresspolicy"></testcase>
+    <testcase name="TestResolveSSECursor" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestResolveSSECursor/after" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestResolveSSECursor/empty" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestResolveSSECursor/invalid_after" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestResolveSSECursor/last-event-id" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestResolveSSECursor/matching_pair" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestResolveSSECursor/mismatch" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestRuntimeEndpointReturnsStartupEgressState" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestStructuredResultValidationGatesNotableAlerts" classname="waypoint/internal/server"></testcase>
+    <testcase name="TestTailAuditEventsStopsWhenQueueIsFull" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestTailAuditEventsStopsWhenQueueIsFull&#xA;audit_test.go:145: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestTailAuditEventsStopsWhenQueueIsFull (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestUpsertEvidenceRejectsImmutableMetadataChanges" classname="waypoint/internal/server">
+      <skipped message="skipped">=== RUN   TestUpsertEvidenceRejectsImmutableMetadataChanges&#xA;performance_fault_test.go:314: WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests&#xA;--- SKIP: TestUpsertEvidenceRejectsImmutableMetadataChanges (0.00s)</skipped>
+    </testcase>
+    <testcase name="TestValidateAuditEventInputRejectsIncompleteAIActor" classname="waypoint/internal/db"></testcase>
+    <testcase name="TestWriteExportArchiveIsDeterministicAcrossMtimeDrift" classname="waypoint/internal/server"></testcase>
+  </testsuite>
+</testsuites>

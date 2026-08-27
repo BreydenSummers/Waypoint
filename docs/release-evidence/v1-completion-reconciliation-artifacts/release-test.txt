@@ -1,0 +1,5 @@
+command=make release-test RELEASE_TEST_OUT_DIR=docs/release-evidence/v1-completion-reconciliation-artifacts/release-test
+go run ./cmd/release-test --mode release --out-dir docs/release-evidence/v1-completion-reconciliation-artifacts/release-test
+release mode requires a browser binary
+exit status 1
+make: *** [Makefile:35: release-test] Error 1
