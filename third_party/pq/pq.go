@@ -665,7 +665,17 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	}
 }
 
-func (c *conn) CheckNamedValue(*driver.NamedValue) error { return nil }
+func (c *conn) CheckNamedValue(nv *driver.NamedValue) error {
+	// Honor driver.Valuer (and normalize standard kinds) before the value
+	// reaches query rewriting. Returning nil unconditionally would bypass the
+	// converter, so a Valuer such as an array wrapper would be formatted with
+	// fmt.Sprint (e.g. "[a]") instead of its intended value ("{a}"). Exotic
+	// types the converter cannot handle are left untouched for quoteArg.
+	if v, err := driver.DefaultParameterConverter.ConvertValue(nv.Value); err == nil {
+		nv.Value = v
+	}
+	return nil
+}
 
 func (c *conn) ExecContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	return c.execContext(ctx, query, args)
