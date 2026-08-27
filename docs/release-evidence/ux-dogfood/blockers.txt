@@ -1,0 +1,6 @@
+Docker daemon: unavailable
+PostgreSQL server/client: unavailable
+Browser binaries: unavailable
+Browser automation runtimes (Playwright/Puppeteer/Selenium): unavailable
+WAYPOINT_DB_DSN: unset
+WAYPOINT_TEST_PG_DSN: unset
