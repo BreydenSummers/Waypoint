@@ -53,8 +53,10 @@ func TestComposeDeploymentFilesCoverOneStepDeployment(t *testing.T) {
 
 	makefile := mustReadFile(t, "Makefile")
 	for _, want := range []string{
+		"docker compose up -d --build",
+		"docker compose down -v --remove-orphans",
 		"seq 1 120",
-		"curl -fsS http://127.0.0.1:18080/readyz",
+		"curl -fsS http://127.0.0.1:8080/readyz",
 		"grep -q '\"status\":\"ready\"' /tmp/waypoint-ready.json",
 	} {
 		if !strings.Contains(makefile, want) {

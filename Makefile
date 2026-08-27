@@ -19,15 +19,14 @@ build:
 	mkdir -p $(BIN_DIR)
 	$(GO) build -o $(BIN) ./cmd/waypoint
 
-smoke: build
-	@WAYPOINT_ADDR=127.0.0.1:18080 $(BIN) > /tmp/waypoint.log 2>&1 & \
-	pid=$$!; \
-	trap 'kill $$pid >/dev/null 2>&1 || true' EXIT; \
+smoke:
+	@trap 'docker compose down -v --remove-orphans >/tmp/waypoint-compose-down.log 2>&1 || true' EXIT; \
+	docker compose up -d --build >/tmp/waypoint-compose-up.log 2>&1; \
 	for i in $$(seq 1 120); do \
-		if curl -fsS http://127.0.0.1:18080/readyz >/tmp/waypoint-ready.json; then break; fi; \
+		if curl -fsS http://127.0.0.1:8080/readyz >/tmp/waypoint-ready.json; then break; fi; \
 		sleep 1; \
 	done; \
-	curl -fsS http://127.0.0.1:18080/ >/tmp/waypoint-index.html; \
+	curl -fsS http://127.0.0.1:8080/ >/tmp/waypoint-index.html; \
 	grep -q "Waypoint" /tmp/waypoint-index.html; \
 	grep -q '"status":"ready"' /tmp/waypoint-ready.json
 
