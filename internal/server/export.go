@@ -1846,23 +1846,6 @@ func loadExportArtifacts(m *exportManager, job exportJobRecord) (exportArtifacts
 	return exportArtifacts{bundleDir: bundleDir, archivePath: archivePath, manifest: manifestBytes, manifestSHA256: manifestSHA, archiveSHA256: archiveSHA, archiveByteLength: archiveLen, payloads: parsed.Payloads, snapshotID: job.SnapshotID.String, cutoff: cutoff, receiptID: job.BundleReceiptID.String}, nil
 }
 
-func buildExportDump(ctx context.Context, db queryer, engagementID, snapshotID, cutoff string) ([]byte, error) {
-	engagement, err := loadReportEngagement(ctx, db, engagementID)
-	if err != nil {
-		return nil, err
-	}
-	actions, err := loadReportActions(ctx, db, engagementID)
-	if err != nil {
-		return nil, err
-	}
-	findings, err := loadReportFindings(ctx, db, engagementID)
-	if err != nil {
-		return nil, err
-	}
-	payload := map[string]any{"formatVersion": exportContractVersion, "snapshotId": snapshotID, "cutoff": cutoff, "engagement": engagement, "actions": actions, "findings": findings}
-	return json.MarshalIndent(payload, "", "  ")
-}
-
 func buildExportEvidenceTar(ctx context.Context, db queryer, store *evidenceStore, engagementID, outputPath string) (err error) {
 	if store == nil || db == nil {
 		return errors.New("evidence store unavailable")
