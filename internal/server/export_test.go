@@ -39,11 +39,7 @@ func TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship(t *testing.
 	exportRoot := t.TempDir()
 	t.Setenv("WAYPOINT_EVIDENCE_DIR", evidenceRoot)
 	t.Setenv("WAYPOINT_EXPORT_DIR", exportRoot)
-	chromium := filepath.Join(t.TempDir(), "chromium")
-	if err := os.WriteFile(chromium, []byte("#!/bin/sh\nout=\"\"\nhtml=\"\"\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    --print-to-pdf=*) out=${arg#*=} ;;&\n    file://*) html=${arg#file://} ;;&\n  esac\ndone\ngrep -q 'Hash verified, not signed' \"$html\"\nprintf '%s' '%PDF-1.4\\n%%fake\\n%%EOF' > \"$out\"\n"), 0o755); err != nil {
-		t.Fatalf("write fake chromium: %v", err)
-	}
-	t.Setenv("WAYPOINT_CHROMIUM", chromium)
+	t.Setenv("WAYPOINT_CHROMIUM", resolveChromiumBinary(t))
 
 	engagementID := "11111111-1111-4111-8111-111111111111"
 	humanID := "22222222-2222-4222-8222-222222222222"
@@ -117,6 +113,13 @@ func TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship(t *testing.
 	}
 	if sha != completed.Bundle.ArchiveSHA256 {
 		t.Fatalf("archive hash = %s, want %s", sha, completed.Bundle.ArchiveSHA256)
+	}
+	pdfBytes, err := os.ReadFile(filepath.Join(exportRoot, "77777777-7777-4777-8777-777777777777", "bundle", "report", "frozen-report.pdf"))
+	if err != nil {
+		t.Fatalf("read exported pdf: %v", err)
+	}
+	if !bytes.HasPrefix(pdfBytes, []byte("%PDF")) {
+		t.Fatalf("exported pdf is not a Chromium PDF: %q", pdfBytes[:min(len(pdfBytes), 8)])
 	}
 	f, err := os.Open(archivePath)
 	if err != nil {
@@ -211,6 +214,134 @@ func TestExportJobLifecyclePersistsReceiptAndBlocksBrowserAuthorship(t *testing.
 	}
 	if _, err := os.Stat(regeneratedPath); err != nil {
 		t.Fatalf("regenerated html missing: %v", err)
+	}
+}
+
+func TestExportWorkerRecoveryCompletesVerifiedReceiptAndCancellation(t *testing.T) {
+	if os.Getenv("WAYPOINT_TEST_PG_DSN") == "" {
+		t.Skip("WAYPOINT_TEST_PG_DSN is required for real-PostgreSQL gate tests")
+	}
+	db := openTestDB(t)
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	evidenceRoot := t.TempDir()
+	exportRoot := t.TempDir()
+	t.Setenv("WAYPOINT_EVIDENCE_DIR", evidenceRoot)
+	t.Setenv("WAYPOINT_EXPORT_DIR", exportRoot)
+	t.Setenv("WAYPOINT_CHROMIUM", resolveChromiumBinary(t))
+
+	engagementID := "11111111-1111-4111-8111-111111111111"
+	humanID := "22222222-2222-4222-8222-222222222222"
+	actorToken := "recovery-token"
+	mustExec(t, db, `INSERT INTO engagement (id, name, client, scope, status) VALUES ($1, 'Q3 launch', 'Client', '10.10.12.0/24\ncorp.local', 'active')`, engagementID)
+	mustExec(t, db, `INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role) VALUES ($1, $2, 'human', 'alex.operator', $3, 'owner')`, humanID, engagementID, hashHex(actorToken))
+
+	stdoutBytes := []byte("nmap -sn 10.10.12.0/24\nHost is up\n")
+	stderrBytes := []byte("warning: raw output preserved\n")
+	stdoutSHA := hashHex(string(stdoutBytes))
+	stderrSHA := hashHex(string(stderrBytes))
+	stdoutKey := "captures/" + stdoutSHA + "/stdout"
+	stderrKey := "captures/" + stderrSHA + "/stderr"
+	stdoutPath := filepath.Join(evidenceRoot, filepath.FromSlash(stdoutKey))
+	stderrPath := filepath.Join(evidenceRoot, filepath.FromSlash(stderrKey))
+	if err := os.MkdirAll(filepath.Dir(stdoutPath), 0o750); err != nil {
+		t.Fatalf("mkdir stdout evidence: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(stderrPath), 0o750); err != nil {
+		t.Fatalf("mkdir stderr evidence: %v", err)
+	}
+	if err := os.WriteFile(stdoutPath, stdoutBytes, 0o600); err != nil {
+		t.Fatalf("write stdout evidence: %v", err)
+	}
+	if err := os.WriteFile(stderrPath, stderrBytes, 0o600); err != nil {
+		t.Fatalf("write stderr evidence: %v", err)
+	}
+	mustExec(t, db, `INSERT INTO evidence (id, engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, $2, 'stdout', $3, $4, 'text/plain', $5)`, "33333333-3333-4333-8333-333333333333", engagementID, stdoutSHA, int64(len(stdoutBytes)), stdoutKey)
+	mustExec(t, db, `INSERT INTO evidence (id, engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, $2, 'stderr', $3, $4, 'text/plain', $5)`, "44444444-4444-4444-8444-444444444444", engagementID, stderrSHA, int64(len(stderrBytes)), stderrKey)
+	mustExec(t, db, `INSERT INTO action (id, engagement_id, actor_id, source_agent_id, initiated_by, phase, command, argv, cwd, exec_host_ip, pivot_chain, target_kind, target_value, started_at, ended_at, exit_code, stdout_evidence_id, stderr_evidence_id, parse_status) VALUES ($1, $2, $3, $3, 'manual', 'recon', 'nmap', '[]'::jsonb, '/', '10.0.0.12', '[]'::jsonb, 'host', '10.10.12.0/24', now(), now(), 0, $4, $5, 'raw')`, "55555555-5555-4555-8555-555555555555", engagementID, humanID, "33333333-3333-4333-8333-333333333333", "44444444-4444-4444-8444-444444444444")
+	mustExec(t, db, `INSERT INTO finding (id, engagement_id, title, severity, evidence_action_ids, remediation, status, promoted_by, promoted_at) VALUES ($1, $2, 'SMB signing enforced', 'low', ARRAY[$3]::uuid[], 'Keep SMB signing enabled.', 'open', $4, now())`, "66666666-6666-4666-8666-666666666666", engagementID, "55555555-5555-4555-8555-555555555555", humanID)
+
+	manager := newExportManagerWithRuntime(db, &evidenceStore{root: evidenceRoot}, RuntimeState{})
+	verifyJobID := "77777777-7777-4777-8777-777777777778"
+	cancelJobID := "77777777-7777-4777-8777-777777777779"
+	mustExec(t, db, `INSERT INTO export_job (id, engagement_id, requested_by, format_version, state, progress_stage, progress_percent, processed_bytes, estimated_total_bytes, created_at, updated_at, revision) VALUES ($1, $2, $3, '1.0.0', 'queued', 'queued', 0, 0, 0, now(), now(), 1)`, verifyJobID, engagementID, humanID)
+	mustExec(t, db, `INSERT INTO export_job (id, engagement_id, requested_by, format_version, state, progress_stage, progress_percent, processed_bytes, estimated_total_bytes, created_at, updated_at, revision) VALUES ($1, $2, $3, '1.0.0', 'cancel_requested', 'verification', 92, 10, 10, now(), now(), 1)`, cancelJobID, engagementID, humanID)
+
+	verifyJob, err := loadExportJob(ctx, db, verifyJobID)
+	if err != nil {
+		t.Fatalf("load export job: %v", err)
+	}
+	artifacts, err := manager.buildArtifacts(ctx, verifyJob)
+	if err != nil {
+		t.Fatalf("build export artifacts: %v", err)
+	}
+	pdfBytes, err := os.ReadFile(artifacts.pdfPath)
+	if err != nil {
+		t.Fatalf("read exported pdf: %v", err)
+	}
+	if !bytes.HasPrefix(pdfBytes, []byte("%PDF")) {
+		t.Fatalf("exported pdf is not a Chromium PDF: %q", pdfBytes[:min(len(pdfBytes), 8)])
+	}
+	var receiptCount int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM export_receipt WHERE export_job_id = $1`, verifyJobID).Scan(&receiptCount); err != nil {
+		t.Fatalf("count pre-verification receipts: %v", err)
+	}
+	if receiptCount != 0 {
+		t.Fatal("receipt was persisted before verification")
+	}
+	verifyJob, err = manager.transitionJob(ctx, verifyJob, "verifying", exportJobProgress{Stage: "verification", Percent: 92, ProcessedBytes: artifacts.archiveByteLength, EstimatedTotalBytes: artifacts.archiveByteLength}, &artifacts, nil, "export.verifying", "service", "export-worker")
+	if err != nil {
+		t.Fatalf("transition export job: %v", err)
+	}
+
+	restarted := newExportManagerWithRuntime(db, &evidenceStore{root: evidenceRoot}, RuntimeState{})
+	restarted.recoverOutstanding(ctx)
+
+	waitForState := func(jobID, wantState string) exportJobResponse {
+		deadline := time.Now().Add(30 * time.Second)
+		for time.Now().Before(deadline) {
+			job, err := loadExportJob(ctx, db, jobID)
+			if err != nil {
+				t.Fatalf("load export job %s: %v", jobID, err)
+			}
+			if job.State == wantState {
+				return exportJobResponseFromRow(job)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		t.Fatalf("export job %s did not reach %s", jobID, wantState)
+		return exportJobResponse{}
+	}
+
+	completed := waitForState(verifyJobID, "completed")
+	if completed.Bundle == nil || completed.Bundle.ReceiptID == "" {
+		t.Fatalf("completed export missing bundle metadata: %#v", completed)
+	}
+	receipt, err := loadExportReceipt(ctx, db, completed.Bundle.ReceiptID)
+	if err != nil {
+		t.Fatalf("load export receipt: %v", err)
+	}
+	if receipt.Status != "verified" || receipt.ArchiveSHA256 != completed.Bundle.ArchiveSHA256 || receipt.ManifestSHA256 != completed.Bundle.ManifestSHA256 {
+		t.Fatalf("receipt mismatch: %#v bundle=%#v", receipt, completed.Bundle)
+	}
+
+	cancelled := waitForState(cancelJobID, "cancelled")
+	if cancelled.Failure == nil || cancelled.Failure.Code != "cancelled" {
+		t.Fatalf("cancelled export missing failure metadata: %#v", cancelled)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM export_receipt WHERE export_job_id = $1`, cancelJobID).Scan(&receiptCount); err != nil {
+		t.Fatalf("count cancelled receipts: %v", err)
+	}
+	if receiptCount != 0 {
+		t.Fatalf("cancelled export unexpectedly persisted a receipt: %d", receiptCount)
 	}
 }
 
