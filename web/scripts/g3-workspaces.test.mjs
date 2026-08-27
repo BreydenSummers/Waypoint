@@ -20,6 +20,8 @@ await test('G3 shell keeps recon/attacks/findings non-linear and accessible', as
   }
 
   assert.match(app, /routeFromPath\(pathname: string\)/);
+  assert.match(app, /return match \? \{ view: 'trail', phase: match\[1\] as PhaseId \} : \{ view: 'trail', phase: 'recon' \};/);
+  assert.match(app, /if \(typeof window === 'undefined'\) return \{ view: 'trail', phase: 'recon' \};/);
   assert.match(app, /aria-current=\{waypoint\.id === activeId \? 'step' : undefined\}/);
   assert.match(app, /<svg[\s\S]*aria-hidden=\"true\"[\s\S]*focusable=\"false\"/);
   assert.match(app, /All phases stay accessible; fog means no data discovered yet\./);
