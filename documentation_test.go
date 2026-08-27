@@ -10,6 +10,7 @@ import (
 
 func TestOperatorDocumentationCoverageAndLinks(t *testing.T) {
 	guide := readDoc(t, "docs/operator-guide.md")
+	dogfoodSkill := readDoc(t, ".pi/skills/dogfood-ux/SKILL.md")
 	matrix := readDoc(t, "docs/release-evidence/documentation/README.md")
 	coverage := readDoc(t, "docs/release-evidence/documentation/coverage.md")
 	traceability := readDoc(t, "docs/v1-traceability.md")
@@ -26,6 +27,7 @@ func TestOperatorDocumentationCoverageAndLinks(t *testing.T) {
 		"## Break-glass guidance",
 		"## Limits and exclusions",
 		"docker compose up -d --build",
+		"This stack is the path used for dogfood UX runs; pair it with Playwright-driven browser checks when verifying the operator flow.",
 		"Use the installer on supported Ubuntu hosts (22.04/24.04 x86_64).",
 		"The installer is the supported path for account provisioning, service files, rollout, and rollback.",
 		"Operator wrapper | Supported on Windows, Linux, and macOS",
@@ -50,6 +52,10 @@ func TestOperatorDocumentationCoverageAndLinks(t *testing.T) {
 		if !strings.Contains(guide, want) {
 			t.Fatalf("operator guide missing %q", want)
 		}
+	}
+
+	if !strings.Contains(dogfoodSkill, "Docker Compose") || !strings.Contains(dogfoodSkill, "Playwright") {
+		t.Fatalf("dogfood skill missing Docker Compose/Playwright capability guidance")
 	}
 
 	for _, want := range []string{
