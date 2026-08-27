@@ -20,6 +20,12 @@ func TestComposeDeploymentFilesCoverOneStepDeployment(t *testing.T) {
 		"WAYPOINT_EVIDENCE_DIR: /var/lib/waypoint/evidence",
 		"condition: service_healthy",
 		"healthcheck:",
+		"interval: 3s",
+		"retries: 30",
+		"start_period: 20s",
+		"interval: 5s",
+		"retries: 36",
+		"start_period: 45s",
 	} {
 		if !strings.Contains(compose, want) {
 			t.Fatalf("compose.yml missing %q", want)
@@ -37,10 +43,21 @@ func TestComposeDeploymentFilesCoverOneStepDeployment(t *testing.T) {
 		"COPY contracts ./contracts",
 		"FROM golang:1.22-bookworm AS build",
 		"COPY --from=web /src/internal/webassets/dist ./internal/webassets/dist",
-		"HEALTHCHECK --interval=10s --timeout=2s --start-period=15s --retries=6 CMD curl -fsS http://127.0.0.1:8080/readyz >/dev/null || exit 1",
+		"HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=36 CMD curl -fsS http://127.0.0.1:8080/readyz >/dev/null || exit 1",
 	} {
 		if !strings.Contains(dockerfile, want) {
 			t.Fatalf("Dockerfile missing %q", want)
+		}
+	}
+
+	makefile := mustReadFile(t, "Makefile")
+	for _, want := range []string{
+		"seq 1 120",
+		"curl -fsS http://127.0.0.1:18080/readyz",
+		"grep -q '\"status\":\"ready\"' /tmp/waypoint-ready.json",
+	} {
+		if !strings.Contains(makefile, want) {
+			t.Fatalf("Makefile missing %q", want)
 		}
 	}
 }

@@ -26,5 +26,5 @@ COPY --from=build /out/waypoint /usr/local/bin/waypoint
 ENV WAYPOINT_ADDR=:8080 \
     WAYPOINT_CHROMIUM=/usr/bin/chromium
 EXPOSE 8080
-HEALTHCHECK --interval=10s --timeout=2s --start-period=15s --retries=6 CMD curl -fsS http://127.0.0.1:8080/readyz >/dev/null || exit 1
+HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=36 CMD curl -fsS http://127.0.0.1:8080/readyz >/dev/null || exit 1
 ENTRYPOINT ["/usr/local/bin/waypoint"]
