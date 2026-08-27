@@ -21,6 +21,7 @@ await test('G3 shell keeps recon/attacks/findings non-linear and accessible', as
 
   assert.match(app, /routeFromPath\(pathname: string\)/);
   assert.match(app, /aria-current=\{waypoint\.id === activeId \? 'step' : undefined\}/);
+  assert.match(app, /<svg[\s\S]*aria-hidden=\"true\"[\s\S]*focusable=\"false\"/);
   assert.match(app, /All phases stay accessible; fog means no data discovered yet\./);
   assert.match(app, /Guide's note/);
   assert.match(app, /Journey log/);
