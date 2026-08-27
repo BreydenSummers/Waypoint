@@ -598,6 +598,7 @@ func (c *conn) execLocked(query string) (driver.Result, error) {
 		return nil, err
 	}
 	var tag string
+	var queryErr error
 	for {
 		typ, payload, err := c.readMessage()
 		if err != nil {
@@ -607,9 +608,16 @@ func (c *conn) execLocked(query string) (driver.Result, error) {
 		case 'C':
 			tag = string(bytesTrimNUL(payload))
 		case 'Z':
+			// ReadyForQuery terminates the exchange. An ErrorResponse is always
+			// followed by one, so draining to it here keeps a pooled connection
+			// synchronized instead of leaking the trailing messages into the
+			// next query on the same connection.
+			if queryErr != nil {
+				return nil, queryErr
+			}
 			return execResult(tag), nil
 		case 'E':
-			return nil, parseError(payload)
+			queryErr = parseError(payload)
 		case 'N', 'S', 'K':
 			continue
 		default:
@@ -637,6 +645,7 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 	}
 	var cols []string
 	var rows [][]driver.Value
+	var queryErr error
 	for {
 		typ, payload, err := c.readMessage()
 		if err != nil {
@@ -654,9 +663,15 @@ func (c *conn) QueryContext(ctx context.Context, query string, args []driver.Nam
 		case 'C':
 			continue
 		case 'Z':
+			// Drain to ReadyForQuery before returning so an error (which is
+			// always followed by one) cannot desynchronize a pooled connection
+			// and hand its trailing rows to the next query.
+			if queryErr != nil {
+				return nil, queryErr
+			}
 			return &rowsResult{cols: cols, rows: rows}, nil
 		case 'E':
-			return nil, parseError(payload)
+			queryErr = parseError(payload)
 		case 'N', 'S', 'K':
 			continue
 		default:

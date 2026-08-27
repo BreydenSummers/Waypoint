@@ -65,8 +65,8 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	if got := strings.Fields(runCompose("ps", "-q", "postgres")); len(got) != 1 {
 		t.Fatalf("postgres container count = %d, want 1 (%v)", len(got), got)
 	}
-	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", "SELECT COUNT(*) FROM schema_migrations")); got != "6" {
-		t.Fatalf("schema_migrations count = %s, want 6", got)
+	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", "SELECT COUNT(*) FROM schema_migrations")); got != "7" {
+		t.Fatalf("schema_migrations count = %s, want 7", got)
 	}
 	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", "SELECT COUNT(*) FROM engagement")); got != "0" {
 		t.Fatalf("fresh engagement count = %s, want 0", got)

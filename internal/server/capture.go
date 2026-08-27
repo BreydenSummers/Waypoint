@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	uuidPattern       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+	uuidPattern       = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 	entityKindPattern = regexp.MustCompile(`^[a-z][a-z0-9_-]*$`)
 	hexSHA256Pattern  = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
@@ -913,7 +913,10 @@ func captureExecutionData(exec captureExecution) map[string]any {
 	return m
 }
 
-func decisionContextMap(ctx *captureDecisionContext) map[string]any {
+// decisionContextMap returns an untyped nil (not a typed nil map) when there is
+// no decision context, so jsonArg stores SQL NULL rather than a jsonb "null".
+// A non-ai capture must have a NULL decision_context per action_decision_context_shape.
+func decisionContextMap(ctx *captureDecisionContext) any {
 	if ctx == nil {
 		return nil
 	}
@@ -926,6 +929,9 @@ func decisionContextMap(ctx *captureDecisionContext) map[string]any {
 	}
 	if ctx.AuthorizationReference != "" {
 		m["authorizationReference"] = ctx.AuthorizationReference
+	}
+	if len(m) == 0 {
+		return nil
 	}
 	return m
 }
@@ -1383,12 +1389,11 @@ func (a stringArray) Value() (driver.Value, error) {
 }
 
 func lookupActor(ctx context.Context, db queryer, token string) (actorRecord, error) {
-	cands := []string{sha256Hex(token)}
-	if isHexSHA256(token) {
-		cands = append([]string{strings.ToLower(token)}, cands...)
-	}
+	// Only the SHA-256 of the presented secret is ever a valid credential. The
+	// stored digest must never authenticate directly, or a leaked token_hash
+	// would itself be a bearer credential.
 	var a actorRecord
-	err := db.QueryRowContext(ctx, `SELECT id, engagement_id, kind, handle, role, COALESCE(agent_name,''), COALESCE(model,''), COALESCE(version,''), COALESCE(authorized_by::text,''), token_hash FROM actor WHERE token_hash = ANY($1) AND revoked_at IS NULL LIMIT 1`, stringArray(cands)).Scan(&a.ID, &a.EngagementID, &a.Kind, &a.Handle, &a.Role, &a.AgentName, &a.Model, &a.Version, &a.AuthorizedBy, &a.TokenHash)
+	err := db.QueryRowContext(ctx, `SELECT id, engagement_id, kind, handle, role, COALESCE(agent_name,''), COALESCE(model,''), COALESCE(version,''), COALESCE(authorized_by::text,''), token_hash FROM actor WHERE token_hash = $1 AND revoked_at IS NULL LIMIT 1`, sha256Hex(token)).Scan(&a.ID, &a.EngagementID, &a.Kind, &a.Handle, &a.Role, &a.AgentName, &a.Model, &a.Version, &a.AuthorizedBy, &a.TokenHash)
 	return a, err
 }
 

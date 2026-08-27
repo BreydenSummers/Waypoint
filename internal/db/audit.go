@@ -80,8 +80,8 @@ func AppendAuditEvent(ctx context.Context, tx *sql.Tx, in AuditEventInput) (int6
 			causation_event_id,
 			data
 		) VALUES (
-			$1, NULLIF($2, ''), $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''), now(),
-			$11, NULLIF($12, ''), $13, $14, $15, $16, $17, NULLIF($18, ''), $19, $20::jsonb
+			$1, NULLIF($2, ''), $3, $4, $5, $6, NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, '')::uuid, now(),
+			$11, NULLIF($12, ''), $13, $14, $15, $16, $17, NULLIF($18, '')::uuid, $19, $20::jsonb
 		) RETURNING id`,
 		in.EngagementID,
 		in.Type,
