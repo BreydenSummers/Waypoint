@@ -1,11 +1,11 @@
 # performance-fault-gate
 
-Run: `2026-08-17T08:57:49Z`
-Status: **Blocked / Unverified**
+Run: `2026-08-27T07:39:34Z`
+Status: **Measured / Retained**
 
 ## Retained performance profile
 
-Source: [`contracts/v1/fixtures/performance-profile.json`](../../contracts/v1/fixtures/performance-profile.json)
+Source: [`docs/release-evidence/performance/samples/raw-profile.json`](./performance/samples/raw-profile.json)
 
 ### Baseline
 

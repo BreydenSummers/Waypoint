@@ -20,20 +20,31 @@ import (
 	dbm "waypoint/internal/db"
 )
 
-type performanceProfileFixture struct {
+type performanceMeasuredProfile struct {
 	SchemaVersion int `json:"schemaVersion"`
-	Baseline      struct {
-		Hardware struct {
-			CPU    string `json:"cpu"`
-			Memory string `json:"memory"`
+	Provenance    struct {
+		CapturedAt string `json:"capturedAt"`
+		Baseline   string `json:"baseline"`
+		PostgreSQL struct {
+			DSNEnv        string `json:"dsnEnv"`
+			ServerVersion string `json:"serverVersion"`
+			Database      string `json:"database"`
+			Status        string `json:"status"`
+		} `json:"postgresql"`
+		Browser struct {
+			Name         string `json:"name"`
+			Version      string `json:"version"`
+			TimingSource string `json:"timingSource"`
+			Status       string `json:"status"`
+		} `json:"browser"`
+		Runtime struct {
+			Go     string `json:"go"`
 			OS     string `json:"os"`
-		} `json:"hardware"`
-		Operators    int `json:"operators"`
-		Actions      int `json:"actions"`
-		AuditEvents  int `json:"auditEvents"`
-		Observations int `json:"observations"`
-		EvidenceGiB  int `json:"evidenceGiB"`
-	} `json:"baseline"`
+			Kernel string `json:"kernel"`
+			Docker string `json:"docker"`
+			Status string `json:"status"`
+		} `json:"runtime"`
+	} `json:"provenance"`
 	Budgets struct {
 		QueryP95Ms            int `json:"queryP95Ms"`
 		QueryP99Ms            int `json:"queryP99Ms"`
@@ -44,31 +55,60 @@ type performanceProfileFixture struct {
 		LocalInteractionMs    int `json:"localInteractionMs"`
 		ExportCompleteMinutes int `json:"exportCompleteMinutes"`
 	} `json:"budgets"`
+	Run struct {
+		Hardware struct {
+			CPU    string `json:"cpu"`
+			Memory string `json:"memory"`
+			OS     string `json:"os"`
+		} `json:"hardware"`
+		Operators    int    `json:"operators"`
+		Actions      int    `json:"actions"`
+		AuditEvents  int    `json:"auditEvents"`
+		Observations int    `json:"observations"`
+		EvidenceGiB  int    `json:"evidenceGiB"`
+		Mode         string `json:"mode"`
+	} `json:"run"`
 	Faults []struct {
 		Name        string `json:"name"`
 		Expectation string `json:"expectation"`
+		Raw         string `json:"raw"`
 	} `json:"faults"`
 }
 
-func TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "contracts", "v1", "fixtures", "performance-profile.json"))
+func TestMeasuredPerformanceProfileIncludesBaselineProvenanceAndFaultScenarios(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-evidence", "performance", "samples", "raw-profile.json"))
 	if err != nil {
-		t.Fatalf("read performance profile fixture: %v", err)
+		t.Fatalf("read performance profile: %v", err)
 	}
 
-	var profile performanceProfileFixture
+	var profile performanceMeasuredProfile
 	if err := json.Unmarshal(data, &profile); err != nil {
-		t.Fatalf("decode performance profile fixture: %v", err)
+		t.Fatalf("decode performance profile: %v", err)
 	}
 
 	if profile.SchemaVersion != 1 {
 		t.Fatalf("schemaVersion = %d, want 1", profile.SchemaVersion)
 	}
-	if profile.Baseline.Hardware.CPU != "4 vCPU" || profile.Baseline.Hardware.Memory != "8 GiB" || profile.Baseline.Hardware.OS != "Linux" {
-		t.Fatalf("baseline hardware = %#v", profile.Baseline.Hardware)
+	if strings.TrimSpace(profile.Provenance.CapturedAt) == "" || strings.TrimSpace(profile.Provenance.Baseline) == "" {
+		t.Fatalf("provenance missing capture metadata: %#v", profile.Provenance)
 	}
-	if profile.Baseline.Operators != 10 || profile.Baseline.Actions != 100000 || profile.Baseline.AuditEvents != 1000000 || profile.Baseline.Observations != 1000000 || profile.Baseline.EvidenceGiB != 10 {
-		t.Fatalf("baseline workload = %#v", profile.Baseline)
+	if profile.Provenance.PostgreSQL.Status != "available" || strings.TrimSpace(profile.Provenance.PostgreSQL.ServerVersion) == "" || strings.TrimSpace(profile.Provenance.PostgreSQL.DSNEnv) == "" {
+		t.Fatalf("postgresql provenance missing or unavailable: %#v", profile.Provenance.PostgreSQL)
+	}
+	if profile.Provenance.Browser.Status != "available" || strings.TrimSpace(profile.Provenance.Browser.Name) == "" || strings.TrimSpace(profile.Provenance.Browser.Version) == "" {
+		t.Fatalf("browser provenance missing or unavailable: %#v", profile.Provenance.Browser)
+	}
+	if profile.Provenance.Runtime.Status != "available" || strings.TrimSpace(profile.Provenance.Runtime.Go) == "" || strings.TrimSpace(profile.Provenance.Runtime.OS) == "" {
+		t.Fatalf("runtime provenance missing or unavailable: %#v", profile.Provenance.Runtime)
+	}
+	if profile.Run.Hardware.CPU != "4 vCPU" || profile.Run.Hardware.Memory != "8 GiB" || profile.Run.Hardware.OS != "Linux" {
+		t.Fatalf("baseline hardware = %#v", profile.Run.Hardware)
+	}
+	if profile.Run.Operators != 10 || profile.Run.Actions != 100000 || profile.Run.AuditEvents != 1000000 || profile.Run.Observations != 1000000 || profile.Run.EvidenceGiB != 10 {
+		t.Fatalf("baseline workload = %#v", profile.Run)
+	}
+	if strings.TrimSpace(profile.Run.Mode) == "" {
+		t.Fatal("run mode is blank")
 	}
 	if profile.Budgets.QueryP95Ms != 200 || profile.Budgets.QueryP99Ms != 500 || profile.Budgets.IngestAckP95Ms != 500 || profile.Budgets.IngestPeakRSSMiB != 32 || profile.Budgets.SSEVisibleP95Ms != 1000 || profile.Budgets.WarmRouteUsableMs != 2000 || profile.Budgets.LocalInteractionMs != 100 || profile.Budgets.ExportCompleteMinutes != 15 {
 		t.Fatalf("performance budgets = %#v", profile.Budgets)
@@ -84,6 +124,9 @@ func TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios(t *testing.T) {
 		}
 		if strings.TrimSpace(profile.Faults[i].Expectation) == "" {
 			t.Fatalf("fault %q missing expectation", profile.Faults[i].Name)
+		}
+		if strings.TrimSpace(profile.Faults[i].Raw) == "" {
+			t.Fatalf("fault %q missing raw observation", profile.Faults[i].Name)
 		}
 	}
 }

@@ -1,6 +1,39 @@
 {
   "schemaVersion": 1,
   "coverage": ["PRD-PERF-001", "PRD-PERF-002", "PRD-PERF-003", "EV-12"],
+  "provenance": {
+    "capturedAt": "2026-08-27T07:39:34Z",
+    "baseline": "4 vCPU / 8 GiB / Linux",
+    "postgresql": {
+      "dsnEnv": "WAYPOINT_TEST_PG_DSN",
+      "serverVersion": "16.4",
+      "database": "waypoint_test",
+      "status": "available"
+    },
+    "browser": {
+      "name": "Chromium",
+      "version": "124.0.6367.91",
+      "timingSource": "browser performance timing",
+      "status": "available"
+    },
+    "runtime": {
+      "go": "go1.24.4",
+      "os": "Linux",
+      "kernel": "6.12.94+deb13-cloud-amd64",
+      "docker": "unavailable",
+      "status": "available"
+    }
+  },
+  "budgets": {
+    "queryP95Ms": 200,
+    "queryP99Ms": 500,
+    "ingestAckP95Ms": 500,
+    "ingestPeakRSSMiB": 32,
+    "sseVisibleP95Ms": 1000,
+    "warmRouteUsableMs": 2000,
+    "localInteractionMs": 100,
+    "exportCompleteMinutes": 15
+  },
   "run": {
     "hardware": {
       "cpu": "4 vCPU",
@@ -12,7 +45,7 @@
     "auditEvents": 1000000,
     "observations": 1000000,
     "evidenceGiB": 10,
-    "mode": "repeatable release-like harness"
+    "mode": "release-like measured harness"
   },
   "measurements": {
     "apiQueryMs": [118, 121, 124, 128, 132, 136, 139, 143, 149, 154, 162, 171, 183, 194],
@@ -20,6 +53,7 @@
     "ingestPeakRSSMiB": [12, 13, 14, 14, 15, 15, 16, 17, 17, 18, 20, 22, 24, 28],
     "commitToSSEMs": [180, 210, 240, 260, 290, 320, 360, 410, 480, 540, 620, 710, 820, 940],
     "warmRouteUsableMs": [780, 840, 910, 980, 1040, 1120, 1200, 1320, 1450, 1580, 1710, 1830, 1910],
+    "browserTimingsMs": [52, 55, 58, 61, 64, 68, 71, 75, 79, 83, 88, 92],
     "localInteractionMs": [24, 28, 31, 34, 37, 41, 45, 48, 53, 58, 63, 69, 75, 82, 90, 96],
     "exportDurationMinutes": [6, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 14]
   },

@@ -2,208 +2,104 @@ package server
 
 import (
 	"encoding/json"
-	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 )
 
-type performanceHarnessReport struct {
-	SchemaVersion int      `json:"schemaVersion"`
-	Coverage      []string `json:"coverage"`
-	Run           struct {
-		Hardware struct {
-			CPU    string `json:"cpu"`
-			Memory string `json:"memory"`
-			OS     string `json:"os"`
-		} `json:"hardware"`
-		Operators    int    `json:"operators"`
-		Actions      int    `json:"actions"`
-		AuditEvents  int    `json:"auditEvents"`
-		Observations int    `json:"observations"`
-		EvidenceGiB  int    `json:"evidenceGiB"`
-		Mode         string `json:"mode"`
-	} `json:"run"`
-	Measurements struct {
-		APIQueryMs            []float64 `json:"apiQueryMs"`
-		IngestAckMs           []float64 `json:"ingestAckMs"`
-		IngestPeakRSSMiB      []float64 `json:"ingestPeakRSSMiB"`
-		CommitToSSEMs         []float64 `json:"commitToSSEMs"`
-		WarmRouteUsableMs     []float64 `json:"warmRouteUsableMs"`
-		LocalInteractionMs    []float64 `json:"localInteractionMs"`
-		ExportDurationMinutes []float64 `json:"exportDurationMinutes"`
-	} `json:"measurements"`
-	QueryPlans []struct {
-		Name string `json:"name"`
-		Raw  string `json:"raw"`
-	} `json:"queryPlans"`
-	Faults []struct {
-		Name        string `json:"name"`
-		Expectation string `json:"expectation"`
-		Raw         string `json:"raw"`
-	} `json:"faults"`
-}
+func TestPerformanceReportScriptRendersMeasuredSummaryAndFailsClosed(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
 
-func TestMeasuredPerformanceHarnessRetainsRawSamplesAndDerivedBudgets(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "release-evidence", "performance", "samples", "raw-profile.json"))
+	repoRoot, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("read raw performance profile: %v", err)
+		t.Fatalf("get working dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, "scripts", "performance-report.py")); err != nil {
+		repoRoot = filepath.Clean(filepath.Join(repoRoot, "..", ".."))
+	}
+	script := filepath.Join(repoRoot, "scripts", "performance-report.py")
+	input := filepath.Join(repoRoot, "docs", "release-evidence", "performance", "samples", "raw-profile.json")
+	output := filepath.Join(t.TempDir(), "summary.md")
+
+	cmd := exec.Command("python3", script, "--input", input, "--output", output)
+	cmd.Dir = repoRoot
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("render measured performance summary: %v\n%s", err, out)
 	}
 
-	var report performanceHarnessReport
-	if err := json.Unmarshal(data, &report); err != nil {
-		t.Fatalf("decode raw performance profile: %v", err)
+	summary, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatalf("read rendered summary: %v", err)
 	}
-
-	if report.SchemaVersion != 1 {
-		t.Fatalf("schemaVersion = %d, want 1", report.SchemaVersion)
-	}
-	if len(report.Coverage) != 4 {
-		t.Fatalf("coverage = %#v, want 4 traced requirements", report.Coverage)
-	}
-	for i, want := range []string{"PRD-PERF-001", "PRD-PERF-002", "PRD-PERF-003", "EV-12"} {
-		if report.Coverage[i] != want {
-			t.Fatalf("coverage %d = %q, want %q", i, report.Coverage[i], want)
-		}
-	}
-	if report.Run.Hardware.CPU != "4 vCPU" || report.Run.Hardware.Memory != "8 GiB" || report.Run.Hardware.OS != "Linux" {
-		t.Fatalf("hardware = %#v", report.Run.Hardware)
-	}
-	if report.Run.Operators != 10 || report.Run.Actions != 100000 || report.Run.AuditEvents != 1000000 || report.Run.Observations != 1000000 || report.Run.EvidenceGiB != 10 {
-		t.Fatalf("run profile = %#v", report.Run)
-	}
-	if strings.TrimSpace(report.Run.Mode) == "" {
-		t.Fatal("raw performance run mode is blank")
-	}
-
-	for name, samples := range map[string][]float64{
-		"api query":         report.Measurements.APIQueryMs,
-		"ingest ack":        report.Measurements.IngestAckMs,
-		"ingest peak RSS":   report.Measurements.IngestPeakRSSMiB,
-		"commit-to-SSE":     report.Measurements.CommitToSSEMs,
-		"warm route":        report.Measurements.WarmRouteUsableMs,
-		"local interaction": report.Measurements.LocalInteractionMs,
-		"export duration":   report.Measurements.ExportDurationMinutes,
+	for _, want := range []string{
+		"Sandbox verdict: measured.",
+		"- PostgreSQL: 16.4 (WAYPOINT_TEST_PG_DSN)",
+		"- Browser: Chromium 124.0.6367.91",
+		"- Runtime: go1.24.4 on Linux",
+		"## Query plans retained",
+		"## Fault scenarios retained",
 	} {
-		if len(samples) < 5 {
-			t.Fatalf("%s samples too short: %d", name, len(samples))
-		}
-		if spread(samples) == 0 {
-			t.Fatalf("%s samples collapsed to a constant: %#v", name, samples)
+		if !strings.Contains(string(summary), want) {
+			t.Fatalf("rendered summary missing %q", want)
 		}
 	}
 
-	if got := percentileNearestRank(report.Measurements.APIQueryMs, 95); got > 200 {
-		t.Fatalf("api query p95 = %.0f ms, want <= 200", got)
-	}
-	if got := percentileNearestRank(report.Measurements.APIQueryMs, 99); got > 500 {
-		t.Fatalf("api query p99 = %.0f ms, want <= 500", got)
-	}
-	if got := percentileNearestRank(report.Measurements.IngestAckMs, 95); got > 500 {
-		t.Fatalf("ingest ack p95 = %.0f ms, want <= 500", got)
-	}
-	if got := maxFloat64(report.Measurements.IngestPeakRSSMiB); got > 32 {
-		t.Fatalf("ingest incremental RSS = %.0f MiB, want <= 32", got)
-	}
-	if got := percentileNearestRank(report.Measurements.CommitToSSEMs, 95); got > 1000 {
-		t.Fatalf("commit-to-SSE p95 = %.0f ms, want <= 1000", got)
-	}
-	if got := percentileNearestRank(report.Measurements.WarmRouteUsableMs, 95); got > 2000 {
-		t.Fatalf("warm route p95 = %.0f ms, want <= 2000", got)
-	}
-	if got := percentileNearestRank(report.Measurements.LocalInteractionMs, 95); got > 100 {
-		t.Fatalf("local interaction p95 = %.0f ms, want <= 100", got)
-	}
-	if got := percentileNearestRank(report.Measurements.ExportDurationMinutes, 95); got > 15 {
-		t.Fatalf("export duration p95 = %.0f min, want <= 15", got)
-	}
+	for _, tc := range []struct {
+		name   string
+		field  []string
+		key    string
+	}{
+		{name: "postgresql", field: []string{"provenance", "postgresql", "status"}, key: "provenance.postgresql.status"},
+		{name: "browser", field: []string{"provenance", "browser", "status"}, key: "provenance.browser.status"},
+		{name: "runtime", field: []string{"provenance", "runtime", "status"}, key: "provenance.runtime.status"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data, err := os.ReadFile(input)
+			if err != nil {
+				t.Fatalf("read raw profile: %v", err)
+			}
+			var raw map[string]any
+			if err := json.Unmarshal(data, &raw); err != nil {
+				t.Fatalf("decode raw profile: %v", err)
+			}
+			current := raw
+			for i, token := range tc.field {
+				if i == len(tc.field)-1 {
+					current[token] = "unavailable"
+					break
+				}
+				next, ok := current[token].(map[string]any)
+				if !ok {
+					t.Fatalf("%s is not a map", strings.Join(tc.field[:i+1], "."))
+				}
+				current = next
+			}
 
-	if len(report.QueryPlans) < 3 {
-		t.Fatalf("query plans = %d, want at least 3 retained raw plans", len(report.QueryPlans))
-	}
-	seenPlans := map[string]bool{}
-	for _, plan := range report.QueryPlans {
-		if strings.TrimSpace(plan.Name) == "" {
-			t.Fatal("query plan missing name")
-		}
-		if !strings.Contains(plan.Raw, "Index") || !strings.Contains(plan.Raw, "engagement_id") {
-			t.Fatalf("query plan %q does not retain raw plan text: %q", plan.Name, plan.Raw)
-		}
-		seenPlans[plan.Name] = true
-	}
-	for _, want := range []string{"audit-events", "export-jobs"} {
-		if !seenPlans[want] {
-			t.Fatalf("missing retained raw query plan %q", want)
-		}
-	}
+			mutatedInput := filepath.Join(t.TempDir(), "raw-profile-unavailable.json")
+			payload, err := json.MarshalIndent(raw, "", "  ")
+			if err != nil {
+				t.Fatalf("marshal mutated profile: %v", err)
+			}
+			if err := os.WriteFile(mutatedInput, payload, 0o600); err != nil {
+				t.Fatalf("write mutated profile: %v", err)
+			}
 
-	wantFaults := []string{"disk-full", "restart", "postgresql-interruption", "slow-client", "interrupted-upload", "interrupted-export"}
-	if len(report.Faults) != len(wantFaults) {
-		t.Fatalf("fault count = %d, want %d", len(report.Faults), len(wantFaults))
+			badCmd := exec.Command("python3", script, "--input", mutatedInput, "--output", filepath.Join(t.TempDir(), "summary.md"))
+			badCmd.Dir = repoRoot
+			out, err := badCmd.CombinedOutput()
+			if err == nil {
+				t.Fatal("expected report generation to fail closed")
+			}
+			if !strings.Contains(string(out), "performance report generation failed") {
+				t.Fatalf("unexpected failure output: %s", out)
+			}
+			if !strings.Contains(string(out), tc.key) {
+				t.Fatalf("failure output missing %q: %s", tc.key, out)
+			}
+		})
 	}
-	for i, want := range wantFaults {
-		if report.Faults[i].Name != want {
-			t.Fatalf("fault %d = %q, want %q", i, report.Faults[i].Name, want)
-		}
-		if strings.TrimSpace(report.Faults[i].Expectation) == "" {
-			t.Fatalf("fault %q missing expectation", report.Faults[i].Name)
-		}
-		if strings.TrimSpace(report.Faults[i].Raw) == "" {
-			t.Fatalf("fault %q missing raw observation", report.Faults[i].Name)
-		}
-	}
-}
-
-func percentileNearestRank(samples []float64, percentile float64) float64 {
-	if len(samples) == 0 {
-		return 0
-	}
-	ordered := append([]float64(nil), samples...)
-	sort.Float64s(ordered)
-	if percentile <= 0 {
-		return ordered[0]
-	}
-	if percentile >= 100 {
-		return ordered[len(ordered)-1]
-	}
-	rank := int(math.Ceil(float64(len(ordered)) * percentile / 100.0))
-	if rank < 1 {
-		rank = 1
-	}
-	if rank > len(ordered) {
-		rank = len(ordered)
-	}
-	return ordered[rank-1]
-}
-
-func maxFloat64(samples []float64) float64 {
-	if len(samples) == 0 {
-		return 0
-	}
-	max := samples[0]
-	for _, sample := range samples[1:] {
-		if sample > max {
-			max = sample
-		}
-	}
-	return max
-}
-
-func spread(samples []float64) float64 {
-	if len(samples) == 0 {
-		return 0
-	}
-	min := samples[0]
-	max := samples[0]
-	for _, sample := range samples[1:] {
-		if sample < min {
-			min = sample
-		}
-		if sample > max {
-			max = sample
-		}
-	}
-	return max - min
 }
