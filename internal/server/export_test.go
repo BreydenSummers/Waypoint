@@ -860,6 +860,35 @@ func TestExportJobListIsPagedAndResumable(t *testing.T) {
 	}
 }
 
+func TestWriteFileResponseStreamsContentsWithHeaders(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "report.pdf")
+	content := []byte("%PDF-1.7\nstreamed\n")
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	if err := writeFileResponse(rr, "req-123", "application/pdf", "inline; filename=report.pdf", path); err != nil {
+		t.Fatalf("write file response: %v", err)
+	}
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+	if got := rr.Header().Get("Content-Type"); got != "application/pdf" {
+		t.Fatalf("content type = %q", got)
+	}
+	if got := rr.Header().Get("Content-Disposition"); got != "inline; filename=report.pdf" {
+		t.Fatalf("content disposition = %q", got)
+	}
+	if got := rr.Header().Get("Content-Length"); got != "18" {
+		t.Fatalf("content length = %q, want 18", got)
+	}
+	if got := rr.Body.Bytes(); !bytes.Equal(got, content) {
+		t.Fatalf("body = %q, want %q", got, content)
+	}
+}
+
 func TestBundleToolsAreStandaloneAndVersioned(t *testing.T) {
 	for _, name := range []string{"verify-restore.mjs", "regenerate-report.mjs"} {
 		path := filepath.Join("..", "..", "bundle", "tools", name)

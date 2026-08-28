@@ -303,6 +303,9 @@ func TestExportStreamingHelpersStayFileBounded(t *testing.T) {
 		"io.Copy(h, f)",
 		"os.Stat(path)",
 		"os.Rename(tmpPath, outputPath)",
+		"func writeFileResponse",
+		"os.Open(path)",
+		"io.Copy(w, f)",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("export source missing %q", want)

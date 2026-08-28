@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -582,7 +583,7 @@ func readCaptureRequest(r *http.Request, store *evidenceStore) (captureRequest, 
 }
 
 func decodeStrictJSON(data []byte, v any) error {
-	dec := json.NewDecoder(strings.NewReader(string(data)))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	dec.UseNumber()
 	return dec.Decode(v)
