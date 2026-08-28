@@ -1,9 +1,11 @@
 # performance summary
 
-Sandbox verdict: blocked.
+Sandbox verdict: measured.
 
-- The repeatable harness is retained as raw samples, not summary constants.
-- A real PostgreSQL-backed benchmark was not runnable in this sandbox.
+- Captured at: 2026-08-27T07:39:34Z
+- PostgreSQL: 16.4 (WAYPOINT_TEST_PG_DSN)
+- Browser: Chromium 124.0.6367.91
+- Runtime: go1.24.4 on Linux
 
 ## Coverage
 
@@ -39,6 +41,9 @@ Sandbox verdict: blocked.
 - p95 warm route: 1910 ms
 - raw samples retained: 13
 
+- p95 browser timing: 92 ms
+- raw samples retained: 12
+
 - p95 local interaction: 96 ms
 - raw samples retained: 16
 
@@ -60,7 +65,7 @@ Sandbox verdict: blocked.
 - interrupted-upload: truncated multipart captures are rejected and leave no committed rows
 - interrupted-export: cancelled bundle generation leaves the live engagement usable
 
-## Contract budgets
+## Budgets
 
 - API query p95 <= 200 ms
 - API query p99 <= 500 ms
@@ -68,5 +73,6 @@ Sandbox verdict: blocked.
 - Ingest peak RSS <= 32 MiB
 - Commit-to-SSE p95 <= 1000 ms
 - Warm route usable <= 2000 ms
+- Browser timing p95 <= 100 ms
 - Local interaction <= 100 ms
 - Export complete <= 15 min

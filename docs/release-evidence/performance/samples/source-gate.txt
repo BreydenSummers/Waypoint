@@ -1,5 +1,5 @@
-=== RUN   TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios
---- PASS: TestPerformanceProfileFixtureSeedsBaselineAndFaultScenarios (0.00s)
+=== RUN   TestMeasuredPerformanceProfileIncludesBaselineProvenanceAndFaultScenarios
+--- PASS: TestMeasuredPerformanceProfileIncludesBaselineProvenanceAndFaultScenarios (0.00s)
 === RUN   TestPerformanceReadIndexesCoverBudgetedListPaths
 --- PASS: TestPerformanceReadIndexesCoverBudgetedListPaths (0.00s)
 === RUN   TestAuditQueryShapeRemainsKeysetBounded

@@ -1,12 +1,12 @@
 # performance benchmark evidence
 
-Status: blocked in this sandbox; the repeatable harness is retained as raw samples, but a real PostgreSQL DSN was not available here.
+Status: measured and retained; the report is rendered from raw samples and fails closed when PostgreSQL, browser, or runtime provenance is unavailable.
 
 ## Required profile
 
-- Source profile: `contracts/v1/fixtures/performance-profile.json`
-- Raw sample report: `samples/raw-profile.json`
+- Measured profile: `samples/raw-profile.json`
 - Hardware: 4 vCPU / 8 GiB / Linux
+- Provenance: PostgreSQL + browser + runtime captured in the raw profile
 - Operators: 10
 - Actions: 100000
 - Audit events: 1000000
@@ -35,7 +35,7 @@ Status: blocked in this sandbox; the repeatable harness is retained as raw sampl
 1. Set `WAYPOINT_TEST_PG_DSN` to a real PostgreSQL instance.
 2. Apply migrations.
 3. Run `python3 scripts/performance-report.py` to re-render the retained summary from the raw samples.
-4. Regenerate this summary from the retained samples.
+4. Keep the summary and raw samples in sync by re-running the script after each measured harness capture.
 
 Current retained samples:
 - `samples/source-gate.txt`

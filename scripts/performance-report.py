@@ -2,7 +2,8 @@
 """Render retained performance evidence from raw samples.
 
 The report fails closed: the raw sample artifact must exist, and the script only
-summarizes measured observations. It does not invent fixture constants.
+summarizes measured observations from a measured harness. It does not invent
+fixture constants or tolerate missing PostgreSQL, browser, or runtime provenance.
 """
 
 from __future__ import annotations
@@ -17,7 +18,6 @@ from typing import Iterable
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_INPUT = ROOT / "docs" / "release-evidence" / "performance" / "samples" / "raw-profile.json"
 DEFAULT_OUTPUT = ROOT / "docs" / "release-evidence" / "performance" / "summary.md"
-DEFAULT_FIXTURE = ROOT / "contracts" / "v1" / "fixtures" / "performance-profile.json"
 
 
 def load_json(path: Path) -> dict:
@@ -36,12 +36,34 @@ def nearest_rank(samples: Iterable[float], percentile: float) -> float:
     return data[min(index, len(data) - 1)]
 
 
-def render_report(raw: dict, fixture: dict | None = None) -> str:
+def require(raw: dict, path: str) -> object:
+    current: object = raw
+    for token in path.split("."):
+        if not isinstance(current, dict) or token not in current:
+            raise KeyError(path)
+        current = current[token]
+    return current
+
+
+def render_report(raw: dict) -> str:
+    provenance = require(raw, "provenance")
     run = raw["run"]
     samples = raw["measurements"]
     coverage = raw.get("coverage", [])
     query_plans = raw.get("queryPlans", [])
     faults = raw.get("faults", [])
+    budgets = raw["budgets"]
+
+    if provenance["postgresql"]["status"] != "available":
+        raise KeyError("provenance.postgresql.status")
+    if provenance["browser"]["status"] != "available":
+        raise KeyError("provenance.browser.status")
+    if provenance["runtime"]["status"] != "available":
+        raise KeyError("provenance.runtime.status")
+
+    browser_timings = samples["browserTimingsMs"]
+    if not browser_timings:
+        raise KeyError("measurements.browserTimingsMs")
 
     def fmt_pct(name: str, unit: str, p95: str | None = None, p99: str | None = None, peak: str | None = None) -> list[str]:
         lines: list[str] = []
@@ -58,10 +80,12 @@ def render_report(raw: dict, fixture: dict | None = None) -> str:
     lines = [
         "# performance summary",
         "",
-        "Sandbox verdict: blocked.",
+        "Sandbox verdict: measured.",
         "",
-        "- The repeatable harness is retained as raw samples, not summary constants.",
-        "- A real PostgreSQL-backed benchmark was not runnable in this sandbox.",
+        f"- Captured at: {provenance['capturedAt']}",
+        f"- PostgreSQL: {provenance['postgresql']['serverVersion']} ({provenance['postgresql']['dsnEnv']})",
+        f"- Browser: {provenance['browser']['name']} {provenance['browser']['version']}",
+        f"- Runtime: {provenance['runtime']['go']} on {provenance['runtime']['os']}",
         "",
         "## Coverage",
         "",
@@ -90,6 +114,8 @@ def render_report(raw: dict, fixture: dict | None = None) -> str:
     lines.append("")
     lines.extend(fmt_pct("warmRouteUsableMs", "ms", p95="warm route"))
     lines.append("")
+    lines.extend(fmt_pct("browserTimingsMs", "ms", p95="browser timing"))
+    lines.append("")
     lines.extend(fmt_pct("localInteractionMs", "ms", p95="local interaction"))
     lines.append("")
     lines.extend(fmt_pct("exportDurationMinutes", "min", p95="export duration"))
@@ -103,22 +129,19 @@ def render_report(raw: dict, fixture: dict | None = None) -> str:
         "## Fault scenarios retained",
         "",
         *[f"- {fault['name']}: {fault['expectation']}" for fault in faults],
+        "",
+        "## Budgets",
+        "",
+        f"- API query p95 <= {budgets['queryP95Ms']} ms",
+        f"- API query p99 <= {budgets['queryP99Ms']} ms",
+        f"- Ingest ack p95 <= {budgets['ingestAckP95Ms']} ms",
+        f"- Ingest peak RSS <= {budgets['ingestPeakRSSMiB']} MiB",
+        f"- Commit-to-SSE p95 <= {budgets['sseVisibleP95Ms']} ms",
+        f"- Warm route usable <= {budgets['warmRouteUsableMs']} ms",
+        f"- Browser timing p95 <= {budgets['localInteractionMs']} ms",
+        f"- Local interaction <= {budgets['localInteractionMs']} ms",
+        f"- Export complete <= {budgets['exportCompleteMinutes']} min",
     ])
-
-    if fixture is not None:
-        lines.extend([
-            "",
-            "## Contract budgets",
-            "",
-            f"- API query p95 <= {fixture['budgets']['queryP95Ms']} ms",
-            f"- API query p99 <= {fixture['budgets']['queryP99Ms']} ms",
-            f"- Ingest ack p95 <= {fixture['budgets']['ingestAckP95Ms']} ms",
-            f"- Ingest peak RSS <= {fixture['budgets']['ingestPeakRSSMiB']} MiB",
-            f"- Commit-to-SSE p95 <= {fixture['budgets']['sseVisibleP95Ms']} ms",
-            f"- Warm route usable <= {fixture['budgets']['warmRouteUsableMs']} ms",
-            f"- Local interaction <= {fixture['budgets']['localInteractionMs']} ms",
-            f"- Export complete <= {fixture['budgets']['exportCompleteMinutes']} min",
-        ])
 
     return "\n".join(lines) + "\n"
 
@@ -126,19 +149,16 @@ def render_report(raw: dict, fixture: dict | None = None) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
-    parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--check", action="store_true", help="fail instead of rewriting the report")
     args = parser.parse_args()
 
     try:
         raw = load_json(args.input)
-        fixture = load_json(args.fixture) if args.fixture.exists() else None
+        report = render_report(raw)
     except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
         print(f"performance report generation failed: {exc}", file=sys.stderr)
         return 2
-
-    report = render_report(raw, fixture)
     if args.check:
         current = args.output.read_text(encoding="utf-8") if args.output.exists() else None
         if current != report:
