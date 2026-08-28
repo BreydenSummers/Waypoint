@@ -32,8 +32,8 @@ The installer is the supported path for account provisioning, service files, rol
 ## TLS and secret handling
 
 - The runtime binary reads `WAYPOINT_DB_DSN`, `WAYPOINT_ADDR`, and `WAYPOINT_EGRESS_MODE` from the environment.
-- The installer also records TLS paths (`WAYPOINT_TLS_CERT_FILE`, `WAYPOINT_TLS_KEY_FILE`, `WAYPOINT_TLS_CA_FILE`) and egress settings in `0600` config files.
-- The app itself is HTTP-only in v1; if you expose it beyond loopback, terminate TLS in front of it.
+- The installer records a loopback service bind (`WAYPOINT_ADDR=127.0.0.1:8080`) plus TLS paths (`WAYPOINT_TLS_CERT_FILE`, `WAYPOINT_TLS_KEY_FILE`, `WAYPOINT_TLS_CA_FILE`) and egress settings in `0600` config files.
+- Plain HTTP is loopback-only. If you need a non-loopback listener, configure TLS cert/key on the app itself; a trusted reverse proxy may terminate TLS only while Waypoint stays bound to loopback.
 - Tokens, DSNs, receipts, and bundle paths never belong in URLs or logs.
 - Sensitive state is written with restrictive permissions where the installer manages the files; host/disk encryption remains the operator’s responsibility.
 

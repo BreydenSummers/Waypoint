@@ -520,10 +520,14 @@ install_or_upgrade() {
   cp "$package_path" "$temp_release/bin/waypoint"
   chmod 0755 "$temp_release/bin/waypoint"
 
+  local waypoint_addr
+  waypoint_addr=$(cfg WAYPOINT_ADDR)
+  [[ -n $waypoint_addr ]] || waypoint_addr=127.0.0.1:8080
   cat > "$STATE_ROOT/config.env" <<EOF
 WAYPOINT_VERSION=$(cfg WAYPOINT_VERSION)
 WAYPOINT_PUBLIC_URL=$(cfg WAYPOINT_PUBLIC_URL)
 WAYPOINT_DB_DSN=$(cfg WAYPOINT_DB_DSN)
+WAYPOINT_ADDR=$waypoint_addr
 WAYPOINT_PACKAGE_PATH=$package_path
 EOF
   append_optional_runtime_config "$STATE_ROOT/config.env"
@@ -532,6 +536,7 @@ EOF
 WAYPOINT_VERSION=$(cfg WAYPOINT_VERSION)
 WAYPOINT_PUBLIC_URL=$(cfg WAYPOINT_PUBLIC_URL)
 WAYPOINT_DB_DSN=$(cfg WAYPOINT_DB_DSN)
+WAYPOINT_ADDR=$waypoint_addr
 EOF
   append_optional_runtime_config "$temp_release/waypoint.env"
   chmod 600 "$temp_release/waypoint.env"

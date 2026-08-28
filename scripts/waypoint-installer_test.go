@@ -139,7 +139,7 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read config.env: %v", err)
 	}
-	for _, want := range []string{"WAYPOINT_TLS_CERT_FILE=/etc/waypoint/tls/server.crt", "WAYPOINT_EGRESS_MODE=auto", "WAYPOINT_EGRESS_ADDRESS=198.51.100.10"} {
+	for _, want := range []string{"WAYPOINT_TLS_CERT_FILE=/etc/waypoint/tls/server.crt", "WAYPOINT_EGRESS_MODE=auto", "WAYPOINT_EGRESS_ADDRESS=198.51.100.10", "WAYPOINT_ADDR=127.0.0.1:8080"} {
 		if !strings.Contains(string(configData), want) {
 			t.Fatalf("config.env missing %q:\n%s", want, configData)
 		}
@@ -148,7 +148,7 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read waypoint.env: %v", err)
 	}
-	for _, want := range []string{"WAYPOINT_TLS_KEY_FILE=/etc/waypoint/tls/server.key", "WAYPOINT_EGRESS_ENDPOINT=https://egress.waypoint.example/resolve"} {
+	for _, want := range []string{"WAYPOINT_TLS_KEY_FILE=/etc/waypoint/tls/server.key", "WAYPOINT_EGRESS_ENDPOINT=https://egress.waypoint.example/resolve", "WAYPOINT_ADDR=127.0.0.1:8080"} {
 		if !strings.Contains(string(waypointEnv), want) {
 			t.Fatalf("waypoint.env missing %q:\n%s", want, waypointEnv)
 		}
@@ -260,6 +260,11 @@ func TestInstallerValidatesInstallsUpgradesAndRollsBack(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "after_release") {
 		t.Fatalf("failure log missing injected fail point: %s", data)
+	}
+	for _, forbidden := range []string{"postgres://", "server.crt", "server.key", "destroy-token"} {
+		if strings.Contains(string(data), forbidden) {
+			t.Fatalf("failure log leaked %q: %s", forbidden, data)
+		}
 	}
 }
 
