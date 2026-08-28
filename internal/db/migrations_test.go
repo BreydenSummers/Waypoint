@@ -36,6 +36,17 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
+func TestEmbeddedMigrationVersionsMatchesFilesystem(t *testing.T) {
+	want := embeddedMigrationVersions(t)
+	got, err := EmbeddedMigrationVersions()
+	if err != nil {
+		t.Fatalf("embedded migration versions: %v", err)
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("embedded migration versions = %v, want %v", got, want)
+	}
+}
+
 func TestApplyMigrationsOnRealPostgreSQL(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
