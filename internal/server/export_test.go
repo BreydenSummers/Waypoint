@@ -556,8 +556,37 @@ func TestExportTeardownAuthorizationRoundTrip(t *testing.T) {
 	if err := json.Unmarshal(createRR.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode teardown authorization: %v", err)
 	}
-	if created.Status != "authorized" || created.ReceiptID != "88888888-8888-4888-8888-888888888888" {
+	if created.Status != "authorized" || created.ReceiptID != "88888888-8888-4888-8888-888888888888" || created.BundlePath != "bundle" || created.ArchiveSHA256 != strings.Repeat("1", 64) || created.ManifestSHA256 != strings.Repeat("2", 64) {
 		t.Fatalf("created teardown authorization = %#v", created)
+	}
+	requestedAt, err := time.Parse(time.RFC3339, created.RequestedAt)
+	if err != nil {
+		t.Fatalf("parse requestedAt: %v", err)
+	}
+	expiresAt, err := time.Parse(time.RFC3339, created.ExpiresAt)
+	if err != nil {
+		t.Fatalf("parse expiresAt: %v", err)
+	}
+	if got := expiresAt.Sub(requestedAt); got != 5*time.Minute {
+		t.Fatalf("teardown authorization lifetime = %s, want 5m0s", got)
+	}
+
+	pathReq := httptest.NewRequest(http.MethodPost, "/api/v1/teardown-authorizations", strings.NewReader(`{"receiptId":"88888888-8888-4888-8888-888888888888","bundlePath":"wrong-bundle","archiveSha256":"1111111111111111111111111111111111111111111111111111111111111111","manifestSha256":"2222222222222222222222222222222222222222222222222222222222222222","confirmation":"destroy verified engagement data"}`))
+	pathReq.Header.Set("Authorization", "Bearer "+actorToken)
+	pathReq.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	pathRR := httptest.NewRecorder()
+	h.ServeHTTP(pathRR, pathReq)
+	if pathRR.Code != http.StatusConflict || !strings.Contains(pathRR.Body.String(), "receipt does not match the requested teardown bundle") {
+		t.Fatalf("path mismatch create = %d body=%s", pathRR.Code, pathRR.Body.String())
+	}
+
+	mutatedReq := httptest.NewRequest(http.MethodPost, "/api/v1/teardown-authorizations", strings.NewReader(`{"receiptId":"88888888-8888-4888-8888-888888888888","bundlePath":"bundle","archiveSha256":"f111111111111111111111111111111111111111111111111111111111111111","manifestSha256":"2222222222222222222222222222222222222222222222222222222222222222","confirmation":"destroy verified engagement data"}`))
+	mutatedReq.Header.Set("Authorization", "Bearer "+actorToken)
+	mutatedReq.Header.Set("Waypoint-Contract-Version", "1.0.0")
+	mutatedRR := httptest.NewRecorder()
+	h.ServeHTTP(mutatedRR, mutatedReq)
+	if mutatedRR.Code != http.StatusConflict || !strings.Contains(mutatedRR.Body.String(), "receipt does not match the requested teardown bundle") {
+		t.Fatalf("mutated archive hash create = %d body=%s", mutatedRR.Code, mutatedRR.Body.String())
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/teardown-authorizations/"+created.ID, nil)

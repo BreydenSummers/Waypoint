@@ -676,6 +676,7 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 	probe.mu.Lock()
 	probe.expectedBundlePath = tamperedBundle
 	probe.expectedArchiveSHA = tamperedArchiveSHA
+	probe.expectedManifestSHA = receipt.ManifestSHA256
 	probe.mu.Unlock()
 
 	failed = runInstallerExpectFailure(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", tamperedBundle, "--receipt", blocked.receiptPath)
@@ -684,6 +685,32 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 	}
 	if _, err := os.Stat(blocked.installRoot); err != nil {
 		t.Fatalf("install root removed on archive guard failure: %v", err)
+	}
+
+	mustWriteJSON(t, blocked.receiptPath, map[string]any{
+		"status":         "verified",
+		"receiptId":      "receipt-q3-2025-01-10",
+		"verifiedAt":     "2025-01-10T09:02:14Z",
+		"bundlePath":     receipt.BundlePath,
+		"archiveSha256":  strings.Repeat("f", 64),
+		"manifestSha256": receipt.ManifestSHA256,
+	})
+	failed = runInstallerExpectFailure(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", blocked.bundlePath, "--receipt", blocked.receiptPath)
+	if !strings.Contains(failed, "receipt archive hash does not match the requested bundle") {
+		t.Fatalf("destroy with archive hash mismatch failed with %q, want archive hash guard", failed)
+	}
+
+	mustWriteJSON(t, blocked.receiptPath, map[string]any{
+		"status":         "verified",
+		"receiptId":      "receipt-q3-2025-01-10",
+		"verifiedAt":     "2025-01-10T09:02:14Z",
+		"bundlePath":     receipt.BundlePath,
+		"archiveSha256":  receipt.ArchiveSHA256,
+		"manifestSha256": strings.Repeat("f", 64),
+	})
+	failed = runInstallerExpectFailure(t, blocked.scriptPath, blocked.env, blocked.workDir, "destroy", "--config", blocked.configPath, "--bundle", blocked.bundlePath, "--receipt", blocked.receiptPath)
+	if !strings.Contains(failed, "receipt manifest hash does not match the requested bundle") {
+		t.Fatalf("destroy with manifest hash mismatch failed with %q, want manifest hash guard", failed)
 	}
 
 	mustWriteJSON(t, blocked.receiptPath, map[string]any{
@@ -734,7 +761,10 @@ func TestInstallerDestroyRequiresVerifiedReceiptAndSupportsBreakGlass(t *testing
 	}
 
 	breakGlass := setupDestroyFixture(t)
-	runInstaller(t, breakGlass.scriptPath, breakGlass.env, breakGlass.workDir, "destroy", "--config", breakGlass.configPath, "--bundle", breakGlass.bundlePath, "--force")
+	breakGlassOutput := runInstaller(t, breakGlass.scriptPath, breakGlass.env, breakGlass.workDir, "destroy", "--config", breakGlass.configPath, "--bundle", breakGlass.bundlePath, "--force")
+	if !strings.Contains(breakGlassOutput, "BREAK-GLASS: destroy proceeding without verified receipt") {
+		t.Fatalf("break-glass destroy output missing warning:\n%s", breakGlassOutput)
+	}
 	for _, path := range []string{breakGlass.installRoot, breakGlass.stateRoot, breakGlass.logRoot} {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Fatalf("expected %s to be removed by break-glass teardown, got err=%v", path, err)

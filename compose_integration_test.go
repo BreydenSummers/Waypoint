@@ -83,6 +83,11 @@ func TestComposeStackStartsCleanlyTwice(t *testing.T) {
 		if got := strings.Fields(runCompose("ps", "-q", "postgres")); len(got) != 0 {
 			t.Fatalf("cycle %d postgres ps = %v, want empty", i+1, got)
 		}
+		for _, volume := range []string{project + "_waypoint-postgres", project + "_waypoint-evidence"} {
+			if out, err := exec.Command("docker", "volume", "inspect", volume).CombinedOutput(); err == nil {
+				t.Fatalf("cycle %d volume %s still exists after teardown:\n%s", i+1, volume, out)
+			}
+		}
 	}
 }
 
@@ -239,6 +244,11 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	}
 	if got := strings.Fields(runCompose("ps", "-q", "postgres")); len(got) != 0 {
 		t.Fatalf("post-teardown postgres ps = %v, want empty", got)
+	}
+	for _, volume := range []string{project + "_waypoint-postgres", project + "_waypoint-evidence"} {
+		if out, err := exec.Command("docker", "volume", "inspect", volume).CombinedOutput(); err == nil {
+			t.Fatalf("post-teardown volume %s still exists:\n%s", volume, out)
+		}
 	}
 }
 
