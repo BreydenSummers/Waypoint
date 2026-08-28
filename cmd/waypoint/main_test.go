@@ -97,6 +97,23 @@ func TestResolveStartupTransportConfigRejectsNonLoopbackWithoutTLS(t *testing.T)
 	}
 }
 
+func TestResolveStartupTransportConfigAllowsUnspecifiedHostWithoutTLS(t *testing.T) {
+	cfg, err := resolveStartupTransportConfig(func(key string) string {
+		switch key {
+		case "WAYPOINT_ADDR":
+			return ":8080"
+		default:
+			return ""
+		}
+	})
+	if err != nil {
+		t.Fatalf("resolve unspecified-host startup config: %v", err)
+	}
+	if cfg.addr != ":8080" {
+		t.Fatalf("addr = %q, want %q", cfg.addr, ":8080")
+	}
+}
+
 func TestResolveStartupTransportConfigAllowsTLSOnNonLoopback(t *testing.T) {
 	cfg, err := resolveStartupTransportConfig(func(key string) string {
 		switch key {
