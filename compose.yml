@@ -31,7 +31,18 @@ services:
     volumes:
       - waypoint-evidence:/var/lib/waypoint/evidence
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/readyz >/dev/null"]
+      test:
+        - CMD-SHELL
+        - >
+          if [ -n "$${WAYPOINT_TLS_CERT_FILE:-}" ] && [ -n "$${WAYPOINT_TLS_KEY_FILE:-}" ]; then
+            if [ -n "$${WAYPOINT_TLS_CA_FILE:-}" ]; then
+              curl -fsS --cacert "$$WAYPOINT_TLS_CA_FILE" https://127.0.0.1:8080/readyz >/dev/null;
+            else
+              curl -fsSk https://127.0.0.1:8080/readyz >/dev/null;
+            fi;
+          else
+            curl -fsS http://127.0.0.1:8080/readyz >/dev/null;
+          fi
       interval: 5s
       timeout: 5s
       retries: 36

@@ -44,7 +44,7 @@ func TestComposeDeploymentFilesCoverOneStepDeployment(t *testing.T) {
 		"COPY contracts ./contracts",
 		"FROM golang:1.22-bookworm AS build",
 		"COPY --from=web /src/internal/webassets/dist ./internal/webassets/dist",
-		"HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=36 CMD curl -fsS http://127.0.0.1:8080/readyz >/dev/null || exit 1",
+		"HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=36 CMD /bin/sh -ec 'if [ -n \"${WAYPOINT_TLS_CERT_FILE:-}\" ] && [ -n \"${WAYPOINT_TLS_KEY_FILE:-}\" ]; then if [ -n \"${WAYPOINT_TLS_CA_FILE:-}\" ]; then curl -fsS --cacert \"$WAYPOINT_TLS_CA_FILE\" https://127.0.0.1:8080/readyz >/dev/null; else curl -fsSk https://127.0.0.1:8080/readyz >/dev/null; fi; else curl -fsS http://127.0.0.1:8080/readyz >/dev/null; fi'",
 	} {
 		if !strings.Contains(dockerfile, want) {
 			t.Fatalf("Dockerfile missing %q", want)

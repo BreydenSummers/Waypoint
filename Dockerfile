@@ -26,5 +26,5 @@ COPY --from=build /out/waypoint /usr/local/bin/waypoint
 ENV WAYPOINT_ADDR=:8080 \
     WAYPOINT_CHROMIUM=/usr/bin/chromium
 EXPOSE 8080
-HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=36 CMD curl -fsS http://127.0.0.1:8080/readyz >/dev/null || exit 1
+HEALTHCHECK --interval=5s --timeout=5s --start-period=45s --retries=36 CMD /bin/sh -ec 'if [ -n "${WAYPOINT_TLS_CERT_FILE:-}" ] && [ -n "${WAYPOINT_TLS_KEY_FILE:-}" ]; then if [ -n "${WAYPOINT_TLS_CA_FILE:-}" ]; then curl -fsS --cacert "$WAYPOINT_TLS_CA_FILE" https://127.0.0.1:8080/readyz >/dev/null; else curl -fsSk https://127.0.0.1:8080/readyz >/dev/null; fi; else curl -fsS http://127.0.0.1:8080/readyz >/dev/null; fi'
 ENTRYPOINT ["/usr/local/bin/waypoint"]

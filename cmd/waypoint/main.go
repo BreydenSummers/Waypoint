@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -21,9 +22,9 @@ import (
 )
 
 func main() {
-	addr := os.Getenv("WAYPOINT_ADDR")
-	if addr == "" {
-		addr = ":8080"
+	startup, err := resolveStartupTransportConfig(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	startupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -43,8 +44,12 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:    addr,
 		Handler: server.HandlerWithDBAndRuntime(db, server.RuntimeState{Egress: egressState}),
+	}
+
+	ln, err := net.Listen("tcp", startup.addr)
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	done := make(chan os.Signal, 1)
@@ -58,10 +63,59 @@ func main() {
 		}
 	}()
 
-	log.Printf("waypoint listening on %s", addr)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	scheme := "http"
+	serve := srv.Serve
+	if startup.tlsCertFile != "" {
+		scheme = "https"
+		serve = func(listener net.Listener) error {
+			return srv.ServeTLS(listener, startup.tlsCertFile, startup.tlsKeyFile)
+		}
+	}
+
+	log.Printf("waypoint listening on %s://%s", scheme, ln.Addr())
+	if err := serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+func resolveStartupTransportConfig(env func(string) string) (startupTransportConfig, error) {
+	addr := strings.TrimSpace(env("WAYPOINT_ADDR"))
+	if addr == "" {
+		addr = defaultWaypointAddr
+	}
+
+	certFile := strings.TrimSpace(env("WAYPOINT_TLS_CERT_FILE"))
+	keyFile := strings.TrimSpace(env("WAYPOINT_TLS_KEY_FILE"))
+	if certFile == "" || keyFile == "" {
+		if certFile != keyFile {
+			return startupTransportConfig{}, fmt.Errorf("WAYPOINT_TLS_CERT_FILE and WAYPOINT_TLS_KEY_FILE must both be set for TLS listeners")
+		}
+		if !isLoopbackBindAddress(addr) {
+			return startupTransportConfig{}, fmt.Errorf("WAYPOINT_ADDR must bind loopback unless WAYPOINT_TLS_CERT_FILE and WAYPOINT_TLS_KEY_FILE are set")
+		}
+		return startupTransportConfig{addr: addr}, nil
+	}
+
+	return startupTransportConfig{addr: addr, tlsCertFile: certFile, tlsKeyFile: keyFile}, nil
+}
+
+func isLoopbackBindAddress(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil || host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	return net.ParseIP(strings.Trim(host, "[]")).IsLoopback()
+}
+
+const defaultWaypointAddr = "127.0.0.1:8080"
+
+type startupTransportConfig struct {
+	addr        string
+	tlsCertFile string
+	tlsKeyFile  string
 }
 
 func openConfiguredDatabase(ctx context.Context, dsn string) (*sql.DB, error) {
