@@ -826,17 +826,10 @@ func handleExportReportPDF(w http.ResponseWriter, r *http.Request, db *sql.DB, s
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: err.Error()})
 		return
 	}
-	pdfBytes, err := os.ReadFile(artifacts.pdfPath)
-	if err != nil {
+	if err := writeFileResponse(w, reqID, "application/pdf", "inline; filename=report.pdf", artifacts.pdfPath); err != nil {
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusNotFound), Status: http.StatusNotFound, Code: "not_found", RequestID: reqID, Retryable: false, Detail: "report PDF not found"})
 		return
 	}
-	w.Header().Set("Waypoint-Contract-Version", exportContractVersion)
-	w.Header().Set("X-Request-ID", reqID)
-	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", "inline; filename=report.pdf")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(pdfBytes)
 }
 
 func handleExportBundle(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, exportID string) {
@@ -880,17 +873,30 @@ func handleExportBundle(w http.ResponseWriter, r *http.Request, db *sql.DB, acto
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "conflict", RequestID: reqID, Retryable: false, Detail: err.Error()})
 		return
 	}
-	bundleBytes, err := os.ReadFile(artifacts.archivePath)
-	if err != nil {
+	if err := writeFileResponse(w, reqID, "application/gzip", "attachment; filename=export-bundle.tar.gz", artifacts.archivePath); err != nil {
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusNotFound), Status: http.StatusNotFound, Code: "not_found", RequestID: reqID, Retryable: false, Detail: "export archive not found"})
 		return
 	}
+}
+
+func writeFileResponse(w http.ResponseWriter, reqID, contentType, contentDisposition, path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
 	w.Header().Set("Waypoint-Contract-Version", exportContractVersion)
 	w.Header().Set("X-Request-ID", reqID)
-	w.Header().Set("Content-Type", "application/gzip")
-	w.Header().Set("Content-Disposition", "attachment; filename=export-bundle.tar.gz")
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Disposition", contentDisposition)
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(bundleBytes)
+	_, _ = io.Copy(w, f)
+	return nil
 }
 
 func handleTeardownAuthorizationCreate(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID string) {
