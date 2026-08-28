@@ -219,7 +219,7 @@ async function main() {
 
     async function mobileCapture(theme, path, suffix) {
       const mobileContext = await browser.newContext({
-        baseURL,
+        baseURL: baseUrl,
         viewport: { width: 390, height: 844 },
         colorScheme: theme,
       });
