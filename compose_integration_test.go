@@ -14,9 +14,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	dbm "waypoint/internal/db"
 )
 
 const (
@@ -65,6 +68,7 @@ func TestComposeStackStartsCleanlyTwice(t *testing.T) {
 		t.Logf("docker compose build --no-cache (cycle %d):\n%s", i+1, strings.TrimSpace(buildOut))
 		upOut := runCompose("up", "-d", "--wait")
 		t.Logf("docker compose up --wait (cycle %d):\n%s", i+1, strings.TrimSpace(upOut))
+		assertComposeMigrationState(t, runCompose)
 		port := waitForComposePort(t, ctx, project, overridePath)
 		baseURL := "http://127.0.0.1:" + port
 
@@ -76,8 +80,8 @@ func TestComposeStackStartsCleanlyTwice(t *testing.T) {
 		if got := strings.TrimSpace(runCompose("ps", "-q")); got != "" {
 			t.Fatalf("cycle %d compose ps = %q, want empty", i+1, got)
 		}
-		if got := strings.TrimSpace(runCompose("ps", "-q", "postgres")); got != "" {
-			t.Fatalf("cycle %d postgres ps = %q, want empty", i+1, got)
+		if got := strings.Fields(runCompose("ps", "-q", "postgres")); len(got) != 0 {
+			t.Fatalf("cycle %d postgres ps = %v, want empty", i+1, got)
 		}
 	}
 }
@@ -121,6 +125,7 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	t.Logf("docker compose build --no-cache:\n%s", strings.TrimSpace(buildOut))
 	upOut := runCompose("up", "-d", "--wait")
 	t.Logf("docker compose up --wait:\n%s", strings.TrimSpace(upOut))
+	assertComposeMigrationState(t, runCompose)
 	port := waitForComposePort(t, ctx, project, overridePath)
 	baseURL := "http://127.0.0.1:" + port
 
@@ -133,9 +138,7 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	if got := strings.Fields(runCompose("ps", "-q", "postgres")); len(got) != 1 {
 		t.Fatalf("postgres container count = %d, want 1 (%v)", len(got), got)
 	}
-	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", "SELECT COUNT(*) FROM schema_migrations")); got != "7" {
-		t.Fatalf("schema_migrations count = %s, want 7", got)
-	}
+	assertComposeMigrationState(t, runCompose)
 	if got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", "SELECT COUNT(*) FROM engagement")); got != "0" {
 		t.Fatalf("fresh engagement count = %s, want 0", got)
 	}
@@ -234,8 +237,57 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	if got := strings.TrimSpace(runCompose("ps", "-q")); got != "" {
 		t.Fatalf("post-teardown compose ps = %q, want empty", got)
 	}
-	if got := strings.TrimSpace(runCompose("ps", "-q", "postgres")); got != "" {
-		t.Fatalf("post-teardown postgres ps = %q, want empty", got)
+	if got := strings.Fields(runCompose("ps", "-q", "postgres")); len(got) != 0 {
+		t.Fatalf("post-teardown postgres ps = %v, want empty", got)
+	}
+}
+
+func assertComposeMigrationState(t *testing.T, runCompose func(args ...string) string) {
+	t.Helper()
+
+	if got := strings.Fields(runCompose("ps", "-q", "postgres")); len(got) != 1 {
+		t.Fatalf("postgres container count = %d, want 1 (%v)", len(got), got)
+	}
+
+	wantVersions, err := dbm.EmbeddedMigrationVersions()
+	if err != nil {
+		t.Fatalf("load embedded migrations: %v", err)
+	}
+	gotVersions := strings.Fields(strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", "SELECT version FROM schema_migrations ORDER BY version")))
+	if !slices.Equal(gotVersions, wantVersions) {
+		t.Fatalf("schema_migrations versions = %v, want %v", gotVersions, wantVersions)
+	}
+
+	assertComposeHasTables(t, runCompose, []string{"export_job", "export_receipt", "teardown_authorization"})
+	assertComposeHasIndexes(t, runCompose, []string{
+		"export_job_state_updated_at_idx",
+		"export_job_engagement_updated_at_idx",
+		"export_job_bundle_receipt_unique",
+		"export_receipt_export_job_unique",
+		"export_receipt_id_export_job_unique",
+		"teardown_authorization_engagement_requested_at_idx",
+		"teardown_authorization_receipt_idx",
+		"teardown_authorization_status_expires_idx",
+	})
+}
+
+func assertComposeHasTables(t *testing.T, runCompose func(args ...string) string, names []string) {
+	t.Helper()
+	for _, name := range names {
+		got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", fmt.Sprintf(`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = '%s'`, name)))
+		if got != "1" {
+			t.Fatalf("table %s count = %s, want 1", name, got)
+		}
+	}
+}
+
+func assertComposeHasIndexes(t *testing.T, runCompose func(args ...string) string, names []string) {
+	t.Helper()
+	for _, name := range names {
+		got := strings.TrimSpace(runCompose("exec", "-T", "postgres", "psql", "-U", "waypoint", "-d", "waypoint", "-tAc", fmt.Sprintf(`SELECT COUNT(*) FROM pg_indexes WHERE schemaname = current_schema() AND indexname = '%s'`, name)))
+		if got != "1" {
+			t.Fatalf("index %s count = %s, want 1", name, got)
+		}
 	}
 }
 

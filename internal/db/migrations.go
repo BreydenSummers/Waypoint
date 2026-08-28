@@ -15,8 +15,12 @@ var migrationFS embed.FS
 
 const migrationAdvisoryLockID int64 = 915061
 
+func EmbeddedMigrationVersions() ([]string, error) {
+	return migrationNames()
+}
+
 func ApplyMigrations(ctx context.Context, db *sql.DB) error {
-	entries, err := fs.ReadDir(migrationFS, "migrations")
+	names, err := migrationNames()
 	if err != nil {
 		return err
 	}
@@ -56,15 +60,6 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("iterate applied migrations: %w", err)
 	}
 
-	names := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".up.sql") {
-			continue
-		}
-		names = append(names, entry.Name())
-	}
-	sort.Strings(names)
-
 	for _, name := range names {
 		if _, ok := applied[name]; ok {
 			continue
@@ -86,4 +81,21 @@ func ApplyMigrations(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("commit migrations: %w", err)
 	}
 	return nil
+}
+
+func migrationNames() ([]string, error) {
+	entries, err := fs.ReadDir(migrationFS, "migrations")
+	if err != nil {
+		return nil, err
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".up.sql") {
+			continue
+		}
+		names = append(names, entry.Name())
+	}
+	sort.Strings(names)
+	return names, nil
 }
