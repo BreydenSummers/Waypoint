@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 import { buildReportHtml } from './report-renderer.mjs';
-import { computeArchiveHash, isSafeBundlePath, sha256, verifyBundle } from './bundle-tools.mjs';
+import { computeArchiveHash, decodeEngagementDump, encodeEngagementDump, isSafeBundlePath, sha256, verifyBundle } from './bundle-tools.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fixtureSnapshot = JSON.parse(await readFile(resolve(repoRoot, 'contracts/v1/fixtures/report-snapshot.json'), 'utf8'));
@@ -59,7 +59,8 @@ const dump = {
   grants: [{ id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', engagement_id: '11111111-1111-4111-8111-111111111111', receipt_id: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', export_job_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', bundle_path: 'export-bundle.tar.gz', archive_sha256: 'd'.repeat(64), manifest_sha256: 'e'.repeat(64), requested_by: '22222222-2222-4222-8222-222222222222', requested_at: '2025-01-15T11:00:02Z', expires_at: '2025-01-15T11:15:02Z', status: 'authorized', consumed_at: null, updated_at: '2025-01-15T11:00:02Z', revision: 1 }],
   rowCounts: { engagement: 1, actors: 1, actions: 1, auditEvents: 1, entities: 1, results: 1, observations: 1, evidence: 2, claims: 1, findings: 1, findingRevisions: 1, exports: 1, receipts: 1, grants: 1 },
 };
-await writeFile(dumpPath, JSON.stringify(dump, null, 2), 'utf8');
+const dumpBytes = encodeEngagementDump(dump);
+await writeFile(dumpPath, dumpBytes);
 await writeFile(evidencePath, 'evidence bytes\n', 'utf8');
 await writeFile(pdfPath, '%PDF-1.4 fake report\n', 'utf8');
 await writeFile(metadataPath, JSON.stringify({
@@ -74,7 +75,7 @@ await writeFile(metadataPath, JSON.stringify({
 await writeFile(verifyToolPath, await readFile(resolve(repoRoot, 'bundle/tools/verify-restore.mjs'), 'utf8'), 'utf8');
 await writeFile(regenerateToolPath, await readFile(resolve(repoRoot, 'bundle/tools/regenerate-report.mjs'), 'utf8'), 'utf8');
 
-const dumpBytes = await readFile(dumpPath);
+assert.equal(dumpBytes.toString('utf8', 0, 8), 'PGDMPWP1');
 const evidenceBytes = await readFile(evidencePath);
 const pdfBytes = await readFile(pdfPath);
 const metadataBytes = await readFile(metadataPath);
@@ -139,11 +140,11 @@ assert.match(regenerated, /Verify the outer archive hash before restore\./);
 assert.match(regenerated, /bundle\/database\/engagement\.dump/);
 assert.match(regenerated, /bundle\/tools\/verify-restore\.mjs/);
 
-const dumpJson = JSON.parse(await readFile(dumpPath, 'utf8'));
+const dumpJson = decodeEngagementDump(await readFile(dumpPath));
 const mutatedCountsDump = JSON.parse(JSON.stringify(dumpJson));
 mutatedCountsDump.rowCounts.actions += 1;
 const mutatedCountsBytes = Buffer.from(`${JSON.stringify(mutatedCountsDump, null, 2)}\n`, 'utf8');
-await writeFile(dumpPath, mutatedCountsBytes, 'utf8');
+await writeFile(dumpPath, mutatedCountsBytes);
 const mutatedCountsManifest = JSON.parse(JSON.stringify(manifest));
 mutatedCountsManifest.payloads = mutatedCountsManifest.payloads.map((payload) => payload.path === 'bundle/database/engagement.dump'
   ? { ...payload, size: mutatedCountsBytes.length, byteLength: mutatedCountsBytes.length, sha256: sha256(mutatedCountsBytes) }
@@ -152,12 +153,12 @@ await assert.rejects(
   () => verifyBundle(bundleRoot, { manifest: mutatedCountsManifest, manifestBytes: Buffer.from(`${JSON.stringify(mutatedCountsManifest, null, 2)}\n`, 'utf8'), checkSidecar: false }),
   /row count mismatch for actions/,
 );
-await writeFile(dumpPath, JSON.stringify(dumpJson, null, 2), 'utf8');
+await writeFile(dumpPath, encodeEngagementDump(dumpJson));
 
-const leakedDump = JSON.parse(await readFile(dumpPath, 'utf8'));
+const leakedDump = decodeEngagementDump(await readFile(dumpPath));
 leakedDump.actions[0].engagement_id = '22222222-2222-4222-8222-222222222222';
 const leakedBytes = Buffer.from(`${JSON.stringify(leakedDump, null, 2)}\n`, 'utf8');
-await writeFile(dumpPath, leakedBytes, 'utf8');
+await writeFile(dumpPath, leakedBytes);
 const leakedManifest = JSON.parse(JSON.stringify(manifest));
 leakedManifest.payloads = leakedManifest.payloads.map((payload) => payload.path === 'bundle/database/engagement.dump'
   ? { ...payload, size: leakedBytes.length, byteLength: leakedBytes.length, sha256: sha256(leakedBytes) }
@@ -166,11 +167,11 @@ await assert.rejects(
   () => verifyBundle(bundleRoot, { manifest: leakedManifest, manifestBytes: Buffer.from(`${JSON.stringify(leakedManifest, null, 2)}\n`, 'utf8'), checkSidecar: false }),
   /leaked another engagement/,
 );
-await writeFile(dumpPath, JSON.stringify(dumpJson, null, 2), 'utf8');
+await writeFile(dumpPath, encodeEngagementDump(dumpJson));
 
-await writeFile(dumpPath, 'postgres dump bytes mutated\n', 'utf8');
+await writeFile(dumpPath, 'postgres dump bytes mutated\n');
 await assert.rejects(() => verifyBundle(bundleRoot), /(size|sha256) mismatch for bundle\/database\/engagement\.dump/);
-await writeFile(dumpPath, JSON.stringify(dumpJson, null, 2), 'utf8');
+await writeFile(dumpPath, encodeEngagementDump(dumpJson));
 
 await writeFile(sidecarPath, `${archiveSha256}-tampered\n`, 'utf8');
 await assert.rejects(() => verifyBundle(bundleRoot), /outer archive hash mismatch/);
@@ -207,7 +208,7 @@ await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 
 await rm(dumpPath, { force: true });
 await assert.rejects(() => verifyBundle(bundleRoot), /ENOENT/);
-await writeFile(dumpPath, JSON.stringify(dumpJson, null, 2), 'utf8');
+await writeFile(dumpPath, encodeEngagementDump(dumpJson));
 
 const extraPath = join(bundleDir, 'notes', 'unexpected.txt');
 await mkdir(join(bundleDir, 'notes'), { recursive: true });
@@ -222,7 +223,7 @@ await rm(dumpPath, { force: true });
 await symlink(symlinkTarget, dumpPath);
 await assert.rejects(() => verifyBundle(bundleRoot), /symlink not allowed: bundle\/database\/engagement\.dump/);
 await unlink(dumpPath);
-await writeFile(dumpPath, JSON.stringify(dumpJson, null, 2), 'utf8');
+await writeFile(dumpPath, encodeEngagementDump(dumpJson));
 
 await writeFile(manifestPath, JSON.stringify({
   ...manifest,
@@ -235,8 +236,8 @@ await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 
 const parityDump = JSON.parse(JSON.stringify(dump));
 parityDump.findings[0].revision += 1;
-const parityDumpBytes = Buffer.from(`${JSON.stringify(parityDump, null, 2)}\n`, 'utf8');
-await writeFile(dumpPath, parityDumpBytes, 'utf8');
+const parityDumpBytes = encodeEngagementDump(parityDump);
+await writeFile(dumpPath, parityDumpBytes);
 
 const parityManifest = JSON.parse(JSON.stringify(manifest));
 parityManifest.payloads = parityManifest.payloads.map((payload) => payload.path === 'bundle/database/engagement.dump'
@@ -245,5 +246,5 @@ parityManifest.payloads = parityManifest.payloads.map((payload) => payload.path 
 await writeFile(manifestPath, JSON.stringify(parityManifest, null, 2), 'utf8');
 
 await assert.rejects(() => verifyBundle(bundleRoot), /finding revision mismatch/);
-await writeFile(dumpPath, JSON.stringify(dump, null, 2), 'utf8');
+await writeFile(dumpPath, encodeEngagementDump(dump));
 await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');

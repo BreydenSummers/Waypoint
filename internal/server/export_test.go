@@ -660,53 +660,19 @@ func TestBuildExportDumpIncludesAllAuthoritativeEngagementState(t *testing.T) {
 	mustExec(t, db, `UPDATE export_job SET state = 'completed', progress_stage = 'complete', progress_percent = 100, bundle_receipt_id = $2, completed_at = now(), updated_at = now(), revision = 3 WHERE id = $1`, exportJobA, receiptA)
 	mustExec(t, db, `INSERT INTO teardown_authorization (id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, consumed_at, updated_at, revision) VALUES ($1, $2, $3, $4, 'bundle', $5, $6, $7, now(), now() + interval '15 minutes', 'authorized', NULL, now(), 1)`, grantA, engagementA, receiptA, exportJobA, strings.Repeat("1", 64), strings.Repeat("2", 64), actorA)
 
-	gotBytes, err := buildExportDump(ctx, db, engagementA, "snapshot-1", claimTime.UTC().Format(time.RFC3339))
+	stagingDir := filepath.Join(t.TempDir(), "staging")
+	gotBytes, err := buildExportDump(ctx, db, engagementA, "snapshot-1", claimTime.UTC().Format(time.RFC3339), stagingDir)
 	if err != nil {
 		t.Fatalf("build export dump: %v", err)
 	}
-	var dump struct {
-		FormatVersion string `json:"formatVersion"`
-		DumpFormat    string `json:"dumpFormat"`
-		EngagementID  string `json:"engagementId"`
-		RowCounts     struct {
-			Engagement       int `json:"engagement"`
-			Actors           int `json:"actors"`
-			Actions          int `json:"actions"`
-			AuditEvents      int `json:"auditEvents"`
-			Entities         int `json:"entities"`
-			Results          int `json:"results"`
-			Observations     int `json:"observations"`
-			Evidence         int `json:"evidence"`
-			Claims           int `json:"claims"`
-			Findings         int `json:"findings"`
-			FindingRevisions int `json:"findingRevisions"`
-			Exports          int `json:"exports"`
-			Receipts         int `json:"receipts"`
-			Grants           int `json:"grants"`
-		} `json:"rowCounts"`
-		Actors       []map[string]any `json:"actors"`
-		Actions      []map[string]any `json:"actions"`
-		AuditEvents  []map[string]any `json:"auditEvents"`
-		Entities     []map[string]any `json:"entities"`
-		Results      []map[string]any `json:"results"`
-		Observations []map[string]any `json:"observations"`
-		Evidence     []map[string]any `json:"evidence"`
-		Claims       []struct {
-			ID           string `json:"id"`
-			EngagementID string `json:"engagementId"`
-			Status       string `json:"status"`
-			ObservedBy   struct {
-				ID string `json:"id"`
-			} `json:"observedBy"`
-			SourceActionID string `json:"sourceActionId"`
-		} `json:"claims"`
-		Findings         []map[string]any `json:"findings"`
-		FindingRevisions []map[string]any `json:"findingRevisions"`
-		Exports          []map[string]any `json:"exports"`
-		Receipts         []map[string]any `json:"receipts"`
-		Grants           []map[string]any `json:"grants"`
+	if _, err := os.Stat(stagingDir); !os.IsNotExist(err) {
+		t.Fatalf("staging dir still present after dump: %v", err)
 	}
-	if err := json.Unmarshal(gotBytes, &dump); err != nil {
+	if !bytes.HasPrefix(gotBytes, []byte(exportDumpMagic)) {
+		t.Fatalf("dump missing custom-format magic: %q", gotBytes[:min(len(gotBytes), 8)])
+	}
+	dump, err := decodeExportDumpBytes(gotBytes)
+	if err != nil {
 		t.Fatalf("decode export dump: %v", err)
 	}
 	if dump.FormatVersion != "1.0.0" || dump.DumpFormat != "postgresql-custom-reconstruction" || dump.EngagementID != engagementA {
@@ -715,14 +681,26 @@ func TestBuildExportDumpIncludesAllAuthoritativeEngagementState(t *testing.T) {
 	if dump.RowCounts.Engagement != 1 || dump.RowCounts.Actors != 1 || dump.RowCounts.Actions != 1 || dump.RowCounts.AuditEvents != 2 || dump.RowCounts.Entities != 1 || dump.RowCounts.Results != 1 || dump.RowCounts.Observations != 1 || dump.RowCounts.Evidence != 2 || dump.RowCounts.Claims != 1 || dump.RowCounts.Findings != 1 || dump.RowCounts.FindingRevisions != 1 || dump.RowCounts.Exports != 1 || dump.RowCounts.Receipts != 1 || dump.RowCounts.Grants != 1 {
 		t.Fatalf("dump row counts = %#v", dump.RowCounts)
 	}
-	if len(dump.Actors) != 1 || len(dump.Actions) != 1 || len(dump.AuditEvents) != 2 || len(dump.Entities) != 1 || len(dump.Results) != 1 || len(dump.Observations) != 1 || len(dump.Evidence) != 2 || len(dump.Claims) != 1 || len(dump.Findings) != 1 || len(dump.FindingRevisions) != 1 || len(dump.Exports) != 1 || len(dump.Receipts) != 1 || len(dump.Grants) != 1 {
+	if jsonArrayLength(dump.Actors) != 1 || jsonArrayLength(dump.Actions) != 1 || jsonArrayLength(dump.AuditEvents) != 2 || jsonArrayLength(dump.Entities) != 1 || jsonArrayLength(dump.Results) != 1 || jsonArrayLength(dump.Observations) != 1 || jsonArrayLength(dump.Evidence) != 2 || jsonArrayLength(dump.Findings) != 1 || jsonArrayLength(dump.FindingRevisions) != 1 || jsonArrayLength(dump.Exports) != 1 || jsonArrayLength(dump.Receipts) != 1 || jsonArrayLength(dump.Grants) != 1 {
 		t.Fatalf("dump payload counts = %+v", dump)
 	}
-	if dump.Claims[0].ID != claimA || dump.Claims[0].EngagementID != engagementA || dump.Claims[0].ObservedBy.ID != actorA || dump.Claims[0].SourceActionID != actionA {
-		t.Fatalf("dump claims = %#v", dump.Claims)
+	var claims []struct {
+		ID           string `json:"id"`
+		EngagementID string `json:"engagementId"`
+		Status       string `json:"status"`
+		ObservedBy   struct {
+			ID string `json:"id"`
+		} `json:"observedBy"`
+		SourceActionID string `json:"sourceActionId"`
 	}
-	if dump.Findings[0]["id"] != findingA || dump.Exports[0]["id"] != exportJobA || dump.Receipts[0]["id"] != receiptA || dump.Grants[0]["id"] != grantA {
-		t.Fatalf("dump authoritative rows = findings=%#v exports=%#v receipts=%#v grants=%#v", dump.Findings, dump.Exports, dump.Receipts, dump.Grants)
+	if err := json.Unmarshal(dump.Claims, &claims); err != nil {
+		t.Fatalf("decode dump claims: %v", err)
+	}
+	if len(claims) != 1 || claims[0].ID != claimA || claims[0].EngagementID != engagementA || claims[0].ObservedBy.ID != actorA || claims[0].SourceActionID != actionA {
+		t.Fatalf("dump claims = %#v", claims)
+	}
+	if !bytes.Contains(dump.Actions, []byte(actionA)) || !bytes.Contains(dump.Exports, []byte(exportJobA)) || !bytes.Contains(dump.Receipts, []byte(receiptA)) || !bytes.Contains(dump.Grants, []byte(grantA)) {
+		t.Fatalf("dump authoritative rows missing expected ids")
 	}
 }
 

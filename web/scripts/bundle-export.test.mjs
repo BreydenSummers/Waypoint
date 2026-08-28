@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 import { buildReportHtml } from './report-renderer.mjs';
-import { computeArchiveHash, finalizeBundle, regenerateReport, sha256, verifyBundle } from './bundle-tools.mjs';
+import { computeArchiveHash, encodeEngagementDump, finalizeBundle, regenerateReport, sha256, verifyBundle } from './bundle-tools.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fixtureSnapshot = JSON.parse(await readFile(resolve(repoRoot, 'contracts/v1/fixtures/report-snapshot.json'), 'utf8'));
@@ -55,7 +55,7 @@ async function stageBundle(root) {
     rowCounts: { engagement: 1, actors: 1, actions: 1, auditEvents: 1, entities: 1, results: 1, observations: 1, evidence: 2, claims: 1, findings: 1, findingRevisions: 1, exports: 1, receipts: 1, grants: 1 },
   };
 
-  await writeFile(dumpPath, JSON.stringify(dump, null, 2), 'utf8');
+  await writeFile(dumpPath, encodeEngagementDump(dump));
   await writeFile(evidencePath, 'evidence bytes\n', 'utf8');
   await writeFile(pdfPath, '%PDF-1.4 fake report\n', 'utf8');
   await writeFile(metadataPath, JSON.stringify({

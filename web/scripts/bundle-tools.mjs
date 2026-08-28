@@ -185,6 +185,36 @@ function getRowEngagementId(row) {
   return row?.engagement_id ?? row?.engagementId ?? row?.engagementID ?? '';
 }
 
+const exportDumpMagic = 'PGDMPWP1';
+const exportDumpBinaryVersion = 1;
+
+export function encodeEngagementDump(dump) {
+  const payload = Buffer.from(`${JSON.stringify(dump, null, 2)}\n`, 'utf8');
+  const bytes = Buffer.alloc(exportDumpMagic.length + 8 + payload.length);
+  bytes.write(exportDumpMagic, 0, 'utf8');
+  bytes.writeUInt32BE(exportDumpBinaryVersion, exportDumpMagic.length);
+  bytes.writeUInt32BE(payload.length, exportDumpMagic.length + 4);
+  payload.copy(bytes, exportDumpMagic.length + 8);
+  return bytes;
+}
+
+export function decodeEngagementDump(bytes) {
+  const buffer = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
+  if (buffer.length >= exportDumpMagic.length + 8 && buffer.toString('utf8', 0, exportDumpMagic.length) === exportDumpMagic) {
+    const version = buffer.readUInt32BE(exportDumpMagic.length);
+    if (version !== exportDumpBinaryVersion) {
+      throw new Error(`unsupported database dump binary version: ${version}`);
+    }
+    const payloadLength = buffer.readUInt32BE(exportDumpMagic.length + 4);
+    const payload = buffer.subarray(exportDumpMagic.length + 8);
+    if (payload.length !== payloadLength) {
+      throw new Error(`database dump payload length mismatch: ${payloadLength} != ${payload.length}`);
+    }
+    return JSON.parse(payload.toString('utf8'));
+  }
+  return JSON.parse(buffer.toString('utf8'));
+}
+
 function validateEngagementDump(dump) {
   if (!isPlainObject(dump)) {
     throw new Error('database dump must be a JSON object');
@@ -430,7 +460,7 @@ function validateEngagementDump(dump) {
 }
 
 function validateExportDumpBytes(bytes) {
-  const dump = JSON.parse(bytes.toString('utf8'));
+  const dump = decodeEngagementDump(bytes);
   validateEngagementDump(dump);
 }
 
