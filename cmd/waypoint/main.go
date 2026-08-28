@@ -101,8 +101,11 @@ func resolveStartupTransportConfig(env func(string) string) (startupTransportCon
 
 func isLoopbackBindAddress(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
-	if err != nil || host == "" {
+	if err != nil {
 		return false
+	}
+	if host == "" {
+		return true
 	}
 	if strings.EqualFold(host, "localhost") {
 		return true
