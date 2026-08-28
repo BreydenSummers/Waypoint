@@ -6,7 +6,7 @@ Technical verdict: **Fail — not v1-ready (9 Pass, 8 Fail, 50 Unverified).**
 Technical completion recommended: **false**  
 Human acceptance: **not evaluated or inferred by this technical gate.**
 
-G5 remains closed. The release rule is conjunctive: all 67 applicable PRD rows and all EV-01–EV-16 artifacts must Pass. This reconciliation uses only repeatable current checks and retained artifacts. Source presence, synthetic samples, skipped tests, blocked host attempts, and historical claims are not runtime Pass evidence.
+G5 remains closed. The release rule is conjunctive: all 67 applicable PRD rows and all EV-01–EV-16 artifacts must Pass. This reconciliation uses only the repeatable checks and retained artifacts under [`v1-completion-reconciliation-artifacts/`](v1-completion-reconciliation-artifacts/) for Pass decisions. Source presence, synthetic samples, skipped tests, precondition-blocked commands, and historical runs are not runtime Pass evidence. Historical release records are context only and do not close any current gate.
 
 ## Trusted completion gate
 
@@ -24,11 +24,11 @@ The unit mode was run only to retain the executable subset. It passed 81 tests, 
 
 ### Setup and deployment
 
-**Fail.** Compose syntax passes, but the current host cannot run Docker. The retained daemon-backed setup and collector attempts both built the image and then failed because the application container became unhealthy; no clean empty stack, restart, or supported Ubuntu VM journey passed. `make smoke` also cannot start without a database DSN. This changes PRD-DEP-001 and EV-11 from Unverified to Fail; it does not infer a root cause from the truncated host logs.
+**Fail.** Compose syntax passes, but the current release gate stopped at browser preflight and the current unit-mode Compose journeys skipped because the Docker daemon is unavailable. No current clean empty stack, restart, installer, provisioning, or supported Ubuntu VM journey passed. `make smoke` also cannot start without a database DSN. PRD-DEP-001 and EV-11 are failed release gates; this disposition does not treat syntax, skipped tests, or any historical setup run as runtime acceptance.
 
 ### Capture, raw fallback, and human/AI attribution
 
-**Fail / Unverified.** Core contract fixtures pass, but cross-repository compatibility is unavailable. The retained live collector/Compose transcript failed at stack startup, while PostgreSQL capture, actor, attribution, raw-fallback, AI-context, evidence, MCP, and idempotency tests all skipped in the current unit gate. There is no successful human + AI + unknown-tool collector-to-PostgreSQL transcript. EV-03 is Fail because the retained gate was executed and failed; collector/platform rows remain Unverified where no native plugins artifact exists.
+**Fail / Unverified.** Core contract fixtures pass, but cross-repository compatibility is unavailable. Release mode did not start, while PostgreSQL capture, actor, attribution, raw-fallback, AI-context, evidence, MCP, and idempotency tests all skipped in the current unit gate. There is no successful current human + AI + unknown-tool collector-to-PostgreSQL transcript. EV-03 is a failed release artifact; collector/platform and individual runtime rows remain Unverified where no admissible execution exists.
 
 The former digest-as-bearer source defect is fixed: `lookupActor` now hashes only the presented secret. That removes the prior definite PRD-ID-001 defect, but the row moves only to Unverified because its real-DB and two-operator acceptance tests skipped.
 
@@ -58,7 +58,7 @@ The former digest-as-bearer source defect is fixed: `lookupActor` now hashes onl
 
 ### Performance and fault tolerance
 
-**Fail.** The retained performance directory is internally explicit that PostgreSQL was unavailable and no live timings were collected. Its `raw-profile.json` values and query-plan text have no executable-run provenance and conflict with `blocked-run.txt`; they are fixture samples, not acceptance measurements. Current real-DB fault tests skipped. PRD-PERF-001–003 and EV-12 remain Fail.
+**Fail.** Current unit mode passes fixture/harness-shape checks only; it does not retain executable live timings, baseline query plans, heap profiles, or fault measurements. Synthetic values are not acceptance measurements, and current real-DB fault tests skipped. PRD-PERF-001–003 and EV-12 remain Fail.
 
 ### Explicit v2 deferrals
 
@@ -71,30 +71,56 @@ The former digest-as-bearer source defect is fixed: `lookupActor` now hashes onl
 | PRD-CAP-010 | Fail | **Pass** | Operator guide states the wholly out-of-band boundary; current documentation test verifies coverage and links. |
 | PRD-ID-001 | Fail | **Unverified** | Digest-as-bearer defect is fixed, but real-DB lifecycle and two-operator evidence skipped. |
 | PRD-LIFE-001 | Fail | **Unverified** | Exact-byte verification and bound authorization now exist, but no successful post-wipe reconstruction ran. |
-| PRD-DEP-001 | Unverified | **Fail** | Retained daemon-backed Compose attempts reached an unhealthy app container; current host cannot rerun them. |
+| PRD-DEP-001 | Unverified | **Fail** | The current trusted gate cannot execute setup and current Compose integration tests skip; syntax alone is insufficient. |
 
 All other row statuses are preserved. No implementation-only or synthetic evidence was promoted to Pass.
 
-## EV-01–EV-16 disposition
+## Completion evidence index
 
-| Evidence | Status | Reconciled disposition |
-|---|---|---|
-| EV-01 | Unverified | Core contract verification passes; plugins compatibility/parser/runtime report is unavailable. |
-| EV-02 | Fail | Unit gate has 48 release-critical PostgreSQL/Compose skips; migration, constraints, and auth isolation are not established. |
-| EV-03 | Fail | Retained live collector transcript failed at Compose startup; current human/AI/raw-fallback PostgreSQL tests skipped. |
-| EV-04 | Unverified | No native platform matrix or offline spool/restart/replay artifact exists. |
-| EV-05 | Pass | Retained startup auto/manual/off tests and packet traps directly prove manual/off issue no discovery traffic. |
-| EV-06 | Unverified | Entity real-DB tests skipped; no operator merge/split provenance journey exists. |
-| EV-07 | Unverified | SSE/concurrency real-DB tests skipped; no two-browser recording exists. |
-| EV-08 | Unverified | Authoritative PostgreSQL/Chromium finding-to-report journey skipped. |
-| EV-09 | Fail | No PostgreSQL custom-format production dump or successful clean-room restore exists. |
-| EV-10 | Unverified | Guard implementation is remediated, but no successful post-wipe bundle verification/reconstruction ran. |
-| EV-11 | Fail | Daemon-backed Compose attempts produced an unhealthy app; no successful clean Compose or supported Ubuntu VM log exists. |
-| EV-12 | Fail | Retained samples are not live measurements; real-DB performance/fault run is blocked. |
-| EV-13 | Fail | No current security assessment; TLS-outside-loopback/default exposure remains unresolved. |
-| EV-14 | Unverified | No running-app light/dark desktop/mobile screenshot/checklist set exists. |
-| EV-15 | Unverified | No accessibility-tree, keyboard, axe, screen-reader, or reduced-motion browser report exists. |
-| EV-16 | Pass | Current architecture lint and retained inventory prove all seven explicit v2 deferrals. |
+### PRD verification journey map
+
+The canonical row definitions are in [`../v1-traceability.md`](../v1-traceability.md). This
+run-specific map prevents a passing narrow check from being mistaken for completion of a broader
+PRD journey. `Fail / Unverified` means at least one current blocker exists while unexecuted
+constituent rows remain Unverified.
+
+| Verification area | PRD trace rows | Required EV records | Current disposition |
+|---|---|---|---|
+| Setup | PRD-DATA-001, PRD-ID-001/002, PRD-DEP-001/002/003/004 | EV-02, EV-11, EV-13 | **Fail.** Syntax passed; clean-stack, real-DB, installer, provisioning, and TLS journeys did not. |
+| Capture round-trip | PRD-CORE-001/002, PRD-DATA-004/005/006, PRD-AUD-001, PRD-CAP-001/003/004/005/007/008/011, PRD-NET-001/002/003, PRD-RT-001/002 | EV-01, EV-02, EV-03, EV-05, EV-06, EV-07 | **Fail / Unverified.** EV-05 passes narrowly; collector-to-PostgreSQL, entity-provenance, cross-repo, and live-SSE evidence is absent or skipped. |
+| Raw fallback | PRD-CORE-001, PRD-CAP-002/003 | EV-01, EV-03 | **Unverified.** Synthetic contracts pass, but no authoritative unknown/parser-failure round trip ran. |
+| Human/AI attribution | PRD-CORE-002, PRD-AUD-001/002/003, PRD-ID-001/002, PRD-CAP-007/008 | EV-02, EV-03 | **Unverified.** Two-human-plus-AI runtime attribution did not run. |
+| Offline buffering | PRD-CAP-004/005/011 | EV-04 | **Unverified.** No native disconnect/restart/replay artifact exists. |
+| Findings/report | PRD-CORE-003, PRD-AUD-004, PRD-FIND-001/002, PRD-REP-001/002/003/004/005, PRD-UX-004 | EV-08, EV-09 | **Fail / Unverified.** The authoritative journey skipped and the production clean-room bundle remains failed. |
+| Teardown/recovery | PRD-REP-002/003/005, PRD-LIFE-001, PRD-UX-004 | EV-09, EV-10 | **Fail / Unverified.** No post-wipe restore/regeneration passed. |
+| Automated tests | PRD-CAP-003, PRD-QUAL-001, PRD-DEF-001/002/003/004/005/006/007 | EV-01, EV-02, EV-03, EV-04, EV-05, EV-06, EV-07, EV-08, EV-09, EV-10, EV-11, EV-12, EV-13, EV-16 | **Fail.** Release mode did not start and unit mode retained 48 release-critical skips; EV-16's anti-scope lint passes only its narrow inventory. |
+| Dogfood | PRD-UX-001/002/003/004/005/006/007/008/009, PRD-A11Y-001/002, PRD-QUAL-002 | EV-14, EV-15 | **Unverified.** No current running-app visual or accessibility artifact exists. |
+| Security | PRD-CORE-002, PRD-AUD-004, PRD-CAP-008/009/010/011, PRD-ID-001/002, PRD-NET-003, PRD-REP-003/004, PRD-LIFE-001, PRD-DEP-004, PRD-QUAL-001 | EV-02, EV-03, EV-05, EV-09, EV-10, EV-13 | **Fail.** Narrow egress/boundary checks pass; release security assessment and TLS controls do not. |
+| Performance | PRD-PERF-001/002/003, PRD-QUAL-001 | EV-12 | **Fail.** No live baseline/fault measurements exist. |
+
+The union covers EV-01 through EV-16. EV-14/EV-15 intentionally remain browser/operator evidence,
+not automated-test substitutes.
+
+### EV-01–EV-16 disposition
+
+| Evidence | Status | Reconciled disposition | Current artifact(s) |
+|---|---|---|---|
+| EV-01 | Unverified | Core contract verification passes; plugins compatibility/parser/runtime report is unavailable. | [`verify-contracts.txt`](v1-completion-reconciliation-artifacts/unit-gate/verify-contracts.txt), [`plugins-compatibility.txt`](v1-completion-reconciliation-artifacts/unit-gate/plugins-compatibility.txt) |
+| EV-02 | Fail | Unit gate has 48 release-critical PostgreSQL/Compose skips; migration, constraints, and auth isolation are not established. | [`go-test-release-summary.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release-summary.txt) |
+| EV-03 | Fail | Current release mode did not start; current human/AI/raw-fallback PostgreSQL tests skipped and no admissible transcript passed. | [`release-test.txt`](v1-completion-reconciliation-artifacts/release-test.txt), [`go-test-release-summary.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release-summary.txt) |
+| EV-04 | Unverified | No native platform matrix or offline spool/restart/replay artifact exists. | [`plugins-compatibility.txt`](v1-completion-reconciliation-artifacts/unit-gate/plugins-compatibility.txt) |
+| EV-05 | Pass | Current startup auto/manual/off tests and packet traps directly prove manual/off issue no discovery traffic. | [`go-test-release.raw.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release.raw.txt) |
+| EV-06 | Unverified | Entity real-DB tests skipped; no operator merge/split provenance journey exists. | [`go-test-release-summary.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release-summary.txt) |
+| EV-07 | Unverified | SSE/concurrency real-DB tests skipped; no two-browser recording exists. | [`go-test-release-summary.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release-summary.txt), [`browser.txt`](v1-completion-reconciliation-artifacts/unit-gate/browser.txt) |
+| EV-08 | Unverified | Authoritative PostgreSQL/Chromium finding-to-report journey skipped. | [`go-test-release-summary.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release-summary.txt), [`browser.txt`](v1-completion-reconciliation-artifacts/unit-gate/browser.txt) |
+| EV-09 | Fail | No PostgreSQL custom-format production dump or successful clean-room restore exists; passing bundle checks are synthetic. | [`go-test-release.raw.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release.raw.txt) |
+| EV-10 | Unverified | Guard implementation is remediated, but no successful post-wipe bundle verification/reconstruction ran. | [`go-test-release-summary.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release-summary.txt) |
+| EV-11 | Fail | Current release mode did not reach setup and current Compose tests skipped without a daemon; no clean Compose or supported Ubuntu VM log passed. | [`environment.txt`](v1-completion-reconciliation-artifacts/environment.txt), [`go-test-release.raw.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release.raw.txt) |
+| EV-12 | Fail | Current passing checks cover fixture/harness shape only; no live measurements or real-DB performance/fault run exists. | [`go-test-release.raw.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release.raw.txt) |
+| EV-13 | Fail | No current security assessment; TLS-outside-loopback/default exposure remains unresolved. | [`environment.txt`](v1-completion-reconciliation-artifacts/environment.txt), [`go-test-release.raw.txt`](v1-completion-reconciliation-artifacts/unit-gate/go-test-release.raw.txt) |
+| EV-14 | Unverified | No running-app light/dark desktop/mobile screenshot/checklist set exists. | [`browser.txt`](v1-completion-reconciliation-artifacts/unit-gate/browser.txt) |
+| EV-15 | Unverified | No accessibility-tree, keyboard, axe, screen-reader, or reduced-motion browser report exists. | [`browser.txt`](v1-completion-reconciliation-artifacts/unit-gate/browser.txt) |
+| EV-16 | Pass | Current architecture lint and retained inventory prove all seven explicit v2 deferrals. | [`architecture-lint.txt`](v1-completion-reconciliation-artifacts/architecture-lint.txt) |
 
 ## Additional checks retained
 

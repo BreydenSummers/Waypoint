@@ -30,12 +30,14 @@ evidence satisfy their gates. All v2 deferrals remain unchanged.
 ### Current completion-reconciliation evidence keys
 
 The `2026-08-27T22:13:26Z` reconciliation ran the shipped trusted release gate and retained its
-fail-closed browser preflight, environment, unit-mode report, all **48** release-critical skips,
-contract/lint/web checks, durable host/runtime artifacts, row transitions, and EV-01–EV-16
-reconciliation in
+fail-closed browser preflight, environment, unit-mode report, all **48** release-critical skips, and
+contract/lint/web checks in
 [`release-evidence/v1-completion-reconciliation.md`](release-evidence/v1-completion-reconciliation.md)
 and [`release-evidence/v1-completion-reconciliation-artifacts/`](release-evidence/v1-completion-reconciliation-artifacts/).
-Historical files remain context only. Missing runtime artifacts remain release-blocking.
+Those files are the current evidence set for this matrix. Historical release records are context
+only. Source presence, synthetic fixtures, skipped tests, and precondition-blocked commands do not
+establish runtime acceptance; none is promoted to Pass. Missing runtime artifacts remain
+release-blocking.
 
 - **RECON** — [current trusted-gate reconciliation](release-evidence/v1-completion-reconciliation.md)
 - **ENV** — [current trusted-gate boundary](release-evidence/v1-completion-reconciliation.md#trusted-completion-gate)
@@ -194,13 +196,45 @@ dedicated ADR.
 
 ## 8. Release evidence index
 
-Reconciled against the trusted completion gate and current durable artifacts. Do not mark the release complete if any applicable row lacks a durable artifact. See the [current EV disposition](release-evidence/v1-completion-reconciliation.md#ev-01ev-16-disposition).
+Reconciled against the trusted completion gate and its [current artifact
+set](release-evidence/v1-completion-reconciliation-artifacts/). Do not mark the release complete if
+any applicable row lacks a repeatable durable artifact. The journey disposition is conjunctive: a
+single failed or unverified requirement keeps that journey open. A current gate failure may coexist
+with individual PRD rows that remain `Unverified`; it does not prove unexecuted behavior either way.
+
+### PRD verification journey map
+
+This maps every v1 verification area named by the PRD to its trace rows and required EV records.
+EV-06, EV-07, and EV-16 are included because entity provenance, concurrent/live behavior, and the
+v2 anti-scope inventory are release-wide acceptance obligations even though the PRD's short
+verification bullets do not give them standalone headings.
+
+| Verification area | PRD trace rows | Required evidence | Current disposition from admissible evidence |
+|---|---|---|---|
+| Setup | PRD-DATA-001, PRD-ID-001/002, PRD-DEP-001/002/003/004 | EV-02, EV-11, EV-13 | **Fail.** Compose syntax passed, but release mode stopped at browser preflight and current Compose/real-DB tests skipped. No clean stack, installer, or provisioning journey passed. |
+| Capture round-trip | PRD-CORE-001/002, PRD-DATA-004/005/006, PRD-AUD-001, PRD-CAP-001/003/004/005/007/008/011, PRD-NET-001/002/003, PRD-RT-001/002 | EV-01, EV-02, EV-03, EV-05, EV-06, EV-07 | **Fail / Unverified.** EV-05 alone passes. No current collector-to-PostgreSQL known-tool transcript, entity-provenance journey, cross-repository report, or live SSE recording passed. |
+| Raw fallback | PRD-CORE-001, PRD-CAP-002/003 | EV-01, EV-03 | **Unverified.** Contract fixtures are synthetic and the authoritative unknown/parser-failure round trip skipped. |
+| Human/AI attribution | PRD-CORE-002, PRD-AUD-001/002/003, PRD-ID-001/002, PRD-CAP-007/008 | EV-02, EV-03 | **Unverified.** No current two-human-plus-AI runtime transcript exists; real-DB actor and attribution tests skipped. |
+| Offline buffering | PRD-CAP-004/005/011 | EV-04 | **Unverified.** No Linux/macOS disconnect, process-restart, reconnect, exactly-once replay, or native platform artifact exists. |
+| Findings/report | PRD-CORE-003, PRD-AUD-004, PRD-FIND-001/002, PRD-REP-001/002/003/004/005, PRD-UX-004 | EV-08, EV-09 | **Fail / Unverified.** The authoritative PostgreSQL/browser journey skipped; the production bundle/clean-room requirement remains failed. Synthetic report fixtures do not close it. |
+| Teardown/recovery | PRD-REP-002/003/005, PRD-LIFE-001, PRD-UX-004 | EV-09, EV-10 | **Fail / Unverified.** No current post-wipe verification, restore, or report regeneration passed; implementation presence is not recovery evidence. |
+| Automated tests | PRD-CAP-003, PRD-QUAL-001, PRD-DEF-001/002/003/004/005/006/007 | EV-01, EV-02, EV-03, EV-04, EV-05, EV-06, EV-07, EV-08, EV-09, EV-10, EV-11, EV-12, EV-13, EV-16 | **Fail.** Unit mode had 48 release-critical skips and release mode did not start. Passing lint/unit/web subsets and EV-16's anti-scope lint do not substitute for real-DB, browser, plugins, platform, security, or performance suites. |
+| Dogfood | PRD-UX-001/002/003/004/005/006/007/008/009, PRD-A11Y-001/002, PRD-QUAL-002 | EV-14, EV-15 | **Unverified.** No running-app light/dark desktop/mobile screenshots or operator/accessibility checklist exists. |
+| Security | PRD-CORE-002, PRD-AUD-004, PRD-CAP-008/009/010/011, PRD-ID-001/002, PRD-NET-003, PRD-REP-003/004, PRD-LIFE-001, PRD-DEP-004, PRD-QUAL-001 | EV-02, EV-03, EV-05, EV-09, EV-10, EV-13 | **Fail.** The narrow egress and residual-boundary checks pass, but no current release security assessment exists and TLS/default exposure remains unresolved. |
+| Performance | PRD-PERF-001/002/003, PRD-QUAL-001 | EV-12 | **Fail.** No live baseline, fault run, timings, query plans, or heap profile exists; fixture sample values are inadmissible. |
+
+Collectively this map references every EV ID from EV-01 through EV-16. EV-14 and EV-15 remain
+manual/browser evidence and are intentionally not folded into the automated-tests row.
+
+### EV-01–EV-16 current disposition
+
+See the [run-specific completion evidence index](release-evidence/v1-completion-reconciliation.md#completion-evidence-index).
 
 | Evidence ID | Required artifact | Covers | Current state / location |
 |---|---|---|---|
 | EV-01 | Contract compatibility reports from both repositories | PRD-CAP-003, PRD-CAP-007/008 | Unverified · current core contracts pass, but plugins compatibility/parser/runtime input is unavailable. |
 | EV-02 | Migration/constraint/auth isolation report | PRD-CORE-002, PRD-DATA-001/002, PRD-ID-001/002 | Fail · the unit gate reports 48 release-critical PostgreSQL/Compose skips; migration, constraints, and auth isolation are not established. |
-| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Fail · retained live collector/Compose transcript failed at startup and current PostgreSQL capture tests skip. |
+| EV-03 | Human/AI/unknown-tool capture transcript | PRD-CORE-001, PRD-AUD-001/002/003, PRD-CAP-002 | Fail · the current release gate did not start and current PostgreSQL capture tests skip; no admissible transcript passed. |
 | EV-04 | Offline replay + platform matrix | PRD-CAP-004/005/011 | Unverified · no plugins replay/native-platform artifact exists. |
 | EV-05 | Egress mode packet assertions | PRD-NET-001/002/003 | Pass · retained startup resolver tests cover auto/manual/off and packet traps prove manual/off send no discovery traffic. |
 | EV-06 | Entity dedup/merge/split provenance report | PRD-DATA-004/005 | Unverified · PostgreSQL tests skip and no operator journey is retained. |
@@ -208,8 +242,8 @@ Reconciled against the trusted completion gate and current durable artifacts. Do
 | EV-08 | Finding-to-evidence-to-report trace report | PRD-FIND-001/002, PRD-REP-001 | Unverified · the authoritative PostgreSQL/Chromium journey skips. |
 | EV-09 | Bundle manifest, outer hash, clean-room restore log | PRD-REP-002/003/004/005 | Fail · production dump is not the required PostgreSQL custom format and no complete clean-room restore exists. |
 | EV-10 | Guarded teardown and post-wipe bundle verification | PRD-LIFE-001 | Unverified · exact-byte/bound-authorization source is remediated, but no post-wipe reconstruction ran. |
-| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Fail · retained daemon-backed Compose attempts produced an unhealthy app and no supported Ubuntu VM run passed. |
-| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Fail · retained values are fixture samples, while blocker records confirm no live baseline measurements. |
+| EV-11 | Clean Compose and installer logs | PRD-DEP-001/002/003 | Fail · the current release gate did not reach setup and current Compose tests skip without a Docker daemon; no clean Compose or supported Ubuntu VM run passed. |
+| EV-12 | Performance and fault benchmark report | PRD-PERF-001/002/003, PRD-QUAL-001 | Fail · current passing checks validate fixtures/harness shape only; no live baseline measurements or fault run exists. |
 | EV-13 | Security test/scan report and residual-boundary review | PRD-DEP-004, PRD-CAP-009/010, PRD-QUAL-001 | Fail · the boundary guide now passes, but no security assessment exists and TLS/default exposure remains unresolved. |
 | EV-14 | Light/dark desktop/mobile screenshots and UX checklist | PRD-UX-001–009, PRD-QUAL-002 | Unverified · no browser is available and no screenshots/checklist were produced. |
 | EV-15 | Accessibility tree/keyboard/axe/reduced-motion report | PRD-A11Y-001/002 | Unverified · no browser accessibility artifact exists. |
