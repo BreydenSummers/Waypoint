@@ -2,12 +2,18 @@ package server
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 )
+
+const exportDumpBinaryVersion = 1
+const exportDumpMagic = "PGDMPWP1"
 
 type exportDatabaseDump struct {
 	FormatVersion    string                   `json:"formatVersion"`
@@ -49,12 +55,22 @@ type exportDatabaseDumpCounts struct {
 	Grants           int `json:"grants"`
 }
 
-func buildExportDump(ctx context.Context, db queryer, engagementID, snapshotID, cutoff string) ([]byte, error) {
+func buildExportDump(ctx context.Context, db queryer, engagementID, snapshotID, cutoff, stagingDir string) ([]byte, error) {
 	dump, err := assembleExportDump(ctx, db, engagementID, snapshotID, cutoff)
 	if err != nil {
 		return nil, err
 	}
-	return json.MarshalIndent(dump, "", "  ")
+	if stagingDir != "" {
+		if err := os.RemoveAll(stagingDir); err != nil {
+			return nil, err
+		}
+		if err := materializeExportStagingSnapshot(stagingDir, dump); err != nil {
+			_ = os.RemoveAll(stagingDir)
+			return nil, err
+		}
+		defer os.RemoveAll(stagingDir)
+	}
+	return encodeExportDumpBytes(dump)
 }
 
 func assembleExportDump(ctx context.Context, db queryer, engagementID, snapshotID, cutoff string) (exportDatabaseDump, error) {
@@ -155,6 +171,84 @@ func assembleExportDump(ctx context.Context, db queryer, engagementID, snapshotI
 			Grants:           jsonArrayLength(grants),
 		},
 	}, nil
+}
+
+func materializeExportStagingSnapshot(stagingDir string, dump exportDatabaseDump) error {
+	if stagingDir == "" {
+		return nil
+	}
+	if err := os.MkdirAll(stagingDir, 0o750); err != nil {
+		return err
+	}
+	sections := map[string]json.RawMessage{
+		"engagement.json":        dump.Engagement,
+		"actors.json":            dump.Actors,
+		"actions.json":           dump.Actions,
+		"audit_events.json":      dump.AuditEvents,
+		"entities.json":          dump.Entities,
+		"results.json":           dump.Results,
+		"observations.json":      dump.Observations,
+		"evidence.json":          dump.Evidence,
+		"claims.json":            dump.Claims,
+		"findings.json":          dump.Findings,
+		"finding_revisions.json": dump.FindingRevisions,
+		"exports.json":           dump.Exports,
+		"receipts.json":          dump.Receipts,
+		"grants.json":            dump.Grants,
+	}
+	for name, raw := range sections {
+		bytes := raw
+		if len(bytes) == 0 {
+			bytes = []byte("null")
+		}
+		if err := os.WriteFile(filepath.Join(stagingDir, name), append(append([]byte{}, bytes...), '\n'), 0o600); err != nil {
+			return err
+		}
+	}
+	countsBytes, err := json.MarshalIndent(dump.RowCounts, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(stagingDir, "row-counts.json"), append(countsBytes, '\n'), 0o600); err != nil {
+		return err
+	}
+	return nil
+}
+
+func encodeExportDumpBytes(dump exportDatabaseDump) ([]byte, error) {
+	payload, err := json.MarshalIndent(dump, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	payload = append(payload, '\n')
+	buf := make([]byte, 0, len(exportDumpMagic)+8+len(payload))
+	buf = append(buf, exportDumpMagic...)
+	var header [8]byte
+	binary.BigEndian.PutUint32(header[:4], exportDumpBinaryVersion)
+	binary.BigEndian.PutUint32(header[4:], uint32(len(payload)))
+	buf = append(buf, header[:]...)
+	buf = append(buf, payload...)
+	return buf, nil
+}
+
+func decodeExportDumpBytes(bytes []byte) (exportDatabaseDump, error) {
+	payload := bytes
+	if len(bytes) >= len(exportDumpMagic)+8 && string(bytes[:len(exportDumpMagic)]) == exportDumpMagic {
+		version := binary.BigEndian.Uint32(bytes[len(exportDumpMagic) : len(exportDumpMagic)+4])
+		if version != exportDumpBinaryVersion {
+			return exportDatabaseDump{}, fmt.Errorf("unsupported database dump binary version: %d", version)
+		}
+		payloadLen := binary.BigEndian.Uint32(bytes[len(exportDumpMagic)+4 : len(exportDumpMagic)+8])
+		payload = bytes[len(exportDumpMagic)+8:]
+		if int(payloadLen) != len(payload) {
+			return exportDatabaseDump{}, fmt.Errorf("database dump payload length mismatch: %d != %d", payloadLen, len(payload))
+		}
+	}
+	var dump exportDatabaseDump
+	if err := json.Unmarshal(payload, &dump); err != nil {
+		return exportDatabaseDump{}, err
+	}
+	return dump, nil
 }
 
 func loadDumpObject(ctx context.Context, db queryer, query string, args ...any) (json.RawMessage, error) {

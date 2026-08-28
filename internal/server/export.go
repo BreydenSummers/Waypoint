@@ -1092,6 +1092,7 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 	snapshotID := newUUID()
 	cutoff := snapshot.Cutoff
 	bundleDir := filepath.Join(m.root, job.ID, "bundle")
+	stagingDir := filepath.Join(m.root, job.ID, "staging")
 	paths := map[string]string{
 		"dump":         filepath.Join(bundleDir, "database", "engagement.dump"),
 		"evidence":     filepath.Join(bundleDir, "evidence", "evidence.tar.zst"),
@@ -1111,7 +1112,7 @@ func (m *exportManager) buildArtifacts(ctx context.Context, job exportJobRecord)
 		}
 	}
 
-	dumpBytes, err := buildExportDump(reportCtx, tx, job.EngagementID, snapshotID, cutoff)
+	dumpBytes, err := buildExportDump(reportCtx, tx, job.EngagementID, snapshotID, cutoff, stagingDir)
 	if err != nil {
 		return exportArtifacts{}, err
 	}
