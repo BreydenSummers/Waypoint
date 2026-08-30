@@ -531,7 +531,7 @@ func loadOutOfBandClaim(ctx context.Context, db *sql.DB, engagementID, claimID s
 }
 
 func loadOutOfBandClaimTimeline(ctx context.Context, q queryer, engagementID, claimID string) ([]outOfBandClaimEventRow, error) {
-	rows, err := q.QueryContext(ctx, `SELECT id, subject_id, type, subject_revision, occurred_at, actor_id, actor_kind, actor_handle, actor_role, actor_agent_name, actor_model, actor_version, actor_authorized_by, data
+	rows, err := q.QueryContext(ctx, `SELECT id, subject_id, type, subject_revision, occurred_at, actor_id, actor_kind, actor_handle, actor_role, COALESCE(actor_agent_name, ''), COALESCE(actor_model, ''), COALESCE(actor_version, ''), actor_authorized_by, data
 		FROM audit_event
 		WHERE engagement_id = $1 AND subject_type = 'out_of_band_claim' AND subject_id = $2 AND type IN ('out-of-band.flagged', 'out-of-band.resolved')
 		ORDER BY subject_revision ASC, id ASC`, engagementID, claimID)

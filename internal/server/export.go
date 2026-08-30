@@ -547,33 +547,15 @@ func scanExportJobPageRow(rows *sql.Rows) (struct {
 	}
 	row.RequestedBy.EngagementID = row.EngagementID
 	row.UpdatedAt = row.UpdatedAt.UTC()
-	if row.RetryOfJobID.String == "" {
-		row.RetryOfJobID.Valid = false
-	}
-	if row.SnapshotID.String == "" {
-		row.SnapshotID.Valid = false
-	}
-	if row.BundleArchivePath.String == "" {
-		row.BundleArchivePath.Valid = false
-	}
-	if row.BundleArchiveSHA.String == "" {
-		row.BundleArchiveSHA.Valid = false
-	}
-	if row.BundleManifestSHA.String == "" {
-		row.BundleManifestSHA.Valid = false
-	}
-	if row.BundleReportSnapID.String == "" {
-		row.BundleReportSnapID.Valid = false
-	}
-	if row.BundleReceiptID.String == "" {
-		row.BundleReceiptID.Valid = false
-	}
-	if row.FailureCode.String == "" {
-		row.FailureCode.Valid = false
-	}
-	if row.FailureMessage.String == "" {
-		row.FailureMessage.Valid = false
-	}
+	row.RetryOfJobID.Valid = row.RetryOfJobID.String != ""
+	row.SnapshotID.Valid = row.SnapshotID.String != ""
+	row.BundleArchivePath.Valid = row.BundleArchivePath.String != ""
+	row.BundleArchiveSHA.Valid = row.BundleArchiveSHA.String != ""
+	row.BundleManifestSHA.Valid = row.BundleManifestSHA.String != ""
+	row.BundleReportSnapID.Valid = row.BundleReportSnapID.String != ""
+	row.BundleReceiptID.Valid = row.BundleReceiptID.String != ""
+	row.FailureCode.Valid = row.FailureCode.String != ""
+	row.FailureMessage.Valid = row.FailureMessage.String != ""
 	return struct {
 		record exportJobRecord
 	}{record: row}, nil
@@ -621,7 +603,7 @@ func handleExportCreate(w http.ResponseWriter, r *http.Request, db *sql.DB, mgr 
 	if _, err := tx.ExecContext(r.Context(), `INSERT INTO export_job (
 		id, engagement_id, requested_by, retry_of_job_id, format_version, state, progress_stage, progress_percent, processed_bytes, estimated_total_bytes,
 		created_at, updated_at, revision
-	) VALUES ($1, $2, $3, NULLIF($4, ''), $5, 'queued', 'queued', 0, 0, 0, $6, $6, 1)`, jobID, actor.EngagementID, actor.ID, strings.TrimSpace(req.RetryOfJobID), req.FormatVersion, now); err != nil {
+	) VALUES ($1, $2, $3, NULLIF($4, '')::uuid, $5, 'queued', 'queued', 0, 0, 0, $6, $6, 1)`, jobID, actor.EngagementID, actor.ID, strings.TrimSpace(req.RetryOfJobID), req.FormatVersion, now); err != nil {
 		_ = tx.Rollback()
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "create export job failed"})
 		return
@@ -1463,33 +1445,15 @@ func loadExportJob(ctx context.Context, db queryer, jobID string) (exportJobReco
 	row.RequestedBy.EngagementID = row.EngagementID
 	row.RequestedBy.TokenHash = ""
 	row.RequestedBy.AuthorizedBy = strings.TrimSpace(row.RequestedBy.AuthorizedBy)
-	if row.RetryOfJobID.String == "" {
-		row.RetryOfJobID.Valid = false
-	}
-	if row.SnapshotID.String == "" {
-		row.SnapshotID.Valid = false
-	}
-	if row.BundleArchivePath.String == "" {
-		row.BundleArchivePath.Valid = false
-	}
-	if row.BundleArchiveSHA.String == "" {
-		row.BundleArchiveSHA.Valid = false
-	}
-	if row.BundleManifestSHA.String == "" {
-		row.BundleManifestSHA.Valid = false
-	}
-	if row.BundleReportSnapID.String == "" {
-		row.BundleReportSnapID.Valid = false
-	}
-	if row.BundleReceiptID.String == "" {
-		row.BundleReceiptID.Valid = false
-	}
-	if row.FailureCode.String == "" {
-		row.FailureCode.Valid = false
-	}
-	if row.FailureMessage.String == "" {
-		row.FailureMessage.Valid = false
-	}
+	row.RetryOfJobID.Valid = row.RetryOfJobID.String != ""
+	row.SnapshotID.Valid = row.SnapshotID.String != ""
+	row.BundleArchivePath.Valid = row.BundleArchivePath.String != ""
+	row.BundleArchiveSHA.Valid = row.BundleArchiveSHA.String != ""
+	row.BundleManifestSHA.Valid = row.BundleManifestSHA.String != ""
+	row.BundleReportSnapID.Valid = row.BundleReportSnapID.String != ""
+	row.BundleReceiptID.Valid = row.BundleReceiptID.String != ""
+	row.FailureCode.Valid = row.FailureCode.String != ""
+	row.FailureMessage.Valid = row.FailureMessage.String != ""
 	return row, nil
 }
 
@@ -1501,33 +1465,15 @@ func scanExportJobRow(rows *sql.Rows) (exportJobRecord, error) {
 	row.RequestedBy.EngagementID = row.EngagementID
 	row.RequestedBy.TokenHash = ""
 	row.RequestedBy.AuthorizedBy = strings.TrimSpace(row.RequestedBy.AuthorizedBy)
-	if row.RetryOfJobID.String == "" {
-		row.RetryOfJobID.Valid = false
-	}
-	if row.SnapshotID.String == "" {
-		row.SnapshotID.Valid = false
-	}
-	if row.BundleArchivePath.String == "" {
-		row.BundleArchivePath.Valid = false
-	}
-	if row.BundleArchiveSHA.String == "" {
-		row.BundleArchiveSHA.Valid = false
-	}
-	if row.BundleManifestSHA.String == "" {
-		row.BundleManifestSHA.Valid = false
-	}
-	if row.BundleReportSnapID.String == "" {
-		row.BundleReportSnapID.Valid = false
-	}
-	if row.BundleReceiptID.String == "" {
-		row.BundleReceiptID.Valid = false
-	}
-	if row.FailureCode.String == "" {
-		row.FailureCode.Valid = false
-	}
-	if row.FailureMessage.String == "" {
-		row.FailureMessage.Valid = false
-	}
+	row.RetryOfJobID.Valid = row.RetryOfJobID.String != ""
+	row.SnapshotID.Valid = row.SnapshotID.String != ""
+	row.BundleArchivePath.Valid = row.BundleArchivePath.String != ""
+	row.BundleArchiveSHA.Valid = row.BundleArchiveSHA.String != ""
+	row.BundleManifestSHA.Valid = row.BundleManifestSHA.String != ""
+	row.BundleReportSnapID.Valid = row.BundleReportSnapID.String != ""
+	row.BundleReceiptID.Valid = row.BundleReceiptID.String != ""
+	row.FailureCode.Valid = row.FailureCode.String != ""
+	row.FailureMessage.Valid = row.FailureMessage.String != ""
 	return row, nil
 }
 
@@ -1543,9 +1489,7 @@ func loadExportReceipt(ctx context.Context, db queryer, receiptID string) (expor
 		return exportReceiptRecord{}, err
 	}
 	row.VerifiedBy.EngagementID = row.EngagementID
-	if row.InvalidationReason.String == "" {
-		row.InvalidationReason.Valid = false
-	}
+	row.InvalidationReason.Valid = row.InvalidationReason.String != ""
 	return row, nil
 }
 
@@ -1662,7 +1606,7 @@ func persistTeardownAuthorization(ctx context.Context, db *sql.DB, actor actorRe
 func loadTeardownAuthorization(ctx context.Context, db queryer, authorizationID string) (teardownAuthorizationRecord, error) {
 	var row teardownAuthorizationRecord
 	if err := db.QueryRowContext(ctx, `
-		SELECT id, engagement_id, receipt_id, export_job_id, bundle_path, archive_sha256, manifest_sha256, requested_by, requested_at, expires_at, status, COALESCE(consumed_at, 'epoch'::timestamptz), revision,
+		SELECT t.id, t.engagement_id, t.receipt_id, t.export_job_id, t.bundle_path, t.archive_sha256, t.manifest_sha256, t.requested_by, t.requested_at, t.expires_at, t.status, COALESCE(t.consumed_at, 'epoch'::timestamptz), t.revision,
 		       a.kind, a.handle, a.role, COALESCE(a.agent_name, ''), COALESCE(a.model, ''), COALESCE(a.version, ''), COALESCE(a.authorized_by::text, '')
 		FROM teardown_authorization t
 		JOIN actor a ON a.id = t.requested_by

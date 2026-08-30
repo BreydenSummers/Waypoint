@@ -143,7 +143,14 @@ func TestCaptureIngestCreatesReplaysAndRejectsChangedPayload(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT type, data::text FROM audit_event WHERE subject_id = $1 AND type = 'capture.conflict' ORDER BY id DESC LIMIT 1`, ack.ActionID).Scan(&conflictType, &conflictData); err != nil {
 		t.Fatalf("load conflict audit event: %v", err)
 	}
-	if conflictType != "capture.conflict" || !bytes.Contains([]byte(conflictData), []byte(`"reason":"payload_mismatch"`)) || !bytes.Contains([]byte(conflictData), []byte(`"existingActionId":"`+ack.ActionID+`"`)) {
+	var conflictParsed struct {
+		Reason           string `json:"reason"`
+		ExistingActionID string `json:"existingActionId"`
+	}
+	if err := json.Unmarshal([]byte(conflictData), &conflictParsed); err != nil {
+		t.Fatalf("decode conflict audit data: %v", err)
+	}
+	if conflictType != "capture.conflict" || conflictParsed.Reason != "payload_mismatch" || conflictParsed.ExistingActionID != ack.ActionID {
 		t.Fatalf("conflict audit event unexpected: type=%s data=%s", conflictType, conflictData)
 	}
 
@@ -159,7 +166,13 @@ func TestCaptureIngestCreatesReplaysAndRejectsChangedPayload(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT type, data::text FROM audit_event WHERE subject_id = $1 AND type = 'capture.accepted' ORDER BY id DESC LIMIT 1`, ack.ActionID).Scan(&eventType, &data); err != nil {
 		t.Fatalf("load accepted audit event: %v", err)
 	}
-	if eventType != "capture.accepted" || !bytes.Contains([]byte(data), []byte(`"egressStatus":"disabled"`)) {
+	var acceptedParsed struct {
+		EgressStatus string `json:"egressStatus"`
+	}
+	if err := json.Unmarshal([]byte(data), &acceptedParsed); err != nil {
+		t.Fatalf("decode accepted audit data: %v", err)
+	}
+	if eventType != "capture.accepted" || acceptedParsed.EgressStatus != "disabled" {
 		t.Fatalf("accepted audit event unexpected: type=%s data=%s", eventType, data)
 	}
 }

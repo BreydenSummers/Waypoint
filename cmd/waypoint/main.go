@@ -132,6 +132,15 @@ func openConfiguredDatabase(ctx context.Context, dsn string) (*sql.DB, error) {
 		return nil, fmt.Errorf("open postgres: %w", err)
 	}
 
+	// Bound the pool and recycle connections so a restarted database (or a
+	// severed idle connection) can't leave stale handles in the pool forever.
+	// Recovery from a broken socket is driven by the driver's IsValid hook;
+	// the lifetime/idle limits are a backstop that ages out idle connections.
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(4)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(2 * time.Minute)
+
 	pingCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := db.PingContext(pingCtx); err != nil {

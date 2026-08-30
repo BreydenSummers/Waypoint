@@ -336,7 +336,7 @@ func loadEntityObservationPage(ctx context.Context, db *sql.DB, engagementID, en
 			JOIN lineage l ON e.merged_into_entity_id = l.id
 			WHERE e.engagement_id = $1
 		)
-		SELECT o.id, o.entity_id::text, o.kind, COALESCE(o.action_id::text, ''), o.identifiers::text, o.attributes::text, o.observed_at
+		SELECT o.id, o.entity_id::text, o.kind, COALESCE(o.action_id::text, ''), o.identifiers, o.attributes, o.observed_at
 		FROM observation o
 		JOIN lineage l ON l.id = o.entity_id
 		WHERE o.engagement_id = $1
@@ -403,8 +403,17 @@ func loadEntityIdentifierPage(ctx context.Context, db *sql.DB, engagementID, ent
 			JOIN lineage l ON e.merged_into_entity_id = l.id
 			WHERE e.engagement_id = $1
 		), identifier_set AS (
-			SELECT e.key_type::text AS type, e.key_value AS value
+			-- The entity's own composite key_type (hostname_ip) stores its parts as
+			-- "hostname=<h>|ip=<i>"; decompose it into individual {type,value} rows so
+			-- the endpoint emits contract identifier types (hostname, ip), matching
+			-- entityIdentifiersFromRow. Non-composite key types pass through unchanged.
+			SELECT
+				CASE WHEN e.key_type::text = 'hostname_ip' THEN split_part(kv, '=', 1) ELSE e.key_type::text END AS type,
+				CASE WHEN e.key_type::text = 'hostname_ip' THEN split_part(kv, '=', 2) ELSE e.key_value END AS value
 			FROM entity e
+			CROSS JOIN LATERAL unnest(
+				CASE WHEN e.key_type::text = 'hostname_ip' THEN string_to_array(e.key_value, '|') ELSE ARRAY[e.key_value] END
+			) AS kv
 			WHERE e.engagement_id = $1 AND e.id = $2 AND e.merged_into_entity_id IS NULL
 			UNION
 			SELECT ident->>'type' AS type, ident->>'value' AS value

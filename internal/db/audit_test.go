@@ -103,10 +103,11 @@ func TestAppendAuditEventCapturesOutOfBandReviewLifecycle(t *testing.T) {
 	for _, tc := range []struct {
 		id       int64
 		typeName string
-		want     string
+		wantKey  string
+		wantVal  string
 	}{
-		{id: flaggedID, typeName: "out-of-band.flagged", want: `"detectionBoundary":"best_effort"`},
-		{id: resolvedID, typeName: "out-of-band.resolved", want: `"resolution":"linked"`},
+		{id: flaggedID, typeName: "out-of-band.flagged", wantKey: "detectionBoundary", wantVal: "best_effort"},
+		{id: resolvedID, typeName: "out-of-band.resolved", wantKey: "resolution", wantVal: "linked"},
 	} {
 		var typ, subjectType, raw string
 		if err := db.QueryRowContext(ctx, `SELECT type, subject_type, data::text FROM audit_event WHERE id = $1`, tc.id).Scan(&typ, &subjectType, &raw); err != nil {
@@ -115,8 +116,12 @@ func TestAppendAuditEventCapturesOutOfBandReviewLifecycle(t *testing.T) {
 		if typ != tc.typeName || subjectType != "out_of_band_claim" {
 			t.Fatalf("event = (%s, %s), want (%s, out_of_band_claim)", typ, subjectType, tc.typeName)
 		}
-		if !strings.Contains(raw, tc.want) {
-			t.Fatalf("event data = %s, want %s", raw, tc.want)
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+			t.Fatalf("decode %s event data: %v", tc.typeName, err)
+		}
+		if parsed[tc.wantKey] != tc.wantVal {
+			t.Fatalf("event data = %s, want %s=%s", raw, tc.wantKey, tc.wantVal)
 		}
 	}
 }

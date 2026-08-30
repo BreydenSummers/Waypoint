@@ -254,7 +254,7 @@ func TestAuditSSEHeartbeatAndCommittedCaptureVisibility(t *testing.T) {
 			Role:   "operator",
 		},
 		Origin:        dbm.AuditOrigin{Kind: "rest"},
-		Subject:       dbm.AuditSubject{Type: "capture", ID: "99999999-9999-4999-8999-999999999999", Revision: 1},
+		Subject:       dbm.AuditSubject{Type: "action", ID: "99999999-9999-4999-8999-999999999999", Revision: 1},
 		RequestID:     "req-visibility",
 		CorrelationID: "corr-visibility",
 		Data:          map[string]any{"captureId": "99999999-9999-4999-8999-999999999999"},
@@ -315,6 +315,11 @@ func appendAuditEvents(t *testing.T, db *sql.DB, engagementID, actorID string, t
 		t.Fatalf("unsupported event type input %T", types)
 	}
 
+	var actorKind, actorHandle, actorRole string
+	if err := db.QueryRowContext(context.Background(), `SELECT kind, handle, role FROM actor WHERE id = $1`, actorID).Scan(&actorKind, &actorHandle, &actorRole); err != nil {
+		t.Fatalf("load actor snapshot: %v", err)
+	}
+
 	tx, err := db.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatalf("begin tx: %v", err)
@@ -328,9 +333,9 @@ func appendAuditEvents(t *testing.T, db *sql.DB, engagementID, actorID string, t
 			Type:         typ,
 			Actor: dbm.AuditActorSnapshot{
 				ID:     actorID,
-				Kind:   "human",
-				Handle: "alex.operator",
-				Role:   "operator",
+				Kind:   actorKind,
+				Handle: actorHandle,
+				Role:   actorRole,
 			},
 			Origin:        dbm.AuditOrigin{Kind: "rest"},
 			Subject:       dbm.AuditSubject{Type: "action", ID: fmt.Sprintf("77777777-7777-4%03d-8777-777777777777", i), Revision: 1},

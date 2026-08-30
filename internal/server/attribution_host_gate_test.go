@@ -252,7 +252,7 @@ func TestAttributionHostGateHumanAndAIActorsAcrossProvisionCaptureRotateRevokeAn
 	if got := byTitle["AI actor"]; len(got) != 1 || !strings.Contains(got[0], "field-agent-7") || !strings.Contains(got[0], "authorized by beatrice.operator") {
 		t.Fatalf("ai attribution = %#v", got)
 	}
-	if got := byTitle["Exec host IP"]; len(got) != 3 || got[0] != "10.10.0.12" || got[1] != "10.10.0.13" || got[2] != "10.10.0.14" {
+	if got := byTitle["Exec host IP"]; len(got) != 3 || got[0] != "10.10.0.12/32" || got[1] != "10.10.0.13/32" || got[2] != "10.10.0.14/32" {
 		t.Fatalf("exec host attribution = %#v", got)
 	}
 
@@ -270,7 +270,7 @@ func attributionEnvelope(captureID, sourceKind, sourceName, sourceOS, sourceArch
 		"contractVersion": "1.0.0",
 		"captureId":       captureID,
 		"sourceAgent": map[string]any{
-			"id":      captureID + "-source",
+			"id":      captureID,
 			"kind":    sourceKind,
 			"name":    sourceName,
 			"version": "1.0.0",

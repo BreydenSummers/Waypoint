@@ -2,15 +2,26 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	dbm "waypoint/internal/db"
 )
 
 func TestActorLifecycleProvisionRotateRevokeAndAuthorization(t *testing.T) {
 	db := openTestDB(t)
 	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resetPublicSchema(t, db)
+	if err := dbm.ApplyMigrations(ctx, db); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
 
 	engagementID := "11111111-1111-4111-8111-111111111111"
 	authID := "22222222-2222-4222-8222-222222222222"

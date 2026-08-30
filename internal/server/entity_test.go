@@ -83,7 +83,14 @@ func TestEntityMergeSplitPreviewUndoAndProvenance(t *testing.T) {
 	if typ != "entity.merged" || actorKind != "human" || actorHandle != "alex.operator" || actorRole != "operator" || requestID != "req-merge" {
 		t.Fatalf("merge audit event = %s %s %s %s %s", typ, actorKind, actorHandle, actorRole, requestID)
 	}
-	if !bytes.Contains([]byte(data), []byte(`"sourceEntityId":"`+sourceID+`"`)) || !bytes.Contains([]byte(data), []byte(`"targetEntityId":"`+targetID+`"`)) {
+	var mergeParsed struct {
+		SourceEntityID string `json:"sourceEntityId"`
+		TargetEntityID string `json:"targetEntityId"`
+	}
+	if err := json.Unmarshal([]byte(data), &mergeParsed); err != nil {
+		t.Fatalf("decode merge audit data: %v", err)
+	}
+	if mergeParsed.SourceEntityID != sourceID || mergeParsed.TargetEntityID != targetID {
 		t.Fatalf("merge audit data = %s", data)
 	}
 
@@ -150,7 +157,13 @@ func TestEntityMergeSplitPreviewUndoAndProvenance(t *testing.T) {
 	if typ != "entity.split" || actorKind != "human" || actorHandle != "alex.operator" || actorRole != "operator" || requestID != "req-split" {
 		t.Fatalf("split audit event = %s %s %s %s %s", typ, actorKind, actorHandle, actorRole, requestID)
 	}
-	if !bytes.Contains([]byte(data), []byte(`"observationId":"`+observationID+`"`)) {
+	var splitParsed struct {
+		ObservationID string `json:"observationId"`
+	}
+	if err := json.Unmarshal([]byte(data), &splitParsed); err != nil {
+		t.Fatalf("decode split audit data: %v", err)
+	}
+	if splitParsed.ObservationID != observationID {
 		t.Fatalf("split audit data = %s", data)
 	}
 

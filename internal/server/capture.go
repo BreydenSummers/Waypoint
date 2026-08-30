@@ -1394,12 +1394,20 @@ func (a stringArray) Value() (driver.Value, error) {
 	return "{" + strings.Join([]string(a), ",") + "}", nil
 }
 
+// errUnknownActor is returned when a presented token matches no active actor.
+// It replaces the raw sql.ErrNoRows so callers surface a clean auth failure
+// instead of leaking "sql: no rows in result set" to clients (and the UI).
+var errUnknownActor = errors.New("unknown or revoked token")
+
 func lookupActor(ctx context.Context, db queryer, token string) (actorRecord, error) {
 	// Only the SHA-256 of the presented secret is ever a valid credential. The
 	// stored digest must never authenticate directly, or a leaked token_hash
 	// would itself be a bearer credential.
 	var a actorRecord
 	err := db.QueryRowContext(ctx, `SELECT id, engagement_id, kind, handle, role, COALESCE(agent_name,''), COALESCE(model,''), COALESCE(version,''), COALESCE(authorized_by::text,''), token_hash FROM actor WHERE token_hash = $1 AND revoked_at IS NULL LIMIT 1`, sha256Hex(token)).Scan(&a.ID, &a.EngagementID, &a.Kind, &a.Handle, &a.Role, &a.AgentName, &a.Model, &a.Version, &a.AuthorizedBy, &a.TokenHash)
+	if errors.Is(err, sql.ErrNoRows) {
+		return actorRecord{}, errUnknownActor
+	}
 	return a, err
 }
 

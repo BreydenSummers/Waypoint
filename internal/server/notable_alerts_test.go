@@ -210,7 +210,10 @@ func TestNotableAlertsUseSystemActorForAISourceCaptures(t *testing.T) {
 	ts := httptest.NewServer(HandlerWithDB(db))
 	defer ts.Close()
 
-	resp := doCaptureRequest(t, ts.Config.Handler, aiToken, "alert-ai-req", notableAlertEnvelope("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4", "10.0.2.0/24"), []byte("stdout"), []byte("stderr"))
+	aiEnvelope := notableAlertEnvelope("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4", "10.0.2.0/24")
+	aiEnvelope["initiatedBy"] = "ai"
+	aiEnvelope["decisionContext"] = map[string]any{"rationale": "Automated notable-alert coverage.", "promptReference": "notable-ai-01"}
+	resp := doCaptureRequest(t, ts.Config.Handler, aiToken, "alert-ai-req", aiEnvelope, []byte("stdout"), []byte("stderr"))
 	if resp.Code != http.StatusCreated {
 		t.Fatalf("capture status = %d, want %d", resp.Code, http.StatusCreated)
 	}
@@ -284,8 +287,8 @@ func notableAlertEnvelope(captureID, segment string) map[string]any {
 			"pivotChain": []any{},
 		},
 		"evidence": map[string]any{
-			"stdout": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": 6, "sha256": strings.Repeat("a", 64)},
-			"stderr": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": 6, "sha256": strings.Repeat("b", 64)},
+			"stdout": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": 6, "sha256": hashHex("stdout")},
+			"stderr": map[string]any{"mediaType": "text/plain; charset=utf-8", "byteLength": 6, "sha256": hashHex("stderr")},
 		},
 		"parsing": map[string]any{
 			"status": "parsed",
@@ -323,7 +326,7 @@ func notableAlertEnvelope(captureID, segment string) map[string]any {
 					map[string]any{
 						"kind": "segment",
 						"identifiers": []any{
-							map[string]any{"type": "cidr", "value": segment},
+							map[string]any{"type": "other", "value": segment},
 						},
 						"attributes": map[string]any{"reachable": true},
 					},

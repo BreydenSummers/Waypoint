@@ -3,6 +3,9 @@
   "description": "A known parser crash remains a valid raw-first capture with an explicit parse-failed state.",
   "base": "human-known-tool.json",
   "mutations": [
+    { "op": "replace", "path": "/request/captureId", "value": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5" },
+    { "op": "replace", "path": "/requestHeaders/Idempotency-Key", "value": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5" },
+    { "op": "replace", "path": "/expectedEvent/data/captureId", "value": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5" },
     {
       "op": "replace",
       "path": "/request/parsing",

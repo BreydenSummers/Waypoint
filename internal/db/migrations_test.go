@@ -230,7 +230,7 @@ func TestDatabaseProtectionsRejectMutations(t *testing.T) {
 	mustReject(t, db, `INSERT INTO evidence (engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, 'stdout', repeat('c', 64), 0, 'text/plain', 'stdout/2')`, engagementID)
 	mustExec(t, db, `INSERT INTO evidence (id, engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, $2, 'stderr', repeat('d', 64), 0, 'text/plain', 'stderr/1')`, stderrID, engagementID)
 	mustExec(t, db, `INSERT INTO evidence (id, engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, $2, 'screenshot', repeat('e', 64), 0, 'image/png', 'screenshots/1')`, orphanEvidenceID, engagementID)
-	mustExec(t, db, `INSERT INTO action (id, engagement_id, actor_id, source_agent_id, initiated_by, phase, command, argv, cwd, exec_host_ip, pivot_chain, target_kind, target_value, started_at, ended_at, exit_code, stdout_evidence_id, stderr_evidence_id, parse_status) VALUES ($1, $2, $3, $4, 'ai', 'recon', 'nmap', '[]'::jsonb, '/', '127.0.0.1', '[]'::jsonb, 'host', 'demo.local', now(), now(), 0, $5, $6, 'raw')`, actionID, engagementID, aiID, aiID, stdoutID, stderrID)
+	mustExec(t, db, `INSERT INTO action (id, engagement_id, actor_id, source_agent_id, initiated_by, phase, command, argv, cwd, exec_host_ip, pivot_chain, target_kind, target_value, started_at, ended_at, exit_code, stdout_evidence_id, stderr_evidence_id, parse_status, decision_context) VALUES ($1, $2, $3, $4, 'ai', 'recon', 'nmap', '[]'::jsonb, '/', '127.0.0.1', '[]'::jsonb, 'host', 'demo.local', now(), now(), 0, $5, $6, 'raw', '{"rationale":"seed"}'::jsonb)`, actionID, engagementID, aiID, aiID, stdoutID, stderrID)
 	mustExec(t, db, `INSERT INTO result (id, engagement_id, action_id, plugin_id, schema_id, schema_version, extracted) VALUES ($1, $2, $3, 'plugin.demo', 'https://schemas.waypoint.security/demo', '1.0.0', '{}'::jsonb)`, resultID, engagementID, actionID)
 	mustExec(t, db, `INSERT INTO entity (id, engagement_id, kind, key_type, key_value) VALUES ($1, $2, 'host', 'fqdn', 'demo.local')`, entityID, engagementID)
 	mustReject(t, db, `INSERT INTO entity (engagement_id, kind, key_type, key_value) VALUES ($1, 'host', 'fqdn', 'demo.local')`, engagementID)
@@ -378,7 +378,7 @@ func TestActionAttributionSchemaRoundTrip(t *testing.T) {
 	if gotExecHostMethod != "route_selection" || gotExecHostInterface != "eth0" || gotExecHostConfidence != "confirmed" {
 		t.Fatalf("exec host round trip mismatch: %q %q %q", gotExecHostMethod, gotExecHostInterface, gotExecHostConfidence)
 	}
-	if gotEgressIP != "198.51.100.24" || gotEgressMode != "manual" || gotEgressStatus != "declared" || !gotEgressObservedAt.Equal(egressObservedAt) {
+	if gotEgressIP != "198.51.100.24/32" || gotEgressMode != "manual" || gotEgressStatus != "declared" || !gotEgressObservedAt.Equal(egressObservedAt) {
 		t.Fatalf("egress round trip mismatch: %q %q %q %s", gotEgressIP, gotEgressMode, gotEgressStatus, gotEgressObservedAt)
 	}
 	if gotExecutionStatus != "exited" || gotExecutionSignal != "" || gotExecutionFailure != "" {

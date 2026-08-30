@@ -151,7 +151,7 @@ func TestOutOfBandClaimLifecycleThroughPostgreSQL(t *testing.T) {
 	assertActionSnapshot(t, ctx, db, sourceAck.ActionID, sourceActorID, "human", "manual", "raw", "", false)
 	assertActionNetworkFields(t, ctx, db, sourceAck.ActionID, gateActionExpectation{
 		sourceAgentID:   "44444444-4444-4444-8444-444444444444",
-		execHostIP:      "10.10.0.12",
+		execHostIP:      "10.10.0.12/32",
 		egressIP:        "",
 		pivotType:       "",
 		wantDecisionCtx: false,
@@ -205,11 +205,12 @@ func TestOutOfBandClaimLifecycleThroughPostgreSQL(t *testing.T) {
 	}
 
 	reviewResp := doJSONRequest(t, ts.Client(), http.MethodPost, ts.URL+"/api/v1/out-of-band-claims/review", reviewerToken, "req-oob-review", outOfBandReviewRequest{
-		ClaimID:    created.ID,
-		ClaimKind:  created.ClaimKind,
-		Resolution: outOfBandClaimStatusDismissed,
-		ResolvedAt: claimResolvedAt,
-		Notes:      "Operator confirmed this observation has no captured source action.",
+		ClaimID:        created.ID,
+		ClaimKind:      created.ClaimKind,
+		SourceActionID: sourceAck.ActionID,
+		Resolution:     outOfBandClaimStatusDismissed,
+		ResolvedAt:     claimResolvedAt,
+		Notes:          "Operator confirmed this observation has no captured source action.",
 	}, created.ID)
 	if reviewResp.StatusCode != http.StatusCreated {
 		t.Fatalf("review status = %d, body=%s", reviewResp.StatusCode, readBody(t, reviewResp.Body))
@@ -236,11 +237,12 @@ func TestOutOfBandClaimLifecycleThroughPostgreSQL(t *testing.T) {
 	}
 
 	replayResp := doJSONRequest(t, ts.Client(), http.MethodPost, ts.URL+"/api/v1/out-of-band-claims/review", reviewerToken, "req-oob-review-replay", outOfBandReviewRequest{
-		ClaimID:    created.ID,
-		ClaimKind:  created.ClaimKind,
-		Resolution: outOfBandClaimStatusDismissed,
-		ResolvedAt: claimResolvedAt,
-		Notes:      "Operator confirmed this observation has no captured source action.",
+		ClaimID:        created.ID,
+		ClaimKind:      created.ClaimKind,
+		SourceActionID: sourceAck.ActionID,
+		Resolution:     outOfBandClaimStatusDismissed,
+		ResolvedAt:     claimResolvedAt,
+		Notes:          "Operator confirmed this observation has no captured source action.",
 	}, created.ID)
 	if replayResp.StatusCode != http.StatusOK {
 		t.Fatalf("review replay status = %d, body=%s", replayResp.StatusCode, readBody(t, replayResp.Body))

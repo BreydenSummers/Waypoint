@@ -259,10 +259,13 @@ func seedObservationAt(t *testing.T, db *sql.DB, engagementID, actorID, entityID
 	defer cancel()
 
 	var stdoutID, stderrID, actionID, resultID, observationID string
-	if err := db.QueryRowContext(ctx, `INSERT INTO evidence (engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, 'stdout', repeat('1', 64), 0, 'text/plain', 'stdout/seed') RETURNING id`, engagementID).Scan(&stdoutID); err != nil {
+	seedKey := fqdn + "|" + observedAt.Format(time.RFC3339Nano)
+	stdoutSha := hashHex("stdout|" + seedKey)
+	stderrSha := hashHex("stderr|" + seedKey)
+	if err := db.QueryRowContext(ctx, `INSERT INTO evidence (engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, 'stdout', $2, 0, 'text/plain', $3) RETURNING id`, engagementID, stdoutSha, "stdout/"+stdoutSha).Scan(&stdoutID); err != nil {
 		t.Fatalf("seed stdout evidence: %v", err)
 	}
-	if err := db.QueryRowContext(ctx, `INSERT INTO evidence (engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, 'stderr', repeat('2', 64), 0, 'text/plain', 'stderr/seed') RETURNING id`, engagementID).Scan(&stderrID); err != nil {
+	if err := db.QueryRowContext(ctx, `INSERT INTO evidence (engagement_id, kind, sha256, byte_length, media_type, storage_key) VALUES ($1, 'stderr', $2, 0, 'text/plain', $3) RETURNING id`, engagementID, stderrSha, "stderr/"+stderrSha).Scan(&stderrID); err != nil {
 		t.Fatalf("seed stderr evidence: %v", err)
 	}
 	if err := db.QueryRowContext(ctx, `INSERT INTO action (engagement_id, actor_id, source_agent_id, initiated_by, phase, command, argv, cwd, exec_host_ip, pivot_chain, target_kind, target_value, started_at, ended_at, exit_code, stdout_evidence_id, stderr_evidence_id, parse_status) VALUES ($1, $2, gen_random_uuid(), 'manual', 'recon', 'whoami', '[]'::jsonb, '/', '127.0.0.1', '[]'::jsonb, 'host', $3, now(), now(), 0, $4, $5, 'raw') RETURNING id`, engagementID, actorID, fqdn, stdoutID, stderrID).Scan(&actionID); err != nil {

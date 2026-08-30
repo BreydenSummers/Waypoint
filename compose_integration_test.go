@@ -204,6 +204,11 @@ func TestComposeStackPersistsDBAndEvidenceAcrossRestart(t *testing.T) {
 	}
 
 	runCompose("restart", "waypoint")
+	// The compose override publishes the waypoint port ephemerally (published: 0), and
+	// `docker compose restart` reprograms the container's port binding to a NEW host port,
+	// so the pre-restart baseURL is stale. Re-resolve the published port before probing.
+	port = waitForComposePort(t, ctx, project, overridePath)
+	baseURL = "http://127.0.0.1:" + port
 	waitForHTTP(t, baseURL+"/readyz", http.StatusOK)
 	assertHTTPBodyContains(t, baseURL+"/engagements/demo", http.StatusOK, `id="root"`)
 

@@ -135,7 +135,7 @@ func TestLiveMultiActorRESTCaptureJourneys(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT exec_host_ip::text, COALESCE(egress_public_ip::text, ''), pivot_chain::text, started_at, ended_at FROM action WHERE id = $1`, humanAck.ActionID).Scan(&execHostIP, &egressIP, &pivotChain, &actionStartedAt, &actionEndedAt); err != nil {
 		t.Fatalf("load human action metadata: %v", err)
 	}
-	if execHostIP != "10.10.0.12" || egressIP != "" || !strings.Contains(pivotChain, `"ssh_jump"`) || !actionEndedAt.After(actionStartedAt) {
+	if execHostIP != "10.10.0.12/32" || egressIP != "" || !strings.Contains(pivotChain, `"ssh_jump"`) || !actionEndedAt.After(actionStartedAt) {
 		t.Fatalf("human action metadata unexpected: execHost=%q egress=%q pivot=%q started=%s ended=%s", execHostIP, egressIP, pivotChain, actionStartedAt, actionEndedAt)
 	}
 

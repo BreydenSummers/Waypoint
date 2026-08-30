@@ -121,7 +121,13 @@ func TestFindingPromotionRevisionsAndOperatorOnlyPromotion(t *testing.T) {
 	if typ != "finding.promoted" || actorKind != "human" || actorHandle != "alex.operator" || actorRole != "operator" || subjectRevision != 1 {
 		t.Fatalf("promotion audit event = %s %s %s %s rev=%d", typ, actorKind, actorHandle, actorRole, subjectRevision)
 	}
-	if !bytes.Contains([]byte(data), []byte(`"sourceActionId":"`+actionID+`"`)) {
+	var promotionParsed struct {
+		SourceActionID string `json:"sourceActionId"`
+	}
+	if err := json.Unmarshal([]byte(data), &promotionParsed); err != nil {
+		t.Fatalf("decode promotion audit data: %v", err)
+	}
+	if promotionParsed.SourceActionID != actionID {
 		t.Fatalf("promotion audit data = %s", data)
 	}
 

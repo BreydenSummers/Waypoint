@@ -168,7 +168,11 @@ func outOfBandReviewHandler(db *sql.DB, originKind string) http.HandlerFunc {
 		var existingData string
 		err = tx.QueryRowContext(ctx, `SELECT id, data::text FROM audit_event WHERE engagement_id = $1 AND type = 'out-of-band.resolved' AND subject_type = 'out_of_band_claim' AND subject_id = $2 ORDER BY id DESC LIMIT 1`, actor.EngagementID, req.ClaimID).Scan(&existingID, &existingData)
 		if err == nil {
-			if existingData == string(fingerprintBytes) {
+			// Compare stored vs incoming payload as normalized JSON: the stored
+			// column is jsonb (Postgres reorders keys and inserts ": " spacing),
+			// while fingerprintBytes is compact json.Marshal output, so a raw
+			// string compare would flag every byte-identical replay as a conflict.
+			if jsonPayloadsEqual(existingData, fingerprintBytes) {
 				if err := tx.Commit(); err != nil {
 					writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "commit replay failed"})
 					return
@@ -200,7 +204,9 @@ func outOfBandReviewHandler(db *sql.DB, originKind string) http.HandlerFunc {
 			Type:          "out-of-band.resolved",
 			Actor:         auditActorSnapshot(actor),
 			Origin:        dbutil.AuditOrigin{Kind: originKind},
-			Subject:       dbutil.AuditSubject{Type: "out_of_band_claim", ID: req.ClaimID, Revision: 1},
+			// The flag event is revision 1; resolving advances the claim to
+			// revision 2 (matches the flag+resolve path in out_of_band_claims.go).
+			Subject:       dbutil.AuditSubject{Type: "out_of_band_claim", ID: req.ClaimID, Revision: 2},
 			RequestID:     reqID,
 			CorrelationID: req.ClaimID,
 			Data:          data,
@@ -215,6 +221,28 @@ func outOfBandReviewHandler(db *sql.DB, originKind string) http.HandlerFunc {
 		}
 		writeJSONWithHeaders(w, http.StatusCreated, outOfBandReviewResponse{ContractVersion: outOfBandReviewContractVersion, ClaimID: req.ClaimID, AuditEventCursor: eventCursor(eventID), ResolvedAt: req.ResolvedAt, Idempotency: "created"}, reqID)
 	}
+}
+
+// jsonPayloadsEqual reports whether a stored jsonb text document and a compact
+// json.Marshal byte slice represent the same object, independent of key order
+// and whitespace (jsonb and json.Marshal normalize both differently).
+func jsonPayloadsEqual(stored string, incoming []byte) bool {
+	var a, b map[string]any
+	if err := json.Unmarshal([]byte(stored), &a); err != nil {
+		return false
+	}
+	if err := json.Unmarshal(incoming, &b); err != nil {
+		return false
+	}
+	ca, err := json.Marshal(a)
+	if err != nil {
+		return false
+	}
+	cb, err := json.Marshal(b)
+	if err != nil {
+		return false
+	}
+	return string(ca) == string(cb)
 }
 
 func sourceActionCaptured(ctx context.Context, tx *sql.Tx, engagementID, actionID string) (bool, error) {

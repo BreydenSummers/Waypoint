@@ -150,11 +150,14 @@ func actorHandler(db *sql.DB) http.HandlerFunc {
 			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 			defer cancel()
 			resp, pb, err := provisionActor(ctx, db, authActor, reqID, req)
+			// provisionActor returns validation/conflict problems as (resp{}, pb, nil);
+			// surface pb whether or not err is set, or a rejected provision (e.g. an
+			// invalid authorizer) is silently written back as 201 with an empty body.
+			if pb != nil {
+				writeProblem(w, *pb)
+				return
+			}
 			if err != nil {
-				if pb != nil {
-					writeProblem(w, *pb)
-					return
-				}
 				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "provision actor failed"})
 				return
 			}

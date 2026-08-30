@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -87,8 +86,36 @@ func TestCapturePropagatesOrderedPivotsThroughAuditAndAPI(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT data::text FROM audit_event WHERE engagement_id = $1 AND type = 'capture.accepted' ORDER BY id DESC LIMIT 1`, engagementID).Scan(&data); err != nil {
 		t.Fatalf("load audit event: %v", err)
 	}
-	if !strings.Contains(data, `"pivotChain":[{"type":"ssh","host":"jump.example","port":22,"label":"first hop"},{"type":"socks5","host":"pivot.internal","port":1080,"label":"second hop"}]`) {
+	var auditParsed struct {
+		Network struct {
+			PivotChain []struct {
+				Type  string `json:"type"`
+				Host  string `json:"host"`
+				Port  int    `json:"port"`
+				Label string `json:"label"`
+			} `json:"pivotChain"`
+		} `json:"network"`
+	}
+	if err := json.Unmarshal([]byte(data), &auditParsed); err != nil {
+		t.Fatalf("decode audit event data: %v", err)
+	}
+	wantChain := []struct {
+		Type  string
+		Host  string
+		Port  int
+		Label string
+	}{
+		{"ssh", "jump.example", 22, "first hop"},
+		{"socks5", "pivot.internal", 1080, "second hop"},
+	}
+	if len(auditParsed.Network.PivotChain) != len(wantChain) {
 		t.Fatalf("audit event missing ordered pivots: %s", data)
+	}
+	for i, want := range wantChain {
+		got := auditParsed.Network.PivotChain[i]
+		if got.Type != want.Type || got.Host != want.Host || got.Port != want.Port || got.Label != want.Label {
+			t.Fatalf("audit event pivot[%d] = %+v, want %+v (data=%s)", i, got, want, data)
+		}
 	}
 
 	req, _ := http.NewRequest(http.MethodGet, "/api/v1/actions", nil)

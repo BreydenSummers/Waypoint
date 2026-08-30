@@ -164,6 +164,7 @@ type conn struct {
 	scram    *scramState
 	closed   bool
 	txActive bool
+	bad      bool
 }
 
 func (cfg *config) open() (*conn, error) {
@@ -225,33 +226,42 @@ func (c *conn) writeStartup(params map[string]string) error {
 
 func (c *conn) writeMessage(typ byte, payload []byte) error {
 	if c.c == nil {
+		c.bad = true
 		return io.ErrClosedPipe
 	}
 	var header [5]byte
 	header[0] = typ
 	binary.BigEndian.PutUint32(header[1:], uint32(len(payload)+4))
 	if _, err := c.c.Write(header[:]); err != nil {
+		c.bad = true
 		return err
 	}
-	_, err := c.c.Write(payload)
-	return err
+	if _, err := c.c.Write(payload); err != nil {
+		c.bad = true
+		return err
+	}
+	return nil
 }
 
 func (c *conn) readMessage() (byte, []byte, error) {
 	typ, err := c.br.ReadByte()
 	if err != nil {
+		c.bad = true
 		return 0, nil, err
 	}
 	var lenBuf [4]byte
 	if _, err := io.ReadFull(c.br, lenBuf[:]); err != nil {
+		c.bad = true
 		return 0, nil, err
 	}
 	length := binary.BigEndian.Uint32(lenBuf[:])
 	if length < 4 {
+		c.bad = true
 		return 0, nil, errors.New("invalid message length")
 	}
 	payload := make([]byte, length-4)
 	if _, err := io.ReadFull(c.br, payload); err != nil {
+		c.bad = true
 		return 0, nil, err
 	}
 	return typ, payload, nil
@@ -580,6 +590,28 @@ func (c *conn) Ping(ctx context.Context) error {
 	return err
 }
 
+// IsValid implements driver.Validator. database/sql calls it before reusing a
+// pooled connection; returning false makes the pool discard a connection whose
+// socket has failed (e.g. after the database restarted) and dial a fresh one,
+// so the application recovers instead of repeatedly reusing a dead connection.
+func (c *conn) IsValid() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return !c.bad && !c.closed && c.c != nil
+}
+
+// ResetSession implements driver.SessionResetter. Returning driver.ErrBadConn
+// for a connection already known to be broken forces database/sql to drop it,
+// a backstop to IsValid for drivers where either hook may fire first.
+func (c *conn) ResetSession(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.bad || c.closed || c.c == nil {
+		return driver.ErrBadConn
+	}
+	return nil
+}
+
 func (c *conn) execContext(ctx context.Context, query string, args []driver.NamedValue) (driver.Result, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -760,6 +792,8 @@ const (
 	oidTimestamp   = 1114
 	oidTimestamptz = 1184
 	oidDate        = 1082
+	oidJSON        = 114
+	oidJSONB       = 3802
 )
 
 func parseRow(payload []byte, oids []uint32) ([]driver.Value, error) {
@@ -807,6 +841,12 @@ func decodeTextValue(oid uint32, s string) (driver.Value, error) {
 			return nil, fmt.Errorf("parse date %q: %w", s, err)
 		}
 		return t, nil
+	case oidJSON, oidJSONB:
+		// json/jsonb text IS the JSON document; return it as bytes so
+		// database/sql can scan it into []byte or *json.RawMessage. Returning
+		// a string makes those scans fail ("unsupported Scan ... string into
+		// *json.RawMessage") and breaks handlers that read jsonb columns.
+		return []byte(s), nil
 	default:
 		return s, nil
 	}

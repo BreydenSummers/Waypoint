@@ -154,8 +154,8 @@ func TestCaptureRoundTripGateG2Transcript(t *testing.T) {
 	assertActionSnapshot(t, ctx, db, knownAck.ActionID, humanAID, "human", "manual", "parsed", "waypoint.nmap", false)
 	assertActionNetworkFields(t, ctx, db, knownAck.ActionID, gateActionExpectation{
 		sourceAgentID:   "55555555-5555-4555-8555-555555555555",
-		execHostIP:      "10.10.0.12",
-		egressIP:        "198.51.100.24",
+		execHostIP:      "10.10.0.12/32",
+		egressIP:        "198.51.100.24/32",
 		pivotType:       "ssh_jump",
 		wantDecisionCtx: false,
 	})
@@ -241,7 +241,7 @@ func TestCaptureRoundTripGateG2Transcript(t *testing.T) {
 	assertActionSnapshot(t, ctx, db, unknownAck.Result.StructuredContent.Ack.ActionID, humanBID, "human", "manual", "needs-plugin", "", false)
 	assertActionNetworkFields(t, ctx, db, unknownAck.Result.StructuredContent.Ack.ActionID, gateActionExpectation{
 		sourceAgentID:   "66666666-6666-4666-8666-666666666666",
-		execHostIP:      "10.10.0.13",
+		execHostIP:      "10.10.0.13/32",
 		egressIP:        "",
 		pivotType:       "socks_proxy",
 		wantDecisionCtx: false,
@@ -321,8 +321,8 @@ func TestCaptureRoundTripGateG2Transcript(t *testing.T) {
 	assertActionSnapshot(t, ctx, db, failedAck.ActionID, aiID, "ai_agent", "ai", "parse-failed", "waypoint.nmap", true)
 	assertActionNetworkFields(t, ctx, db, failedAck.ActionID, gateActionExpectation{
 		sourceAgentID:   "77777777-7777-4777-8777-777777777777",
-		execHostIP:      "10.10.0.14",
-		egressIP:        "198.51.100.25",
+		execHostIP:      "10.10.0.14/32",
+		egressIP:        "198.51.100.25/32",
 		pivotType:       "ssh_jump",
 		wantDecisionCtx: true,
 	})

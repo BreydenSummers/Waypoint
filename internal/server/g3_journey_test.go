@@ -200,6 +200,12 @@ func TestG3AuthoritativeProvenanceJourney(t *testing.T) {
 		t.Fatalf("merged entity lineage = %#v, want %q", mergedInto, targetID)
 	}
 
+	// The merge bumps both entities' revisions; re-read them so the split's
+	// optimistic-concurrency guards use the current (post-merge) revisions.
+	if err := db.QueryRowContext(ctx, `SELECT s.revision, t.revision FROM entity s, entity t WHERE s.id = $1 AND t.id = $2`, sourceID, targetID).Scan(&currentSourceRev, &currentTargetRev); err != nil {
+		t.Fatalf("load post-merge revisions: %v", err)
+	}
+
 	splitPreview := doEntityMutationRequest(t, ts.Client(), ts.URL+"/api/v1/entities/split", token, "g3-split-preview", entitySplitRequest{EntityID: sourceID, ObservationID: observationID, Preview: true, ExpectedSourceRevision: intPtr(currentSourceRev), ExpectedTargetRevision: intPtr(currentTargetRev)})
 	defer splitPreview.Body.Close()
 	if splitPreview.StatusCode != http.StatusOK {

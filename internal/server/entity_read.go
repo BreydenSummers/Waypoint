@@ -325,7 +325,7 @@ func loadCanonicalEntityRow(ctx context.Context, q queryer, engagementID, entity
 			JOIN lineage l ON e.id = l.merged_into_entity_id
 			WHERE e.engagement_id = $1
 		)
-		SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes::text, first_seen, last_seen
+		SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes, first_seen, last_seen
 		FROM lineage
 		WHERE merged_into_entity_id IS NULL
 		LIMIT 1
@@ -350,7 +350,7 @@ func loadEntityProvenanceObservations(ctx context.Context, q queryer, engagement
 			JOIN lineage l ON e.merged_into_entity_id = l.id
 			WHERE e.engagement_id = $1
 		)
-		SELECT o.id, o.entity_id::text, o.kind, COALESCE(o.action_id::text, ''), o.identifiers::text, o.attributes::text, o.observed_at
+		SELECT o.id, o.entity_id::text, o.kind, COALESCE(o.action_id::text, ''), o.identifiers, o.attributes, o.observed_at
 		FROM observation o
 		JOIN lineage l ON l.id = o.entity_id
 		WHERE o.engagement_id = $1

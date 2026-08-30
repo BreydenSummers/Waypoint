@@ -129,8 +129,8 @@ func TestMCPStandardFlowReusesCaptureService(t *testing.T) {
 	if ingestBody.Result.IsError || ingestBody.Result.StructuredContent.Ack.ActionID == "" {
 		t.Fatalf("ingest result = %#v", ingestBody.Result)
 	}
-	if ingestBody.Result.StructuredContent.Ack.CaptureID != ingestArgs["captureId"] {
-		t.Fatalf("ingest captureId = %q, want %v", ingestBody.Result.StructuredContent.Ack.CaptureID, ingestArgs["captureId"])
+	if ingestBody.Result.StructuredContent.Ack.CaptureID != ingestArgs["envelope"].(map[string]any)["captureId"] {
+		t.Fatalf("ingest captureId = %q, want %v", ingestBody.Result.StructuredContent.Ack.CaptureID, ingestArgs["envelope"].(map[string]any)["captureId"])
 	}
 	if ingestBody.Result.StructuredContent.Ack.Idempotency != "created" {
 		t.Fatalf("ingest idempotency = %q", ingestBody.Result.StructuredContent.Ack.Idempotency)
@@ -180,7 +180,7 @@ func TestMCPStandardFlowReusesCaptureService(t *testing.T) {
 		"params": map[string]any{
 			"name": "waypoint_capture_status",
 			"arguments": map[string]any{
-				"captureId":     ingestArgs["captureId"],
+				"captureId":     ingestArgs["envelope"].(map[string]any)["captureId"],
 				"sourceAgentId": ingestArgs["envelope"].(map[string]any)["sourceAgent"].(map[string]any)["id"],
 			},
 		},
@@ -204,8 +204,8 @@ func TestMCPStandardFlowReusesCaptureService(t *testing.T) {
 
 	aliasResp := httptest.NewRecorder()
 	HandlerWithDB(db).ServeHTTP(aliasResp, httptest.NewRequest(http.MethodPost, "/mcp/capture", nil))
-	if aliasResp.Code != http.StatusNotFound {
-		t.Fatalf("/mcp/capture status = %d, want 404", aliasResp.Code)
+	if aliasResp.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("/mcp/capture status = %d, want 405", aliasResp.Code)
 	}
 }
 

@@ -339,7 +339,7 @@ func countEntityObservations(ctx context.Context, q queryer, entityID string) (i
 func loadEntityRow(ctx context.Context, q queryer, entityID string) (entityRow, error) {
 	var row entityRow
 	var mergedInto sql.NullString
-	if err := q.QueryRowContext(ctx, `SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes::text, first_seen, last_seen FROM entity WHERE id = $1`, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.FirstSeen, &row.LastSeen); err != nil {
+	if err := q.QueryRowContext(ctx, `SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes, first_seen, last_seen FROM entity WHERE id = $1`, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.FirstSeen, &row.LastSeen); err != nil {
 		return entityRow{}, err
 	}
 	if mergedInto.Valid && mergedInto.String != "" {
@@ -351,7 +351,7 @@ func loadEntityRow(ctx context.Context, q queryer, entityID string) (entityRow, 
 func touchEntityByID(ctx context.Context, tx *sql.Tx, entityID string, attrs json.RawMessage) (string, error) {
 	var row entityRow
 	var mergedInto sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes::text, first_seen, last_seen FROM entity WHERE id = $1 FOR UPDATE`, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.FirstSeen, &row.LastSeen); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes, first_seen, last_seen FROM entity WHERE id = $1 FOR UPDATE`, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.FirstSeen, &row.LastSeen); err != nil {
 		return "", err
 	}
 	if mergedInto.Valid && mergedInto.String != "" {
@@ -373,7 +373,7 @@ func loadEntityByKey(ctx context.Context, tx *sql.Tx, engagementID, keyType, key
 	}
 	var row entityRow
 	var mergedInto sql.NullString
-	if err := tx.QueryRowContext(ctx, `SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes::text, first_seen, last_seen FROM entity WHERE engagement_id = $1 AND key_type = $2 AND key_value = $3`+clause, engagementID, keyType, keyValue).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.FirstSeen, &row.LastSeen); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes, first_seen, last_seen FROM entity WHERE engagement_id = $1 AND key_type = $2 AND key_value = $3`+clause, engagementID, keyType, keyValue).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.FirstSeen, &row.LastSeen); err != nil {
 		return entityRow{}, err
 	}
 	if mergedInto.Valid && mergedInto.String != "" {
@@ -389,7 +389,7 @@ func loadEntityByID(ctx context.Context, tx *sql.Tx, engagementID, entityID stri
 	}
 	var row entityRow
 	var mergedInto sql.NullString
-	err := tx.QueryRowContext(ctx, `SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes::text, first_seen, last_seen FROM entity WHERE engagement_id = $1 AND id = $2`+clause, engagementID, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.FirstSeen, &row.LastSeen)
+	err := tx.QueryRowContext(ctx, `SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes, first_seen, last_seen FROM entity WHERE engagement_id = $1 AND id = $2`+clause, engagementID, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.FirstSeen, &row.LastSeen)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return entityRow{}, &captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "entity_conflict", Retryable: false, Detail: "entity not found."}, nil
@@ -423,7 +423,7 @@ func loadEntityPairForMutation(ctx context.Context, tx *sql.Tx, engagementID, so
 
 func loadObservationForEntity(ctx context.Context, tx *sql.Tx, engagementID, observationID, entityID string) (entityObservation, *captureProblem, error) {
 	var obs entityObservation
-	if err := tx.QueryRowContext(ctx, `SELECT id, entity_id, kind, identifiers::text, attributes::text FROM observation WHERE engagement_id = $1 AND id = $2`, engagementID, observationID).Scan(&obs.ID, &obs.EntityID, &obs.Kind, &obs.Identifiers, &obs.Attributes); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT id, entity_id, kind, identifiers, attributes FROM observation WHERE engagement_id = $1 AND id = $2`, engagementID, observationID).Scan(&obs.ID, &obs.EntityID, &obs.Kind, &obs.Identifiers, &obs.Attributes); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return entityObservation{}, &captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "entity_conflict", Retryable: false, Detail: "observation not found."}, nil
 		}
