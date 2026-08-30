@@ -43,8 +43,18 @@ func main() {
 		log.Printf("egress auto-resolution failed: %v", egressState.Notes)
 	}
 
+	firstRun, err := configureFirstRun(startupCtx, db, os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	runtime := server.RuntimeState{Egress: egressState}
+	if firstRun.setupCode != "" {
+		runtime.SetupCodeHash = server.SetupCodeHash(firstRun.setupCode)
+	}
+
 	srv := &http.Server{
-		Handler: server.HandlerWithDBAndRuntime(db, server.RuntimeState{Egress: egressState}),
+		Handler: server.HandlerWithDBAndRuntime(db, runtime),
 	}
 
 	ln, err := net.Listen("tcp", startup.addr)
@@ -73,6 +83,12 @@ func main() {
 	}
 
 	log.Printf("waypoint listening on %s://%s", scheme, ln.Addr())
+	if firstRun.setupCode != "" {
+		printSetupBanner(fmt.Sprintf("%s://%s/", scheme, humanURLHost(ln.Addr().String())), firstRun.setupCode)
+	}
+	if firstRun.autoOwnerToken != "" {
+		printOwnerTokenBanner(firstRun.autoOwnerHandle, firstRun.autoOwnerToken)
+	}
 	if err := serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}

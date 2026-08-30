@@ -42,38 +42,33 @@ Check it:
 curl -fsS http://localhost:8080/readyz    # -> {"status":"ready"}
 ```
 
-### 2. Provision an engagement and mint an operator token
+### 2. Grab the one-time setup code
 
-A fresh instance has no data and no credentials. Waypoint never stores a token — only its
-SHA-256 digest — so you create an engagement, create an operator actor, and mint a token in
-one step. Copy-paste this block; it prints the token at the end:
+A fresh instance has no data and no credentials, so it prints a **setup code** in a bordered
+`WAYPOINT — FIRST-TIME SETUP` banner at the end of startup. The code lives only in memory and
+stops working the moment setup completes:
 
 ```sh
-ENGAGEMENT_ID=11111111-1111-4111-8111-111111111111
-ACTOR_ID=22222222-2222-4222-8222-222222222222
-TOKEN=$(openssl rand -hex 24)
-TOKEN_HASH=$(printf '%s' "$TOKEN" | sha256sum | cut -d' ' -f1)
-
-docker compose exec -T postgres psql -U waypoint -d waypoint -v ON_ERROR_STOP=1 -c "
-  INSERT INTO engagement (id, name, client, scope, status)
-  VALUES ('$ENGAGEMENT_ID', 'Demo Expedition', 'Acme University', 'campus /16', 'active');
-  INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role)
-  VALUES ('$ACTOR_ID', '$ENGAGEMENT_ID', 'human', 'alex.operator', '$TOKEN_HASH', 'operator');"
-
-echo "Operator token: $TOKEN"
+docker compose logs waypoint      # look for the yellow-bordered banner + setup code
 ```
 
-> Save the token — it is shown only once, and only its digest is stored. To add more
-> operators or AI actors after the first, use the authenticated actors API
-> (`POST /api/v1/actors`) with this operator's token; every AI actor must name a human
-> `authorized_by` actor. For repeatable, host-managed provisioning from a JSON file, use
-> the supported installer path below.
+### 3. Complete first-time setup in the browser
 
-### 3. Open the UI
+Browse to **http://localhost:8080/** and follow the setup wizard: paste the setup code, name
+the engagement (name / client / scope), and pick your owner handle. Waypoint mints your
+**owner token**, shows it once (only its SHA-256 digest is stored — save it), and drops you
+straight into the trail already signed in. The trail map, notable-alerts feed, and phase
+workspaces come to life; captures ingested via REST/MCP show up live over the SSE feed.
 
-Browse to **http://localhost:8080/engagements/demo** and paste the token into the
-**Operator token** field. The trail map, notable-alerts feed, and phase workspaces come to
-life. Captures ingested via REST/MCP show up live over the SSE feed.
+Returning operators sign in by pasting their own token into the **Operator token** field. Add
+more operators or AI actors from the in-app provisioning workspace or the actors API
+(`POST /api/v1/actors`); every AI actor must name a human `authorized_by` actor.
+
+> **No interactive step?** For automated deployments, set the first engagement and owner via
+> `WAYPOINT_BOOTSTRAP_ENGAGEMENT_NAME` / `_CLIENT` / `_SCOPE` and `WAYPOINT_BOOTSTRAP_OWNER_HANDLE`
+> (optionally `WAYPOINT_BOOTSTRAP_OWNER_TOKEN`). Waypoint then provisions at startup and skips
+> the wizard. To provision by SQL instead, set `WAYPOINT_DISABLE_SETUP_WIZARD=1` — see
+> [`docs/operator-guide.md`](docs/operator-guide.md).
 
 ### 4. Tear it down
 
@@ -115,6 +110,9 @@ defaults):
 | `WAYPOINT_EVIDENCE_DIR` | Raw evidence storage path | `/var/lib/waypoint/evidence` |
 | `WAYPOINT_EGRESS_MODE` | Egress policy (`auto` / `manual` / `off`) | unset |
 | `WAYPOINT_TLS_CERT_FILE` / `_KEY_FILE` / `_CA_FILE` | Serve HTTPS directly | unset |
+| `WAYPOINT_BOOTSTRAP_ENGAGEMENT_NAME` / `_CLIENT` / `_SCOPE` | Auto-provision the first engagement at startup (automated deploys) | unset |
+| `WAYPOINT_BOOTSTRAP_OWNER_HANDLE` / `_OWNER_TOKEN` | First owner's handle (required for auto-provision) and optional token (generated + printed if omitted) | unset |
+| `WAYPOINT_DISABLE_SETUP_WIZARD` | Disable the web setup wizard (provision via SQL/installer instead) | unset |
 
 Plain HTTP is loopback-only. For a non-loopback listener, configure TLS on the app itself,
 or terminate TLS at a trusted reverse proxy while Waypoint stays bound to loopback. Tokens,

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -224,6 +225,25 @@ func loadMCPFixture(t *testing.T) struct {
 		t.Fatalf("decode fixture: %v", err)
 	}
 	return out
+}
+
+func TestMCPVersionedPathIsRouted(t *testing.T) {
+	h := Handler()
+	// Before this route existed, POST /api/v1/mcp fell through to the SPA
+	// catch-all and returned 405; now it reaches the MCP handler (503 with a
+	// nil database) exactly like the unversioned /mcp path.
+	for _, path := range []string{"/mcp", "/api/v1/mcp"} {
+		req := httptest.NewRequest(http.MethodPost, path, bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("Content-Type", "application/json")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Fatalf("POST %s: status = %d, want 503 (MCP handler reached)", path, rr.Code)
+		}
+		if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "json") {
+			t.Fatalf("POST %s: content-type = %q, want JSON (not the SPA)", path, ct)
+		}
+	}
 }
 
 func doMCPRequest(t *testing.T, h http.Handler, token, requestID, sessionID string, body map[string]any) *httptest.ResponseRecorder {

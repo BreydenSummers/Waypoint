@@ -123,6 +123,13 @@ const state = {
   exportPollTimer: null,
   exportPollAbort: null,
   renderCount: 0,
+  setupRequired: false,
+  setupCodeRequired: false,
+  setupStep: 'form',
+  setupStatus: 'idle',
+  setupError: '',
+  setupDraft: { code: '', engagementName: '', client: '', scope: '', ownerHandle: '' },
+  setupResult: null,
 };
 
 const root = document.getElementById('root');
@@ -165,6 +172,9 @@ function getInitialEngagementId() {
 }
 
 function routeFromPath(pathname) {
+  if (/^\/setup\/?$/.test(pathname)) {
+    return { view: 'setup', phase: 'recon' };
+  }
   if (/^\/engagements\/[^/]+\/summit\/report\/?$/.test(pathname)) {
     return { view: 'report', phase: 'summit' };
   }
@@ -2197,10 +2207,149 @@ function renderReportView() {
     </main>`;
 }
 
+function renderSetupWizard() {
+  const draft = state.setupDraft;
+  const busy = state.setupStatus === 'saving';
+  if (state.setupStep === 'done' && state.setupResult) {
+    const result = state.setupResult;
+    return `
+    <main class="setup-shell">
+      <div class="setup-backdrop" aria-hidden="true">
+        <span class="setup-star" style="top:18%;left:12%"></span>
+        <span class="setup-star" style="top:32%;left:82%"></span>
+        <span class="setup-star" style="top:66%;left:24%"></span>
+      </div>
+      <section class="setup-card" aria-label="Setup complete">
+        <div class="setup-badge" aria-hidden="true">⛺</div>
+        <p class="setup-kicker">Base camp established</p>
+        <h1>You're all set, ${escapeHtml(result.actorRecord.actor.handle)}</h1>
+        <p class="setup-lede">Your engagement and owner account are ready. Save your owner token below — it is shown once, and only its digest is stored on the server.</p>
+        <div class="secret-token-card" aria-label="Owner token">
+          <div class="panel-heading compact"><h4>Owner token</h4><p>${escapeHtml(result.actorRecord.actor.handle)} · owner · issued ${escapeHtml(formatTime(result.issuedAt))}</p></div>
+          <div class="secret-token" role="textbox" aria-readonly="true">${escapeHtml(result.token)}</div>
+          <div class="guide-tools">
+            <button type="button" class="secondary-link" data-action="copy-setup-token">Copy token</button>
+            <span class="guide-note-empty">Do not paste this into the audit trail or logs.</span>
+          </div>
+        </div>
+        <div class="setup-actions">
+          <button type="button" class="primary-button" data-action="setup-enter">Enter Waypoint →</button>
+        </div>
+      </section>
+    </main>`;
+  }
+
+  return `
+    <main class="setup-shell">
+      <div class="setup-backdrop" aria-hidden="true">
+        <span class="setup-star" style="top:18%;left:12%"></span>
+        <span class="setup-star" style="top:24%;left:70%"></span>
+        <span class="setup-star" style="top:58%;left:86%"></span>
+        <span class="setup-star" style="top:72%;left:18%"></span>
+      </div>
+      <section class="setup-card" aria-label="First-time setup">
+        <div class="setup-badge" aria-hidden="true">🧭</div>
+        <p class="setup-kicker">Waypoint · first-time setup</p>
+        <h1>Set up your expedition</h1>
+        <p class="setup-lede">Welcome. Create your first engagement and owner account to begin. No config files needed — just the setup code printed in the server's startup logs.</p>
+        ${state.setupError ? `<div class="live-banner"><strong>Setup note</strong> ${escapeHtml(state.setupError)}</div>` : ''}
+        <form class="setup-form" data-action="setup-form">
+          ${state.setupCodeRequired ? `
+            <label class="finding-field finding-field-wide">
+              <span>Setup code</span>
+              <input value="${escapeHtml(draft.code)}" data-action="setup-draft" data-field="code" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" aria-describedby="setup-code-hint" />
+            </label>
+            <p class="guide-note-empty setup-hint" id="setup-code-hint">Find this in your server logs — look for the “WAYPOINT — FIRST-TIME SETUP” banner (e.g. <code>docker compose logs waypoint</code>).</p>
+          ` : ''}
+          <div class="setup-fieldset">
+            <p class="setup-section-label">Engagement</p>
+            <div class="setup-grid">
+              <label class="finding-field"><span>Name</span><input value="${escapeHtml(draft.engagementName)}" data-action="setup-draft" data-field="engagementName" placeholder="Autumn Campus Assessment" /></label>
+              <label class="finding-field"><span>Client</span><input value="${escapeHtml(draft.client)}" data-action="setup-draft" data-field="client" placeholder="Acme University" /></label>
+              <label class="finding-field finding-field-wide"><span>Scope</span><input value="${escapeHtml(draft.scope)}" data-action="setup-draft" data-field="scope" placeholder="campus /16, excludes dorm VLANs" /></label>
+            </div>
+          </div>
+          <div class="setup-fieldset">
+            <p class="setup-section-label">Owner account</p>
+            <div class="setup-grid">
+              <label class="finding-field finding-field-wide"><span>Your handle</span><input value="${escapeHtml(draft.ownerHandle)}" data-action="setup-draft" data-field="ownerHandle" placeholder="alex.operator" /></label>
+            </div>
+            <p class="guide-note-empty setup-hint">You'll be the first owner — the human who can provision other operators and AI actors.</p>
+          </div>
+          <div class="setup-actions">
+            <button type="submit" class="primary-button" data-action="setup-submit" ${busy || !setupFormReady() ? 'disabled' : ''}>${busy ? 'Creating…' : 'Create engagement'}</button>
+          </div>
+        </form>
+        <p class="guide-note-empty setup-foot">Running an automated deployment? Set the <code>WAYPOINT_BOOTSTRAP_*</code> environment variables to skip this screen entirely.</p>
+      </section>
+    </main>`;
+}
+
+function setupFormReady() {
+  const draft = state.setupDraft;
+  if (state.setupCodeRequired && !draft.code.trim()) return false;
+  return Boolean(draft.engagementName.trim() && draft.client.trim() && draft.scope.trim() && draft.ownerHandle.trim());
+}
+
+async function submitSetup() {
+  if (!setupFormReady() || state.setupStatus === 'saving') return;
+  state.setupStatus = 'saving';
+  state.setupError = '';
+  render();
+  const draft = state.setupDraft;
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      'Waypoint-Contract-Version': apiVersion,
+      Accept: 'application/json',
+      'X-Request-ID': newRequestId(),
+    };
+    const response = await fetch('/api/v1/bootstrap', {
+      method: 'POST',
+      headers,
+      cache: 'no-store',
+      body: JSON.stringify({
+        setupCode: draft.code.trim(),
+        engagement: { name: draft.engagementName.trim(), client: draft.client.trim(), scope: draft.scope.trim() },
+        owner: { handle: draft.ownerHandle.trim() },
+      }),
+    });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const result = await response.json();
+    state.setupResult = result;
+    state.setupStep = 'done';
+    state.setupStatus = 'done';
+    state.setupRequired = false;
+    state.engagementId = result.engagementId;
+    render();
+  } catch (error) {
+    state.setupStatus = 'idle';
+    state.setupError = error instanceof Error ? error.message : 'Setup failed';
+    render();
+  }
+}
+
+function enterAfterSetup() {
+  if (!state.setupResult) return;
+  const engagementId = state.setupResult.engagementId;
+  setToken(state.setupResult.token);
+  state.setupResult = null;
+  state.view = 'trail';
+  state.activePhase = 'recon';
+  pushPath(phasePath(engagementId, 'recon'));
+  render();
+  void refreshEverything();
+}
+
 function render() {
   state.renderCount += 1;
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.view = state.view;
+  if (state.view === 'setup') {
+    document.title = 'Waypoint — first-time setup';
+    root.innerHTML = renderSetupWizard();
+    return;
+  }
   document.title = state.view === 'report' ? 'Waypoint — report snapshot' : `Waypoint — ${phaseNames[state.activePhase]}`;
   root.innerHTML = state.view === 'report' ? renderReportView() : renderTrailMap();
   syncExportPolling();
@@ -2221,6 +2370,8 @@ async function handleSubmit(event) {
     await issueActorCredential();
   } else if (action === 'claim-resolution-form') {
     await resolveClaim();
+  } else if (action === 'setup-form') {
+    await submitSetup();
   }
 }
 
@@ -2233,6 +2384,18 @@ async function handleClick(event) {
     return;
   }
   if (action === 'update-token') return;
+  if (action === 'setup-draft') return;
+  if (action === 'setup-submit') return;
+  if (action === 'setup-enter') {
+    enterAfterSetup();
+    return;
+  }
+  if (action === 'copy-setup-token') {
+    if (state.setupResult?.token) {
+      void navigator.clipboard?.writeText(state.setupResult.token);
+    }
+    return;
+  }
   if (action === 'goto-phase') {
     event.preventDefault();
     navigateToPhase(target.dataset.phase || 'attacks');
@@ -2481,6 +2644,14 @@ function handleInput(event) {
     render();
     return;
   }
+  if (action === 'setup-draft') {
+    const field = target.dataset.field || '';
+    if (!field) return;
+    state.setupDraft[field] = target.value;
+    const submit = root.querySelector('button[data-action="setup-submit"]');
+    if (submit) submit.disabled = state.setupStatus === 'saving' || !setupFormReady();
+    return;
+  }
   if (action === 'destroy-phrase') {
     state.destroyPhrase = target.value;
     return;
@@ -2557,10 +2728,31 @@ async function boot() {
   root.addEventListener('submit', handleSubmit);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);
+
+  await loadSetupState();
+  if (state.setupRequired) {
+    state.view = 'setup';
+    if (window.location.pathname !== '/setup') pushPath('/setup');
+    render();
+    return;
+  }
+
   render();
   await refreshEverything();
   initializeSelectionFromData();
   render();
+}
+
+async function loadSetupState() {
+  try {
+    const response = await fetch('/api/v1/runtime', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!response.ok) return;
+    const runtime = await response.json();
+    state.setupRequired = Boolean(runtime?.setup?.required);
+    state.setupCodeRequired = Boolean(runtime?.setup?.codeRequired);
+  } catch {
+    // A runtime probe failure should not block the normal app path.
+  }
 }
 
 void boot();

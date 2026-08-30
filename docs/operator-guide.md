@@ -6,39 +6,65 @@ Supported v1 operator flows only. This guide covers the shipped paths and the do
 
 ### 1) Disposable Compose stack
 
-Use this when you want a fresh engagement that is easy to tear down later.
+Use this when you want a fresh engagement that is easy to tear down later. No files to edit
+and no SQL to run — the browser walks you through first-time setup.
 
 **a. Start the stack** (builds the image, starts Postgres + Waypoint, applies migrations,
 and waits until healthy on http://localhost:8080):
 
 ```sh
-docker compose up -d --wait
+docker compose up -d --build --wait
 curl -fsS http://localhost:8080/readyz    # -> {"status":"ready"}
 ```
 
-**b. Provision an engagement and mint an operator token.** A fresh instance has no data and
-no credentials; only a token's SHA-256 digest is ever stored. This block creates the
-engagement + operator and prints the token once:
+**b. Read the setup code from the logs.** On a pristine instance the server prints a
+one-time setup code in a bordered `WAYPOINT — FIRST-TIME SETUP` banner at the end of startup:
 
 ```sh
-ENGAGEMENT_ID=11111111-1111-4111-8111-111111111111
-ACTOR_ID=22222222-2222-4222-8222-222222222222
-TOKEN=$(openssl rand -hex 24)
-TOKEN_HASH=$(printf '%s' "$TOKEN" | sha256sum | cut -d' ' -f1)
-docker compose exec -T postgres psql -U waypoint -d waypoint -v ON_ERROR_STOP=1 -c "
-  INSERT INTO engagement (id, name, client, scope, status)
-  VALUES ('$ENGAGEMENT_ID', 'Demo Expedition', 'Acme University', 'campus /16', 'active');
-  INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role)
-  VALUES ('$ACTOR_ID', '$ENGAGEMENT_ID', 'human', 'alex.operator', '$TOKEN_HASH', 'operator');"
-echo "Operator token: $TOKEN"
+docker compose logs waypoint      # look for the yellow-bordered banner + setup code
 ```
 
-Add further operators or AI actors after this first one with the authenticated actors API
-(`POST /api/v1/actors`), or use the installer's file-based `provision` (section 2) for
-repeatable, host-managed provisioning.
+The code lives only in memory and stops working the moment setup completes.
 
-**c. Open the UI** at http://localhost:8080/engagements/demo and paste the token into the
-**Operator token** field. Tear the stack down with `docker compose down -v`.
+**c. Open the UI** at http://localhost:8080/ and complete the first-time setup wizard: paste
+the setup code, name the engagement (name / client / scope), and choose your owner handle.
+On finish, Waypoint mints your **owner token**, shows it once (only its SHA-256 digest is
+stored), and drops you straight into the trail already signed in. Save the token.
+
+Add further operators or AI actors from the in-app **Provisioning and review** workspace, the
+authenticated actors API (`POST /api/v1/actors`), or the installer's file-based `provision`
+(section 2). Tear the stack down with `docker compose down -v`.
+
+> **Manual/SQL provisioning (alternative).** To bypass the wizard, set
+> `WAYPOINT_DISABLE_SETUP_WIZARD=1` and insert the engagement + owner directly (only a token's
+> SHA-256 digest is ever stored):
+>
+> ```sh
+> ENGAGEMENT_ID=11111111-1111-4111-8111-111111111111
+> ACTOR_ID=22222222-2222-4222-8222-222222222222
+> TOKEN=$(openssl rand -hex 24)
+> TOKEN_HASH=$(printf '%s' "$TOKEN" | sha256sum | cut -d' ' -f1)
+> docker compose exec -T postgres psql -U waypoint -d waypoint -v ON_ERROR_STOP=1 -c "
+>   INSERT INTO engagement (id, name, client, scope, status)
+>   VALUES ('$ENGAGEMENT_ID', 'Demo Expedition', 'Acme University', 'campus /16', 'active');
+>   INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role)
+>   VALUES ('$ACTOR_ID', '$ENGAGEMENT_ID', 'human', 'alex.operator', '$TOKEN_HASH', 'operator');"
+> echo "Operator token: $TOKEN"
+> ```
+
+**Automated / unattended deployments.** Skip the wizard entirely by setting the first
+engagement and owner through the environment — no file to edit, no interactive step:
+
+| Variable | Purpose |
+|---|---|
+| `WAYPOINT_BOOTSTRAP_ENGAGEMENT_NAME` | First engagement name (required to auto-bootstrap) |
+| `WAYPOINT_BOOTSTRAP_ENGAGEMENT_CLIENT` | Client |
+| `WAYPOINT_BOOTSTRAP_ENGAGEMENT_SCOPE` | Scope |
+| `WAYPOINT_BOOTSTRAP_OWNER_HANDLE` | First owner's handle |
+| `WAYPOINT_BOOTSTRAP_OWNER_TOKEN` | Optional owner token; generated and printed once if omitted |
+
+When all four required variables are present and the instance is pristine, Waypoint provisions
+the first engagement + owner at startup (idempotent across restarts) and never shows the wizard.
 
 This stack is the path used for dogfood UX runs; pair it with Playwright-driven browser checks when verifying the operator flow.
 

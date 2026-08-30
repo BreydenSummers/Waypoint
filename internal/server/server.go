@@ -17,6 +17,10 @@ import (
 
 type RuntimeState struct {
 	Egress egresspolicy.State `json:"egress"`
+	Setup  SetupState         `json:"setup"`
+	// SetupCodeHash is the SHA-256 of the one-time first-run setup code printed
+	// in the startup banner. It arms the bootstrap gate and is never serialized.
+	SetupCodeHash string `json:"-"`
 }
 
 func Handler() http.Handler {
@@ -45,6 +49,7 @@ func handler(db *sql.DB, runtime RuntimeState) http.Handler {
 	go exports.recoverOutstanding(context.Background())
 	mux.HandleFunc("/api/v1/captures", captureHandler(db, store, "rest"))
 	mux.HandleFunc("/captures", captureHandler(db, store, "rest"))
+	mux.HandleFunc("/api/v1/mcp", mcpHandler(db, store))
 	mux.HandleFunc("/mcp", mcpHandler(db, store))
 	mux.HandleFunc("/api/v1/out-of-band-claims", outOfBandClaimsHandler(db, "rest"))
 	mux.HandleFunc("/api/v1/out-of-band-claims/", outOfBandClaimResourceHandler(db, "rest"))
@@ -92,8 +97,10 @@ func handler(db *sql.DB, runtime RuntimeState) http.Handler {
 	mux.HandleFunc("/api/v1/teardown-authorizations/", exportHandler(db, store, exports))
 	mux.HandleFunc("/teardown-authorizations", exportHandler(db, store, exports))
 	mux.HandleFunc("/teardown-authorizations/", exportHandler(db, store, exports))
-	mux.HandleFunc("/api/v1/runtime", runtimeHandler(runtime))
-	mux.HandleFunc("/runtime", runtimeHandler(runtime))
+	mux.HandleFunc("/api/v1/runtime", runtimeHandler(db, runtime))
+	mux.HandleFunc("/runtime", runtimeHandler(db, runtime))
+	mux.HandleFunc("/api/v1/bootstrap", bootstrapHandler(db, runtime))
+	mux.HandleFunc("/bootstrap", bootstrapHandler(db, runtime))
 	report := reportHandlerWithRuntime(db, store, runtime)
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if reportJSONRoute.MatchString(r.URL.Path) || reportPDFRoute.MatchString(r.URL.Path) {
@@ -193,14 +200,19 @@ func exists(assets fs.FS, name string) bool {
 	return err == nil
 }
 
-func runtimeHandler(runtime RuntimeState) http.HandlerFunc {
+func runtimeHandler(db *sql.DB, runtime RuntimeState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.Header().Set("Allow", http.MethodGet)
 			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 			return
 		}
-		writeJSON(w, http.StatusOK, runtime)
+		out := runtime
+		out.Setup = SetupState{
+			Required:     setupRequired(r.Context(), db),
+			CodeRequired: runtime.SetupCodeHash != "",
+		}
+		writeJSON(w, http.StatusOK, out)
 	}
 }
 
