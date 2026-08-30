@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"database/sql"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -40,6 +41,10 @@ type bootstrapRequest struct {
 	SetupCode  string              `json:"setupCode"`
 	Engagement bootstrapEngagement `json:"engagement"`
 	Owner      bootstrapOwner      `json:"owner"`
+	// Demo, when true, seeds the freshly provisioned engagement with a coherent
+	// sample penetration test so an evaluator can explore a populated dashboard
+	// without running any captures.
+	Demo bool `json:"demo"`
 }
 
 type bootstrapResponse struct {
@@ -147,6 +152,18 @@ func runBootstrap(ctx context.Context, db *sql.DB, runtime RuntimeState, reqID s
 	if alreadyProvisioned {
 		return bootstrapResponse{}, &captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "already_provisioned", RequestID: reqID, Retryable: false, Detail: "this instance is already set up; sign in with an operator token instead."}, nil
 	}
+
+	if req.Demo {
+		// Best-effort: a seed failure must not fail setup — the operator already
+		// has a working engagement and owner token. Seed in a fresh context so a
+		// slow request deadline cannot truncate the sample data mid-transaction.
+		seedCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := SeedDemoEngagement(seedCtx, db, engagementID, record.Actor.ID, record.Actor.Handle); err != nil {
+			log.Printf("demo seed failed for engagement %s: %v", engagementID, err)
+		}
+	}
+
 	return bootstrapResponse{ContractVersion: actorContractVersion, EngagementID: engagementID, ActorRecord: record, Token: token, IssuedAt: issuedAt}, nil, nil
 }
 

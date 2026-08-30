@@ -1,4 +1,4 @@
-const sourceHash = "c592eb93e364e1cb970cd6905383e59b25a919c7f693e34d0dcd9d206eecae28";
+const sourceHash = "d0bd3c3eb0e5d959aeb877ee559ae467466880884a91f209d40ea2d4e6c9653d";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -132,7 +132,7 @@ const state = {
   setupStep: 'form',
   setupStatus: 'idle',
   setupError: '',
-  setupDraft: { code: '', engagementName: '', client: '', scope: '', ownerHandle: '' },
+  setupDraft: { code: '', engagementName: '', client: '', scope: '', ownerHandle: '', demo: false },
   setupResult: null,
 };
 
@@ -2280,6 +2280,13 @@ function renderSetupWizard() {
             </div>
             <p class="guide-note-empty setup-hint">You'll be the first owner — the human who can provision other operators and AI actors.</p>
           </div>
+          <label class="setup-demo-toggle">
+            <input type="checkbox" data-action="setup-demo" ${draft.demo ? 'checked' : ''} />
+            <span class="setup-demo-copy">
+              <span class="setup-demo-title">Load this as a demo instance</span>
+              <span class="setup-demo-note">Fills the engagement with a coherent sample assessment — recon, attacks, findings, entities, and an audit trail — so you can explore a populated dashboard right away.</span>
+            </span>
+          </label>
           <div class="setup-actions">
             <button type="submit" class="primary-button" data-action="setup-submit" ${busy || !setupFormReady() ? 'disabled' : ''}>${busy ? 'Creating…' : 'Create engagement'}</button>
           </div>
@@ -2316,6 +2323,7 @@ async function submitSetup() {
         setupCode: draft.code.trim(),
         engagement: { name: draft.engagementName.trim(), client: draft.client.trim(), scope: draft.scope.trim() },
         owner: { handle: draft.ownerHandle.trim() },
+        demo: Boolean(draft.demo),
       }),
     });
     if (!response.ok) throw new Error(await readProblem(response));
@@ -2379,6 +2387,41 @@ async function handleSubmit(event) {
   }
 }
 
+// flashCopied gives a copy button an unmistakable "it worked" beat: the label
+// becomes a checkmark and the .copied class runs the pop + ring animation. The
+// original label and a pending timer are stashed on the element so rapid repeat
+// clicks re-arm cleanly.
+function flashCopied(button) {
+  if (!button) return;
+  if (button.dataset.copyLabel === undefined) {
+    button.dataset.copyLabel = button.textContent;
+  }
+  if (button._copyTimer) clearTimeout(button._copyTimer);
+  button.classList.remove('copied');
+  // Force a reflow so re-adding the class restarts the animation on a fast
+  // second click.
+  void button.offsetWidth;
+  button.classList.add('copied');
+  button.textContent = 'Copied ✓';
+  button._copyTimer = setTimeout(() => {
+    button.classList.remove('copied');
+    if (button.dataset.copyLabel !== undefined) {
+      button.textContent = button.dataset.copyLabel;
+    }
+    button._copyTimer = null;
+  }, 1600);
+}
+
+function copyToClipboard(text, button) {
+  if (!text) return;
+  const result = navigator.clipboard?.writeText(text);
+  if (result && typeof result.then === 'function') {
+    result.then(() => flashCopied(button)).catch(() => {});
+  } else {
+    flashCopied(button);
+  }
+}
+
 async function handleClick(event) {
   const target = event.target.closest('[data-action]');
   if (!target) return;
@@ -2395,9 +2438,7 @@ async function handleClick(event) {
     return;
   }
   if (action === 'copy-setup-token') {
-    if (state.setupResult?.token) {
-      void navigator.clipboard?.writeText(state.setupResult.token);
-    }
+    copyToClipboard(state.setupResult?.token, target);
     return;
   }
   if (action === 'goto-phase') {
@@ -2494,9 +2535,7 @@ async function handleClick(event) {
     return;
   }
   if (action === 'copy-credential') {
-    if (state.actorCredential?.token) {
-      void navigator.clipboard?.writeText(state.actorCredential.token);
-    }
+    copyToClipboard(state.actorCredential?.token, target);
     return;
   }
   if (action === 'rotate-credential') {
@@ -2674,6 +2713,11 @@ function handleChange(event) {
   if (target.dataset.action === 'toggle-teardown') {
     state.teardownArmed = target.checked;
     render();
+  }
+  if (target.dataset.action === 'setup-demo') {
+    // Reflect the toggle without re-rendering, so any text the operator is
+    // mid-way through typing in the form keeps its focus and selection.
+    state.setupDraft.demo = target.checked;
   }
   if (target.dataset.action === 'provision-draft' || target.dataset.action === 'claim-resolution-draft') {
     handleInput(event);

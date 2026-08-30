@@ -667,9 +667,12 @@ html[data-theme='dark'] .break-glass-input input {
 }
 
 .secondary-link {
+  position: relative;
   border: 1px solid var(--chrome-border);
   background: var(--chrome-surface);
   color: var(--chrome-strong);
+  transition: transform 140ms ease, background 220ms ease, color 220ms ease,
+    border-color 220ms ease, box-shadow 220ms ease;
 }
 
 .secondary-link:hover,
@@ -679,6 +682,63 @@ html[data-theme='dark'] .break-glass-input input {
 .theme-switcher button:hover,
 .theme-switcher button:focus-visible {
   transform: translateY(-1px);
+}
+
+/* Copy confirmation: a lantern-lit pop and an expanding ring so a click reads
+   as unmistakably "copied", in the expedition palette. */
+.secondary-link.copied {
+  background: rgba(151, 196, 89, 0.24);
+  border-color: var(--forest);
+  color: var(--pine-text);
+  box-shadow: 0 0 0 1px rgba(99, 153, 34, 0.35), 0 6px 16px rgba(99, 153, 34, 0.22);
+  animation: copy-pop 440ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+html[data-theme='dark'] .secondary-link.copied {
+  background: rgba(99, 153, 34, 0.32);
+  color: var(--wheat);
+  border-color: var(--fern);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .secondary-link.copied {
+    background: rgba(99, 153, 34, 0.32);
+    color: var(--wheat);
+    border-color: var(--fern);
+  }
+}
+
+.secondary-link.copied::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: inherit;
+  border: 2px solid var(--lantern);
+  opacity: 0;
+  pointer-events: none;
+  animation: copy-ring 640ms ease-out;
+}
+
+@keyframes copy-pop {
+  0% { transform: scale(1); }
+  28% { transform: scale(0.93); }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+
+@keyframes copy-ring {
+  0% { opacity: 0.75; transform: scale(0.82); }
+  100% { opacity: 0; transform: scale(1.55); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .secondary-link.copied {
+    animation: none;
+  }
+  .secondary-link.copied::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 .route-nav,
@@ -2089,6 +2149,46 @@ a:focus-visible,
   border-radius: 5px;
   padding: 1px 5px;
   font-size: 0.85em;
+}
+
+.setup-demo-toggle {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border: 1px solid var(--workspace-border);
+  border-radius: 12px;
+  background: var(--workspace-surface);
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease;
+}
+
+.setup-demo-toggle:hover {
+  border-color: var(--harvest);
+}
+
+.setup-demo-toggle input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--harvest);
+  flex: 0 0 auto;
+}
+
+.setup-demo-toggle .setup-demo-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.setup-demo-toggle .setup-demo-title {
+  font-weight: 700;
+  color: var(--chrome-strong);
+}
+
+.setup-demo-toggle .setup-demo-note {
+  font-size: 0.85rem;
+  color: var(--chrome-muted);
 }
 
 .setup-actions {

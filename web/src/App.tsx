@@ -767,6 +767,33 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   );
 }
 
+// CopyButton copies its value to the clipboard and plays an unmistakable
+// confirmation: the label flips to a checkmark and the .copied class runs the
+// pop + ring animation, reverting after a beat.
+function CopyButton({ value, label = 'Copy token' }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const copy = () => {
+    const done = () => {
+      setCopied(true);
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 1600);
+    };
+    const result = navigator.clipboard?.writeText(value);
+    if (result && typeof result.then === 'function') {
+      result.then(done).catch(() => {});
+    } else {
+      done();
+    }
+  };
+  return (
+    <button type="button" className={copied ? 'secondary-link copied' : 'secondary-link'} onClick={copy}>
+      {copied ? 'Copied ✓' : label}
+    </button>
+  );
+}
+
 interface SetupRuntime {
   required: boolean;
   codeRequired: boolean;
@@ -781,7 +808,7 @@ interface BootstrapResponse {
 }
 
 function SetupWizard({ codeRequired, onEnter }: { codeRequired: boolean; onEnter: (result: BootstrapResponse) => void }) {
-  const [draft, setDraft] = useState({ code: '', engagementName: '', client: '', scope: '', ownerHandle: '' });
+  const [draft, setDraft] = useState({ code: '', engagementName: '', client: '', scope: '', ownerHandle: '', demo: false });
   const [status, setStatus] = useState<'idle' | 'saving' | 'done'>('idle');
   const [error, setError] = useState('');
   const [result, setResult] = useState<BootstrapResponse | null>(null);
@@ -804,6 +831,7 @@ function SetupWizard({ codeRequired, onEnter }: { codeRequired: boolean; onEnter
           setupCode: draft.code.trim(),
           engagement: { name: draft.engagementName.trim(), client: draft.client.trim(), scope: draft.scope.trim() },
           owner: { handle: draft.ownerHandle.trim() },
+          demo: draft.demo,
         }),
       });
       if (!response.ok) throw new Error(await readProblem(response));
@@ -833,7 +861,7 @@ function SetupWizard({ codeRequired, onEnter }: { codeRequired: boolean; onEnter
             <div className="panel-heading compact"><h4>Owner token</h4><p>{result.actorRecord.actor.handle} · owner · issued {formatTime(result.issuedAt)}</p></div>
             <div className="secret-token" role="textbox" aria-readonly="true">{result.token}</div>
             <div className="guide-tools">
-              <button type="button" className="secondary-link" onClick={() => void navigator.clipboard?.writeText(result.token)}>Copy token</button>
+              <CopyButton value={result.token} />
               <span className="guide-note-empty">Do not paste this into the audit trail or logs.</span>
             </div>
           </div>
@@ -884,6 +912,13 @@ function SetupWizard({ codeRequired, onEnter }: { codeRequired: boolean; onEnter
             </div>
             <p className="guide-note-empty setup-hint">You'll be the first owner — the human who can provision other operators and AI actors.</p>
           </div>
+          <label className="setup-demo-toggle">
+            <input type="checkbox" checked={draft.demo} onChange={(event: any) => setDraft((prev) => ({ ...prev, demo: event.target.checked }))} />
+            <span className="setup-demo-copy">
+              <span className="setup-demo-title">Load this as a demo instance</span>
+              <span className="setup-demo-note">Fills the engagement with a coherent sample assessment — recon, attacks, findings, entities, and an audit trail — so you can explore a populated dashboard right away.</span>
+            </span>
+          </label>
           <div className="setup-actions">
             <button type="submit" className="primary-button" disabled={status === 'saving' || !ready}>{status === 'saving' ? 'Creating…' : 'Create engagement'}</button>
           </div>
@@ -2479,7 +2514,7 @@ export function App() {
                       <div className="panel-heading compact"><h4>One-time token</h4><p>{actorCredential.actorRecord.actor.handle} · v{actorCredential.actorRecord.credentialVersion} · issued {formatTime(actorCredential.issuedAt)}</p></div>
                       <div className="secret-token" role="textbox" aria-readonly="true">{actorCredential.token}</div>
                       <div className="guide-tools">
-                        <button type="button" className="secondary-link" onClick={() => void navigator.clipboard?.writeText(actorCredential.token)}>Copy token</button>
+                        <CopyButton value={actorCredential.token} />
                         <span className="guide-note-empty">Do not paste this into the audit trail or logs.</span>
                       </div>
                     </div>

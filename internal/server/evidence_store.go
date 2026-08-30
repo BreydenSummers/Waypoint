@@ -136,6 +136,47 @@ func (s *evidenceStore) ingest(ctx context.Context, pointer, kind string, declar
 	return actual, nil
 }
 
+// writeBlob persists an in-memory evidence blob into the content-addressed
+// store and returns its digest and byte length. It is used by the demo seeder
+// to lay down the stdout/stderr blobs that its synthetic actions reference, so
+// evidence downloads and report bundles resolve exactly as they would for a
+// real capture. The digest is computed here, so callers cannot desynchronize
+// the stored bytes from the evidence row they insert.
+func (s *evidenceStore) writeBlob(kind string, data []byte) (sha string, byteLength int64, err error) {
+	if err := os.MkdirAll(filepath.Join(s.root, evidenceTempDirName), 0o700); err != nil {
+		return "", 0, fmt.Errorf("prepare evidence temp dir: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Join(s.root, evidenceTempDirName), ".tmp-*")
+	if err != nil {
+		return "", 0, fmt.Errorf("create evidence temp file: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+	}()
+
+	hasher := sha256.New()
+	if _, err := tmp.Write(data); err != nil {
+		return "", 0, fmt.Errorf("write evidence temp file: %w", err)
+	}
+	if _, err := hasher.Write(data); err != nil {
+		return "", 0, err
+	}
+	if err := tmp.Sync(); err != nil {
+		return "", 0, fmt.Errorf("sync evidence temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", 0, fmt.Errorf("close evidence temp file: %w", err)
+	}
+
+	sha = hex.EncodeToString(hasher.Sum(nil))
+	if err := s.promoteEvidenceBlob(tmpPath, sha, kind); err != nil {
+		return "", 0, err
+	}
+	return sha, int64(len(data)), nil
+}
+
 func (s *evidenceStore) promoteEvidenceBlob(tempPath, sha, kind string) error {
 	finalDir := filepath.Join(s.root, "captures", sha)
 	if err := os.MkdirAll(finalDir, 0o750); err != nil {
