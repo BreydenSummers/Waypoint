@@ -8,13 +8,41 @@ Supported v1 operator flows only. This guide covers the shipped paths and the do
 
 Use this when you want a fresh engagement that is easy to tear down later.
 
+**a. Start the stack** (builds the image, starts Postgres + Waypoint, applies migrations,
+and waits until healthy on http://localhost:8080):
+
 ```sh
-docker compose up -d --build
+docker compose up -d --wait
+curl -fsS http://localhost:8080/readyz    # -> {"status":"ready"}
 ```
+
+**b. Provision an engagement and mint an operator token.** A fresh instance has no data and
+no credentials; only a token's SHA-256 digest is ever stored. This block creates the
+engagement + operator and prints the token once:
+
+```sh
+ENGAGEMENT_ID=11111111-1111-4111-8111-111111111111
+ACTOR_ID=22222222-2222-4222-8222-222222222222
+TOKEN=$(openssl rand -hex 24)
+TOKEN_HASH=$(printf '%s' "$TOKEN" | sha256sum | cut -d' ' -f1)
+docker compose exec -T postgres psql -U waypoint -d waypoint -v ON_ERROR_STOP=1 -c "
+  INSERT INTO engagement (id, name, client, scope, status)
+  VALUES ('$ENGAGEMENT_ID', 'Demo Expedition', 'Acme University', 'campus /16', 'active');
+  INSERT INTO actor (id, engagement_id, kind, handle, token_hash, role)
+  VALUES ('$ACTOR_ID', '$ENGAGEMENT_ID', 'human', 'alex.operator', '$TOKEN_HASH', 'operator');"
+echo "Operator token: $TOKEN"
+```
+
+Add further operators or AI actors after this first one with the authenticated actors API
+(`POST /api/v1/actors`), or use the installer's file-based `provision` (section 2) for
+repeatable, host-managed provisioning.
+
+**c. Open the UI** at http://localhost:8080/engagements/demo and paste the token into the
+**Operator token** field. Tear the stack down with `docker compose down -v`.
 
 This stack is the path used for dogfood UX runs; pair it with Playwright-driven browser checks when verifying the operator flow.
 
-Relevant files: [`compose.yml`](../compose.yml), [`cmd/waypoint/main.go`](../cmd/waypoint/main.go).
+Relevant files: [`compose.yml`](../compose.yml), [`cmd/waypoint/main.go`](../cmd/waypoint/main.go), [`../README.md`](../README.md).
 
 ### 2) Supported-host install
 
