@@ -1,4 +1,4 @@
-const sourceHash = "728a88feafdf60093b64d9ba04b54ce5b9910282c0feb886546d7defea4f5cb6";
+const sourceHash = "af3cf6b07033bcb48d94c7cbad2cf7ab295f0fe2a0f6800b857e3b7911c11f45";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -3248,6 +3248,11 @@ async function boot() {
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.view = state.view;
   window.addEventListener('popstate', handlePopState);
+  // Close the long-lived audit stream when the page goes away. Without this the
+  // browser can leave the SSE socket lingering across a navigation; a handful of
+  // full-page loads (deep links, back/forward, multiple tabs) then exhausts the
+  // per-origin connection cap and the next navigation stalls.
+  window.addEventListener('pagehide', () => { state.sseAbort?.abort(); });
   root.addEventListener('click', handleClick);
   root.addEventListener('submit', handleSubmit);
   root.addEventListener('input', handleInput);

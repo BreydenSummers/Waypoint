@@ -3244,6 +3244,11 @@ async function boot() {
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.view = state.view;
   window.addEventListener('popstate', handlePopState);
+  // Close the long-lived audit stream when the page goes away. Without this the
+  // browser can leave the SSE socket lingering across a navigation; a handful of
+  // full-page loads (deep links, back/forward, multiple tabs) then exhausts the
+  // per-origin connection cap and the next navigation stalls.
+  window.addEventListener('pagehide', () => { state.sseAbort?.abort(); });
   root.addEventListener('click', handleClick);
   root.addEventListener('submit', handleSubmit);
   root.addEventListener('input', handleInput);
