@@ -11,7 +11,10 @@ lint:
 	$(NODE) --prefix $(WEB_DIR) run lint
 
 test:
-	$(GO) test ./...
+	# -p 1 serialises package test binaries: the DB-backed packages share one
+	# PostgreSQL instance and each resets the public schema, so running them
+	# concurrently makes them clobber each other's data.
+	$(GO) test -p 1 ./...
 	$(NODE) --prefix $(WEB_DIR) run test
 
 build:

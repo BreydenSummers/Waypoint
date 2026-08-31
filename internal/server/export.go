@@ -1355,7 +1355,13 @@ func updateExportJobState(ctx context.Context, db *sql.DB, job exportJobRecord, 
 		archiveSHA = artifacts.archiveSHA256
 		manifestSHA = artifacts.manifestSHA256
 		reportSnapID = artifacts.snapshotID
-		receiptID = artifacts.receiptID
+		// The verified receipt row is only inserted immediately before the
+		// "completed" transition (persistExportReceipt), so linking
+		// bundle_receipt_id any earlier would violate its foreign key. Only set
+		// it once the receipt is known to exist.
+		if state == "completed" {
+			receiptID = artifacts.receiptID
+		}
 	}
 	var failureCode any
 	var failureMessage any
@@ -1805,7 +1811,15 @@ func loadExportArtifacts(m *exportManager, job exportJobRecord) (exportArtifacts
 	if job.Cutoff.Valid {
 		cutoff = job.Cutoff.Time.UTC().Format(time.RFC3339)
 	}
-	return exportArtifacts{bundleDir: bundleDir, archivePath: archivePath, manifest: manifestBytes, manifestSHA256: manifestSHA, archiveSHA256: archiveSHA, archiveByteLength: archiveLen, payloads: parsed.Payloads, snapshotID: job.SnapshotID.String, cutoff: cutoff, receiptID: job.BundleReceiptID.String}, nil
+	// The receipt id is only needed when the verified receipt row is written at
+	// completion; it isn't persisted earlier (bundle_receipt_id's foreign key
+	// forbids referencing a receipt that doesn't exist yet), so mint a fresh one
+	// when the job doesn't already carry a completed receipt.
+	receiptID := job.BundleReceiptID.String
+	if strings.TrimSpace(receiptID) == "" {
+		receiptID = newUUID()
+	}
+	return exportArtifacts{bundleDir: bundleDir, archivePath: archivePath, manifest: manifestBytes, manifestSHA256: manifestSHA, archiveSHA256: archiveSHA, archiveByteLength: archiveLen, payloads: parsed.Payloads, snapshotID: job.SnapshotID.String, cutoff: cutoff, receiptID: receiptID}, nil
 }
 
 func buildExportEvidenceTar(ctx context.Context, db queryer, store *evidenceStore, engagementID, outputPath string) (err error) {
@@ -2114,6 +2128,12 @@ func verifyExportBundle(bundleDir, archivePath string, manifest []byte, manifest
 		rel, err := filepath.Rel(bundleDir, path)
 		if err != nil {
 			return err
+		}
+		// The archive-sha256 sidecar is the digest OF the archive, written to
+		// disk after the archive is built, so it is intentionally not one of the
+		// archive's own entries. Exclude it from the expected set.
+		if filepath.ToSlash(rel) == "metadata/export-archive.sha256" {
+			return nil
 		}
 		expected[filepath.ToSlash(filepath.Join("bundle", rel))] = struct{}{}
 		return nil
