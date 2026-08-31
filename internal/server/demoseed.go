@@ -72,6 +72,9 @@ func (s *demoSeeder) run(ctx context.Context) error {
 	if err := s.seedEntities(ctx, tx); err != nil {
 		return err
 	}
+	if err := s.seedEstate(ctx, tx); err != nil {
+		return err
+	}
 	if err := s.seedActions(ctx, tx); err != nil {
 		return err
 	}
@@ -167,6 +170,39 @@ func (s *demoSeeder) seedEntities(ctx context.Context, tx *sql.Tx) error {
 			return fmt.Errorf("demo seed: entity %s: %w", spec.key, err)
 		}
 		s.entities[spec.key] = id
+	}
+	return nil
+}
+
+// seedEstate fills out the wider estate with discovered host entities across the
+// campus subnets, so read views (especially the territory map) show a realistic
+// spread of segments and host counts rather than only the handful of hosts the
+// attack narrative touches. Each host carries an IP attribute so it groups into
+// its /24 on the map.
+func (s *demoSeeder) seedEstate(ctx context.Context, tx *sql.Tx) error {
+	groups := []struct {
+		base, role, os string
+		n              int
+	}{
+		{"10.4.10", "domain-member", "Windows Server 2019", 5},
+		{"10.4.11", "app-server", "Ubuntu 22.04", 9},
+		{"10.4.12", "db-server", "Windows Server 2016", 5},
+		{"10.4.20", "dmz-web", "Ubuntu 22.04", 4},
+		{"10.4.30", "faculty-ws", "Windows 11", 14},
+		{"10.4.32", "lab-ws", "Windows 10", 18},
+		{"10.4.40", "voip-phone", "Embedded / RTOS", 8},
+		{"10.4.42", "iot-device", "Embedded / RTOS", 10},
+	}
+	for _, g := range groups {
+		for i := 1; i <= g.n; i++ {
+			ip := fmt.Sprintf("%s.%d", g.base, 20+i)
+			host := fmt.Sprintf("%s-%03d", g.role, i)
+			key := fmt.Sprintf("hostname=%s|ip=%s", host, ip)
+			attrs := map[string]any{"ip": ip, "role": g.role, "os": g.os, "hostname": host}
+			if _, err := upsertEntity(ctx, tx, s.engagementID, "host", "hostname_ip", key, attrs); err != nil {
+				return fmt.Errorf("demo seed: estate host %s: %w", host, err)
+			}
+		}
 	}
 	return nil
 }

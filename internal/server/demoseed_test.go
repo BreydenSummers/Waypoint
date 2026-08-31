@@ -73,7 +73,15 @@ func TestDemoSeedPopulatesEngagement(t *testing.T) {
 		}
 	}
 
-	assertCount(t, ctx, rawDB, "SELECT count(*) FROM entity WHERE engagement_id = $1", engagementID, 7)
+	// the story creates 7 named entities and seedEstate fills out the wider estate;
+	// assert a lower bound so estate tweaks don't make this brittle.
+	var entityCount int
+	if err := rawDB.QueryRowContext(ctx, "SELECT count(*) FROM entity WHERE engagement_id = $1", engagementID).Scan(&entityCount); err != nil {
+		t.Fatalf("count entities: %v", err)
+	}
+	if entityCount < 70 {
+		t.Errorf("expected a populated estate (>=70 entities), got %d", entityCount)
+	}
 	assertCount(t, ctx, rawDB, "SELECT count(*) FROM finding WHERE engagement_id = $1", engagementID, 3)
 	assertCount(t, ctx, rawDB, "SELECT count(*) FROM audit_event WHERE engagement_id = $1 AND type = 'alert.notable'", engagementID, 2)
 	assertCount(t, ctx, rawDB, "SELECT count(*) FROM result WHERE engagement_id = $1", engagementID, 9)

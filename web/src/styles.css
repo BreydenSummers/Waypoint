@@ -2284,3 +2284,13 @@ a:focus-visible,
 @media (max-width: 980px) {
   .territory-layout { grid-template-columns: 1fr; }
 }
+
+.territory-modeseg { display: inline-flex; background: var(--workspace-surface); border: 1px solid var(--chrome-border); border-radius: 10px; padding: 3px; gap: 2px; }
+.territory-modeseg button { font: inherit; font-size: 12.5px; cursor: pointer; border: 0; background: none; color: var(--chrome-muted); padding: 5px 12px; border-radius: 7px; font-weight: 600; }
+.territory-modeseg button.on { background: var(--artifact-parchment); color: var(--page-text); box-shadow: 0 1px 3px -1px var(--chrome-shadow); }
+.territory-actors { position: absolute; bottom: 14px; left: 14px; display: flex; flex-direction: column; gap: 3px; background: var(--chrome-surface); border: 1px solid var(--chrome-border); border-radius: 12px; padding: 9px 11px; backdrop-filter: blur(6px); max-width: 240px; }
+.territory-achip { display: flex; align-items: center; gap: 8px; font: inherit; font-size: 12.5px; cursor: pointer; background: none; border: 0; color: var(--chrome-strong); padding: 3px 5px; border-radius: 7px; text-align: left; }
+.territory-achip i { width: 13px; height: 13px; border-radius: 3px; flex: 0 0 auto; box-shadow: 0 0 0 1px var(--chrome-border); }
+.territory-achip b.ai { font-size: 9px; font-weight: 700; background: var(--deep-bark); color: var(--wheat); padding: 0 4px; border-radius: 4px; margin-left: 1px; }
+.territory-achip:hover { background: var(--page-bg-2); }
+.territory-achip.on { background: var(--wheat); color: var(--deep-bark); }

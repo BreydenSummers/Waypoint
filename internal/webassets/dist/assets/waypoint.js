@@ -1,4 +1,4 @@
-const sourceHash = "70d0b1353eb9b49a411c1d5f0e0f6a4bc21b6cf7203616f0f28cb94b5ad16656";
+const sourceHash = "603ba9ebbe60827db8f080f64ea56ea3ad80e916f505b240d45fd8cb6f7b9632";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -55,6 +55,8 @@ const state = {
   view: 'trail',
   activePhase: 'attacks',
   mapSelectedSegment: '',
+  mapLens: 'off',
+  mapHighlightActor: '',
   token: 'demo-token',
   auditStatus: 'loading',
   actionsStatus: 'loading',
@@ -1610,23 +1612,86 @@ function mEntityIP(e) {
   return null;
 }
 function mSubnet(ip) { if (!ip) return null; const p = ip.split('.'); if (p.length < 4) return null; return `${p[0]}.${p[1]}.${p[2]}.0/24`; }
+// A segment key + display label for an entity. Hosts with an IP group by /24;
+// IP-less directory objects (AD identities) get their own "Directory" camp
+// rather than an anonymous "unresolved" bucket.
+function mSegmentKey(e) {
+  const cidr = mSubnet(mEntityIP(e));
+  if (cidr) return { key: cidr, label: cidr };
+  const ids = e.identifiers || [];
+  if (e.kind === 'identity' || ids.some((i) => i.type === 'ad_sid')) return { key: 'directory', label: 'Directory · AD' };
+  return { key: 'off-subnet', label: 'Off-subnet' };
+}
 function mBuildSegments() {
   const sevByEntity = {};
   (state.findings || []).forEach((f) => { const s = String(f.severity || 'info').toLowerCase(); (f.affectedEntityIds || []).forEach((id) => { if (!(id in sevByEntity) || MSEV_RANK[s] < MSEV_RANK[sevByEntity[id]]) sevByEntity[id] = s; }); });
   const segs = {};
   (state.entities || []).forEach((e) => {
-    const cidr = mSubnet(mEntityIP(e)) || 'unresolved';
-    if (!segs[cidr]) segs[cidr] = { cidr, hosts: [], worst: 'info', findings: 0 };
-    segs[cidr].hosts.push(e);
+    const sk = mSegmentKey(e);
+    if (!segs[sk.key]) segs[sk.key] = { cidr: sk.key, label: sk.label, hosts: [], worst: 'info', findings: 0 };
+    segs[sk.key].hosts.push(e);
     const s = sevByEntity[e.id] || 'info';
-    if (MSEV_RANK[s] < MSEV_RANK[segs[cidr].worst]) segs[cidr].worst = s;
-    if (s !== 'info' || (sevByEntity[e.id])) segs[cidr].findings += (e.id in sevByEntity) ? 1 : 0;
+    if (MSEV_RANK[s] < MSEV_RANK[segs[sk.key].worst]) segs[sk.key].worst = s;
+    if (e.id in sevByEntity) segs[sk.key].findings += 1;
   });
   return Object.values(segs).map((s) => ({ ...s, n: s.hosts.length })).sort((a, b) => MSEV_RANK[a.worst] - MSEV_RANK[b.worst] || b.n - a.n);
 }
 function mSegmentRole(seg) {
   for (const h of seg.hosts) { const a = (h.attributes && typeof h.attributes === 'object') ? h.attributes : {}; if (a.role) return String(a.role); }
   return seg.hosts[0] ? (seg.hosts[0].kind || 'segment') : 'segment';
+}
+
+const M_ACTOR_COLORS = ['#ba7517', '#639922', '#b04c30', '#854f0b', '#8b5e34'];
+// Derive each operator/agent's trail from their captured actions: the ordered
+// list of segments they targeted over time. Grounded in real /actions data.
+function mBuildTrails(positions) {
+  const keyByTarget = {};
+  (state.entities || []).forEach((e) => {
+    const sk = mSegmentKey(e);
+    const ip = mEntityIP(e); if (ip) keyByTarget[ip] = sk.key;
+    (e.identifiers || []).forEach((id) => { if (id.value) keyByTarget[String(id.value).toLowerCase()] = sk.key; });
+    const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+    if (a.hostname) keyByTarget[String(a.hostname).toLowerCase()] = sk.key;
+  });
+  const segForTarget = (tv) => {
+    if (!tv) return null;
+    const low = String(tv).toLowerCase();
+    if (keyByTarget[low] && positions[keyByTarget[low]]) return keyByTarget[low];
+    const m = low.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+    if (m) { const cidr = mSubnet(m[1]); if (cidr && positions[cidr]) return cidr; if (keyByTarget[m[1]] && positions[keyByTarget[m[1]]]) return keyByTarget[m[1]]; }
+    return null;
+  };
+  const startedAt = (a) => (a.capture && a.capture.timing && a.capture.timing.startedAt) || a.receivedAt || '';
+  const acts = (state.actions || []).slice().sort((x, y) => { const a = startedAt(x), b = startedAt(y); return a < b ? -1 : a > b ? 1 : 0; });
+  const byActor = {};
+  acts.forEach((act) => {
+    const actor = act.actor || {};
+    const handle = actor.handle || actor.id || 'operator';
+    const seg = segForTarget(act.capture && act.capture.target && act.capture.target.value);
+    if (!seg || !positions[seg]) return;
+    if (!byActor[handle]) byActor[handle] = { handle, kind: actor.kind, segs: [] };
+    const arr = byActor[handle].segs;
+    if (arr[arr.length - 1] !== seg) arr.push(seg);
+  });
+  return Object.values(byActor).filter((t) => t.segs.length).map((t, i) => ({ ...t, color: M_ACTOR_COLORS[i % M_ACTOR_COLORS.length] }));
+}
+function mFootpath(a, b, color) {
+  const dx = b.x - a.x, dy = b.y - a.y; const len = Math.hypot(dx, dy) || 1; const n = Math.max(2, Math.round(len / 16));
+  const nx = -dy / len, ny = dx / len; const ang = Math.atan2(dy, dx) * 180 / Math.PI; let out = '';
+  for (let i = 1; i < n; i += 1) { const t = i / n; const x = a.x + dx * t, y = a.y + dy * t; const off = (i % 2 ? 3.4 : -3.4); out += `<g transform="translate(${(x + nx * off).toFixed(0)},${(y + ny * off).toFixed(0)}) rotate(${ang.toFixed(0)})"><ellipse rx="2.6" ry="1.4" fill="${color}" opacity=".85"/></g>`; }
+  return out;
+}
+function mTrailSVG(trails, positions) {
+  const hl = state.mapHighlightActor;
+  return trails.map((t) => {
+    const segs = t.segs.filter((s) => positions[s]);
+    let path = '';
+    for (let i = 1; i < segs.length; i += 1) path += mFootpath(positions[segs[i - 1]], positions[segs[i]], t.color);
+    const head = positions[segs[segs.length - 1]];
+    const initials = t.handle.split(/[.\s@_-]/).map((w) => w[0] || '').join('').toUpperCase().slice(0, 2) || '?';
+    const flag = head ? `<g transform="translate(${(head.x + 42).toFixed(0)},${(head.y - 24).toFixed(0)})"><rect x="-1" y="0" width="2.4" height="22" rx="1" fill="${MPAL.bark}"/><path d="M1.4 0 L18 4.5 L1.4 9 Z" fill="${t.color}" stroke="${MPAL.bark}" stroke-width="0.7"/><text x="8.5" y="7.5" text-anchor="middle" font-size="6.5" font-weight="800" fill="#fff" font-family="Inter,sans-serif">${escapeHtml(initials)}</text></g>` : '';
+    return `<g class="territory-route" data-route="${escapeHtml(t.handle)}" style="opacity:${hl && hl !== t.handle ? 0.14 : 1}">${path}${flag}</g>`;
+  }).join('');
 }
 
 function renderTerritoryMap() {
@@ -1648,7 +1713,7 @@ function renderTerritoryMap() {
       const scale = 0.72 + Math.min(Math.sqrt(seg.n) / 10, 0.62);
       positions[seg.cidr] = { x, y };
       const sel = state.mapSelectedSegment === seg.cidr;
-      nodeSVG.push(`<g class="territory-camp${sel ? ' is-sel' : ''}" data-action="map-select" data-seg="${escapeHtml(seg.cidr)}" transform="translate(${x.toFixed(0)},${y.toFixed(0)})">${seg.worst === 'critical' ? `<ellipse cx="0" cy="${(-6 * scale).toFixed(0)}" rx="${(30 * scale).toFixed(0)}" ry="${(26 * scale).toFixed(0)}" fill="${MPAL.rust}" opacity=".12"/>` : ''}${mCampFor(seg.cidr, seg.worst)(seg.n, MSEV_COLOR[seg.worst], scale)}<text class="territory-camp-label" x="0" y="${(20 * scale + 30).toFixed(0)}" text-anchor="middle">${escapeHtml(seg.cidr)}</text></g>`);
+      nodeSVG.push(`<g class="territory-camp${sel ? ' is-sel' : ''}" data-action="map-select" data-seg="${escapeHtml(seg.cidr)}" transform="translate(${x.toFixed(0)},${y.toFixed(0)})">${seg.worst === 'critical' ? `<ellipse cx="0" cy="${(-6 * scale).toFixed(0)}" rx="${(30 * scale).toFixed(0)}" ry="${(26 * scale).toFixed(0)}" fill="${MPAL.rust}" opacity=".12"/>` : ''}${mCampFor(seg.cidr, seg.worst)(seg.n, MSEV_COLOR[seg.worst], scale)}<text class="territory-camp-label" x="0" y="${(20 * scale + 30).toFixed(0)}" text-anchor="middle">${escapeHtml(seg.label || seg.cidr)}</text></g>`);
     });
   });
   const riskTicks = MSEV_ORDER.filter((sev) => segments.some((s) => s.worst === sev)).map((sev) => `<text class="territory-tick" x="20" y="${bandY[sev] - 2}">${MSEV_LABEL[sev]} risk</text><text class="territory-tick-sub" x="20" y="${bandY[sev] + 12}">${segments.filter((s) => s.worst === sev).reduce((a, s) => a + s.n, 0)} hosts</text>`).join('');
@@ -1657,9 +1722,15 @@ function renderTerritoryMap() {
   const legend = MSEV_ORDER.map((sev) => `<span class="territory-li"><i style="background:${MSEV_COLOR[sev]}"></i>${MSEV_LABEL[sev]}</span>`).join('');
 
   const sel = segments.find((s) => s.cidr === state.mapSelectedSegment) || segments[0] || null;
-  const sideHTML = sel ? `<h3>Segment</h3><p class="territory-nm">${escapeHtml(sel.cidr)}</p><div class="territory-mt">${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml((h.identifiers && h.identifiers[0] && h.identifiers[0].value) || h.kind || h.id)}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}</li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : '<h3>Segment</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>';
+  const sideHTML = sel ? `<h3>Segment</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt">${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml((h.identifiers && h.identifiers[0] && h.identifiers[0].value) || h.kind || h.id)}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}</li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : '<h3>Segment</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>';
 
   const emptyState = segments.length ? '' : `<div class="territory-empty"><strong>No mapped hosts yet</strong><p>Entities with an IP address appear here as campsites, grouped by /24 subnet. Capture some recon to populate the map.</p></div>`;
+
+  const lensOn = state.mapLens === 'operators';
+  const trails = lensOn ? mBuildTrails(positions) : [];
+  const trailSVG = lensOn ? mTrailSVG(trails, positions) : '';
+  const lensControl = `<div class="territory-modeseg" role="group" aria-label="Trail lens"><button type="button" data-action="map-lens" data-lens="off" class="${!lensOn ? 'on' : ''}">Off</button><button type="button" data-action="map-lens" data-lens="operators" class="${lensOn ? 'on' : ''}">Operators</button></div>`;
+  const actorLegend = (lensOn && trails.length) ? `<div class="territory-actors"><span class="territory-legend-title">Whose trail</span>${trails.map((t) => `<button type="button" class="territory-achip${state.mapHighlightActor === t.handle ? ' on' : ''}" data-action="map-actor" data-actor="${escapeHtml(t.handle)}"><i style="background:${t.color}"></i>${escapeHtml(t.handle)}${t.kind === 'ai_agent' ? '<b class="ai">AI</b>' : ''}</button>`).join('')}</div>` : '';
 
   return `
     <main class="app-shell territory-shell">
@@ -1674,6 +1745,7 @@ function renderTerritoryMap() {
             <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
             <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
           </div>
+          ${lensControl}
           <a class="secondary-link" href="${escapeHtml(phasePath(state.engagementId, 'attacks'))}" data-action="goto-trail">← Trail</a>
           <div class="metrics" aria-label="Estate summary">
             <div class="metric"><span class="metric-label">Segments</span><strong>${segments.length}</strong></div>
@@ -1688,10 +1760,12 @@ function renderTerritoryMap() {
             <rect class="territory-terrain" width="${W}" height="${H}"/>
             ${mMountainRange(150)}
             ${treesSVG}
+            ${trailSVG}
             ${nodeSVG.join('')}
             ${riskTicks}
           </svg>
           <div class="territory-legend"><span class="territory-legend-title">Worst finding</span>${legend}</div>
+          ${actorLegend}
           ${emptyState}
         </section>
         <aside class="territory-side" aria-label="Segment detail">${sideHTML}</aside>
@@ -2604,6 +2678,18 @@ async function handleClick(event) {
   }
   if (action === 'map-select') {
     state.mapSelectedSegment = target.dataset.seg || '';
+    render();
+    return;
+  }
+  if (action === 'map-lens') {
+    state.mapLens = target.dataset.lens || 'off';
+    if (state.mapLens === 'off') state.mapHighlightActor = '';
+    render();
+    return;
+  }
+  if (action === 'map-actor') {
+    const a = target.dataset.actor || '';
+    state.mapHighlightActor = state.mapHighlightActor === a ? '' : a;
     render();
     return;
   }
