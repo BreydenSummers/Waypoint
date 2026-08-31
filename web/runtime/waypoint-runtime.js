@@ -50,6 +50,7 @@ const state = {
   engagementId: defaultEngagementId,
   view: 'trail',
   activePhase: 'attacks',
+  mapSelectedSegment: '',
   token: 'demo-token',
   auditStatus: 'loading',
   actionsStatus: 'loading',
@@ -178,6 +179,9 @@ function routeFromPath(pathname) {
   if (/^\/engagements\/[^/]+\/summit\/report\/?$/.test(pathname)) {
     return { view: 'report', phase: 'summit' };
   }
+  if (/^\/engagements\/[^/]+\/map\/?$/.test(pathname)) {
+    return { view: 'map', phase: 'attacks' };
+  }
   const match = pathname.match(/^\/engagements\/[^/]+\/(recon|attacks|findings|summit)\/?$/);
   return match ? { view: 'trail', phase: match[1] } : { view: 'trail', phase: 'attacks' };
 }
@@ -188,6 +192,10 @@ function phasePath(engagementId, phase) {
 
 function reportPath(engagementId) {
   return `/engagements/${engagementId}/summit/report`;
+}
+
+function mapPath(engagementId) {
+  return `/engagements/${engagementId}/map`;
 }
 
 function reportJsonPath(engagementId) {
@@ -505,6 +513,12 @@ function navigateToPhase(phase) {
 function navigateToReport() {
   state.view = 'report';
   pushPath(reportPath(state.engagementId));
+  render();
+}
+
+function navigateToMap() {
+  state.view = 'map';
+  pushPath(mapPath(state.engagementId));
   render();
 }
 
@@ -1550,6 +1564,137 @@ function renderOperationsShell() {
     </section>`;
 }
 
+/* ============================ Territory Map ============================
+   A cartographic view of the estate: subnets become campsites, sized by host
+   count and coloured by their worst finding severity, laid out so the most
+   compromised segments climb toward the snowy summit (elevation = risk).
+   Everything here is derived from real /entities + /findings data. */
+const MPAL = { bark:'#4a2f1b', saddle:'#6b4423', trail:'#8b5e34', harvest:'#ba7517', lantern:'#ef9f27', wheat:'#fac775', fern:'#97c459', forest:'#639922', trees:'#6b8e4e', stone:'#b4a78c', stoned:'#8b7355', rust:'#b04c30', cocoa:'#854f0b' };
+const MSEV_COLOR = { critical:'#b04c30', high:'#ba7517', medium:'#ef9f27', low:'#97c459', info:'#b4a78c' };
+const MSEV_RANK = { critical:0, high:1, medium:2, low:3, info:4 };
+const MSEV_LABEL = { critical:'Critical', high:'High', medium:'Medium', low:'Low', info:'Info' };
+const MSEV_ORDER = ['critical','high','medium','low','info'];
+const MFIRE = 'c -4 5 -5 8 -2 11 c -3 0 -5 3 -2 5 c 2 2 7 2 9 0 c 3 -2 1 -5 -2 -5 c 3 -3 1 -7 -3 -11';
+
+function mSmoke(x, y, arr) { return `<g>${arr.map((p) => `<circle class="territory-puff" cx="${x}" cy="${y}" r="${p.r}" fill="rgba(180,167,140,1)" style="--dx:${p.dx}px;--o:${p.o};--d:${p.d}s;--dl:${p.dl}s"/>`).join('')}</g>`; }
+function mFire(s = 1) { return `<g transform="scale(${s})">${mSmoke(1, -20, [{ r:2.6, dx:3, o:.42, d:3, dl:0 }, { r:3, dx:-2, o:.36, d:3.5, dl:.9 }, { r:2.3, dx:4, o:.3, d:3.2, dl:1.7 }])}<g class="territory-flame"><path d="M0 -8 C -8 -14 -7 -24 -1 -30 C -2 -22 4 -22 3 -30 C 9 -24 8 -13 0 -8 Z" fill="${MPAL.harvest}"/><path d="M0 -9 C -5 -13 -4 -21 0 -26 C 4 -21 5 -13 0 -9 Z" fill="${MPAL.lantern}"/><path d="M0 -10 C -2 -12 -2 -17 0 -20 C 2 -17 2 -12 0 -10 Z" fill="${MPAL.wheat}"/></g><path d="M-11 -1 L11 -5" stroke="${MPAL.saddle}" stroke-width="4" stroke-linecap="round"/><path d="M-11 -5 L11 -1" stroke="${MPAL.bark}" stroke-width="4" stroke-linecap="round"/></g>`; }
+function mPine(s = 1) { return `<g transform="scale(${s})"><rect x="-1.8" y="-7" width="3.6" height="7" fill="${MPAL.saddle}"/><path d="M0 -30 L7 -20 L-7 -20 Z" fill="${MPAL.forest}"/><path d="M0 -25 L9 -13 L-9 -13 Z" fill="${MPAL.trees}"/><path d="M0 -19 L11 -6 L-11 -6 Z" fill="${MPAL.fern}"/></g>`; }
+function mBadge(n, x, y, color) { return `<g transform="translate(${x},${y})"><rect x="-17" y="-11" width="34" height="18" rx="9" fill="var(--artifact-parchment)" stroke="${color}" stroke-width="1.7"/><text x="0" y="3.5" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="700" fill="var(--chrome-strong)">${n}</text></g>`; }
+const M_CAMPS = {
+  full: (n, color, s = 1) => `<g transform="scale(${s})"><ellipse cx="0" cy="2" rx="38" ry="7.5" fill="${MPAL.cocoa}" opacity=".18"/><g transform="translate(21,1) scale(.62)">${mPine(1)}</g><g transform="translate(-16,0)"><path d="M0 0 L-12 0 L-6 -18 Z" fill="${color}" stroke="${MPAL.bark}" stroke-width="1.3"/><path d="M-6 -18 L0 0 L3.5 0 L-2.5 -18 Z" fill="${MPAL.saddle}" stroke="${MPAL.bark}" stroke-width="1.3"/></g><g transform="translate(7,0) scale(.6)">${mFire(1)}</g>${mBadge(n, -3, 17, color)}</g>`,
+  twin: (n, color, s = 1) => `<g transform="scale(${s})"><ellipse cx="0" cy="2" rx="38" ry="7.5" fill="${MPAL.cocoa}" opacity=".18"/><g transform="translate(-13,0) scale(.95)"><path d="M-9 0 L0 -19 L9 0 Z" fill="${color}" stroke="${MPAL.bark}" stroke-width="1.3" stroke-linejoin="round"/><path d="M-3 0 L0 -7 L3 0 Z" fill="${MPAL.saddle}" stroke="${MPAL.bark}" stroke-width="0.8"/></g><g transform="translate(15,1) scale(.8)"><path d="M-9 0 L0 -19 L9 0 Z" fill="${MPAL.saddle}" stroke="${MPAL.bark}" stroke-width="1.3" stroke-linejoin="round"/></g><g transform="translate(1,0) scale(.4)">${mFire(1)}</g>${mBadge(n, 0, 17, color)}</g>`,
+  dome: (n, color, s = 1) => `<g transform="scale(${s})"><ellipse cx="0" cy="2" rx="32" ry="6.5" fill="${MPAL.cocoa}" opacity=".16"/><g transform="translate(-11,0)"><path d="M-14 0 A14 13 0 0 1 14 0 Z" fill="${color}" stroke="${MPAL.bark}" stroke-width="1.3"/><path d="M0 -13.5 L0 0" stroke="${MPAL.bark}" stroke-width="0.7"/><path d="M-6 0 A6 8 0 0 1 6 0 Z" fill="${MPAL.saddle}" stroke="${MPAL.bark}" stroke-width="0.8"/></g><g transform="translate(16,0) scale(.55)">${mFire(1)}</g>${mBadge(n, 2, 17, color)}</g>`,
+  cabin: (n, color, s = 1) => `<g transform="scale(${s})"><ellipse cx="0" cy="2" rx="34" ry="7" fill="${MPAL.cocoa}" opacity=".18"/><g transform="translate(-4,0)">${mSmoke(8, -24, [{ r:2.2, dx:2, o:.34, d:3.3, dl:.2 }, { r:2, dx:-2, o:.28, d:3.7, dl:1.3 }])}<rect x="9" y="-24" width="3.6" height="10" fill="${MPAL.bark}"/><rect x="-13" y="-12" width="26" height="12" fill="${color}" stroke="${MPAL.bark}" stroke-width="1.2"/><path d="M-16 -12 L0 -22 L16 -12 Z" fill="${MPAL.saddle}" stroke="${MPAL.bark}" stroke-width="1.2" stroke-linejoin="round"/><rect x="-3.5" y="-8" width="7" height="8" fill="${MPAL.bark}"/><rect x="6" y="-8" width="4.5" height="4.5" fill="${MPAL.wheat}" stroke="${MPAL.bark}" stroke-width="0.6"/></g>${mBadge(n, 0, 17, color)}</g>`,
+  hammock: (n, color, s = 1) => `<g transform="scale(${s})"><ellipse cx="0" cy="2" rx="34" ry="6.5" fill="${MPAL.cocoa}" opacity=".16"/><g transform="translate(-18,1) scale(.72)">${mPine(1)}</g><g transform="translate(18,1) scale(.72)">${mPine(1)}</g><path d="M-15 -13 Q 0 -1 15 -13" fill="none" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/><g transform="translate(0,0) scale(.4)">${mFire(1)}</g>${mBadge(n, 0, 17, color)}</g>`,
+};
+const M_POOL = ['hammock', 'cabin', 'dome', 'twin', 'full'];
+function mHash(str) { let h = 2166136261 >>> 0; for (let i = 0; i < str.length; i += 1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h; }
+function mCampFor(cidr, worst) { if (worst === 'critical') return M_CAMPS.full; return M_CAMPS[M_POOL[mHash(cidr) % M_POOL.length]]; }
+function mSnowCap(ax, ay, lx, rx, by) { const t = 0.34, lpx = ax + t * (lx - ax), py = ay + t * (by - ay), rpx = ax + t * (rx - ax), midx = (lpx + rpx) / 2; return `M${ax.toFixed(0)} ${ay.toFixed(0)} L${lpx.toFixed(0)} ${py.toFixed(0)} Q ${((lpx + midx) / 2).toFixed(0)} ${(py + 4).toFixed(0)} ${midx.toFixed(0)} ${(py + 1).toFixed(0)} Q ${((midx + rpx) / 2).toFixed(0)} ${(py + 4).toFixed(0)} ${rpx.toFixed(0)} ${py.toFixed(0)} Z`; }
+function mMountainRange(by) {
+  const far = `<path d="M-20 ${by} L110 ${by - 58} L182 ${by - 30} L280 ${by - 66} L362 ${by - 32} L470 ${by - 60} L560 ${by - 30} L680 ${by - 58} L782 ${by - 30} L880 ${by - 52} L1020 ${by - 28} L1020 ${by} Z" fill="${MPAL.stone}" opacity=".22"/>`;
+  const mid = `<path d="M-20 ${by} L150 ${by - 72} L260 ${by - 30} L400 ${by - 78} L520 ${by - 32} L660 ${by - 76} L820 ${by - 30} L940 ${by - 66} L1020 ${by - 30} L1020 ${by} Z" fill="${MPAL.stone}" opacity=".44"/>`;
+  const peaks = [{ ax:250, ay:by - 96, lx:150, rx:356 }, { ax:760, ay:by - 92, lx:660, rx:860 }, { ax:500, ay:by - 128, lx:392, rx:610 }].map((p) => `<path d="M${p.lx} ${by} L${p.ax} ${p.ay} L${p.rx} ${by} Z" fill="${MPAL.stoned}" stroke="${MPAL.bark}" stroke-width="1.1" stroke-linejoin="round"/><path d="${mSnowCap(p.ax, p.ay, p.lx, p.rx, by)}" fill="#eef3e6"/>`).join('');
+  return `<g>${far}${mid}${peaks}</g>`;
+}
+function mEntityIP(e) {
+  const ids = e.identifiers || [];
+  for (const id of ids) { if (id.type === 'ip') return id.value; }
+  const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+  if (a.ip) return String(a.ip);
+  for (const id of ids) { const m = String(id.value || '').match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/); if (m) return m[1]; }
+  return null;
+}
+function mSubnet(ip) { if (!ip) return null; const p = ip.split('.'); if (p.length < 4) return null; return `${p[0]}.${p[1]}.${p[2]}.0/24`; }
+function mBuildSegments() {
+  const sevByEntity = {};
+  (state.findings || []).forEach((f) => { const s = String(f.severity || 'info').toLowerCase(); (f.affectedEntityIds || []).forEach((id) => { if (!(id in sevByEntity) || MSEV_RANK[s] < MSEV_RANK[sevByEntity[id]]) sevByEntity[id] = s; }); });
+  const segs = {};
+  (state.entities || []).forEach((e) => {
+    const cidr = mSubnet(mEntityIP(e)) || 'unresolved';
+    if (!segs[cidr]) segs[cidr] = { cidr, hosts: [], worst: 'info', findings: 0 };
+    segs[cidr].hosts.push(e);
+    const s = sevByEntity[e.id] || 'info';
+    if (MSEV_RANK[s] < MSEV_RANK[segs[cidr].worst]) segs[cidr].worst = s;
+    if (s !== 'info' || (sevByEntity[e.id])) segs[cidr].findings += (e.id in sevByEntity) ? 1 : 0;
+  });
+  return Object.values(segs).map((s) => ({ ...s, n: s.hosts.length })).sort((a, b) => MSEV_RANK[a.worst] - MSEV_RANK[b.worst] || b.n - a.n);
+}
+function mSegmentRole(seg) {
+  for (const h of seg.hosts) { const a = (h.attributes && typeof h.attributes === 'object') ? h.attributes : {}; if (a.role) return String(a.role); }
+  return seg.hosts[0] ? (seg.hosts[0].kind || 'segment') : 'segment';
+}
+
+function renderTerritoryMap() {
+  const segments = mBuildSegments();
+  const totalHosts = (state.entities || []).length;
+  const totalFindings = (state.findings || []).length;
+  const bandY = { critical:162, high:300, medium:432, low:558, info:672 };
+  const W = 1000, H = 760;
+  const present = MSEV_ORDER.filter((sev) => segments.some((s) => s.worst === sev));
+  const nodeSVG = [];
+  const positions = {};
+  MSEV_ORDER.forEach((sev) => {
+    const list = segments.filter((s) => s.worst === sev);
+    if (!list.length) return;
+    const leftPad = 150, rightPad = 60, span = (W - leftPad - rightPad) / Math.max(list.length - 1, 1);
+    list.forEach((seg, i) => {
+      const x = list.length === 1 ? (leftPad + W - rightPad) / 2 : leftPad + i * span;
+      const y = bandY[sev] + (i % 2 ? 24 : -20);
+      const scale = 0.72 + Math.min(Math.sqrt(seg.n) / 10, 0.62);
+      positions[seg.cidr] = { x, y };
+      const sel = state.mapSelectedSegment === seg.cidr;
+      nodeSVG.push(`<g class="territory-camp${sel ? ' is-sel' : ''}" data-action="map-select" data-seg="${escapeHtml(seg.cidr)}" transform="translate(${x.toFixed(0)},${y.toFixed(0)})">${seg.worst === 'critical' ? `<ellipse cx="0" cy="${(-6 * scale).toFixed(0)}" rx="${(30 * scale).toFixed(0)}" ry="${(26 * scale).toFixed(0)}" fill="${MPAL.rust}" opacity=".12"/>` : ''}${mCampFor(seg.cidr, seg.worst)(seg.n, MSEV_COLOR[seg.worst], scale)}<text class="territory-camp-label" x="0" y="${(20 * scale + 30).toFixed(0)}" text-anchor="middle">${escapeHtml(seg.cidr)}</text></g>`);
+    });
+  });
+  const riskTicks = MSEV_ORDER.filter((sev) => segments.some((s) => s.worst === sev)).map((sev) => `<text class="territory-tick" x="20" y="${bandY[sev] - 2}">${MSEV_LABEL[sev]} risk</text><text class="territory-tick-sub" x="20" y="${bandY[sev] + 12}">${segments.filter((s) => s.worst === sev).reduce((a, s) => a + s.n, 0)} hosts</text>`).join('');
+  const treeSpots = [[948, 300, 1.15], [70, 470, 1.3], [500, 726, 1.5], [220, 726, 1.25], [832, 724, 1.35], [664, 724, 1.4]];
+  const treesSVG = treeSpots.map(([x, y, s]) => `<g transform="translate(${x},${y})">${mPine(s)}</g>`).join('');
+  const legend = MSEV_ORDER.map((sev) => `<span class="territory-li"><i style="background:${MSEV_COLOR[sev]}"></i>${MSEV_LABEL[sev]}</span>`).join('');
+
+  const sel = segments.find((s) => s.cidr === state.mapSelectedSegment) || segments[0] || null;
+  const sideHTML = sel ? `<h3>Segment</h3><p class="territory-nm">${escapeHtml(sel.cidr)}</p><div class="territory-mt">${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml((h.identifiers && h.identifiers[0] && h.identifiers[0].value) || h.kind || h.id)}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}</li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : '<h3>Segment</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>';
+
+  const emptyState = segments.length ? '' : `<div class="territory-empty"><strong>No mapped hosts yet</strong><p>Entities with an IP address appear here as campsites, grouped by /24 subnet. Capture some recon to populate the map.</p></div>`;
+
+  return `
+    <main class="app-shell territory-shell">
+      <header class="masthead">
+        <div class="masthead-copy">
+          <p class="eyebrow">Waypoint · territory map</p>
+          <h1>The estate</h1>
+          <p class="subtitle">Subnets are campsites — sized by hosts, coloured by their worst finding, climbing toward the summit as risk rises.</p>
+        </div>
+        <div class="masthead-actions">
+          <div class="theme-switcher" role="group" aria-label="Theme selection">
+            <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
+            <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
+          </div>
+          <a class="secondary-link" href="${escapeHtml(phasePath(state.engagementId, 'attacks'))}" data-action="goto-trail">← Trail</a>
+          <div class="metrics" aria-label="Estate summary">
+            <div class="metric"><span class="metric-label">Segments</span><strong>${segments.length}</strong></div>
+            <div class="metric"><span class="metric-label">Hosts</span><strong>${totalHosts.toLocaleString()}</strong></div>
+            <div class="metric"><span class="metric-label">Findings</span><strong>${totalFindings}</strong></div>
+          </div>
+        </div>
+      </header>
+      <div class="territory-layout">
+        <section class="territory-canvas" aria-label="Estate map">
+          <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Territory map of ${segments.length} segments">
+            <rect class="territory-terrain" width="${W}" height="${H}"/>
+            ${mMountainRange(150)}
+            ${treesSVG}
+            ${nodeSVG.join('')}
+            ${riskTicks}
+          </svg>
+          <div class="territory-legend"><span class="territory-legend-title">Worst finding</span>${legend}</div>
+          ${emptyState}
+        </section>
+        <aside class="territory-side" aria-label="Segment detail">${sideHTML}</aside>
+      </div>
+    </main>`;
+}
+
 function renderTrailMap() {
   const activeIndex = waypointOrder.indexOf(state.activePhase);
   const trailStatusText = `Trail ${Math.min(activeIndex + 1, waypointOrder.length)} / ${waypointOrder.length} · ${phaseNames[state.activePhase]}`;
@@ -1616,6 +1761,7 @@ function renderTrailMap() {
             <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
             <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
           </div>
+          <a class="secondary-link" href="${escapeHtml(mapPath(state.engagementId))}" data-action="goto-map">⛰ Territory map</a>
           <label class="field-group">
             <span>Operator token</span>
             <input value="${escapeHtml(state.token)}" data-action="update-token" placeholder="Bearer token" aria-label="Operator token" />
@@ -2358,8 +2504,8 @@ function render() {
     root.innerHTML = renderSetupWizard();
     return;
   }
-  document.title = state.view === 'report' ? 'Waypoint — report snapshot' : `Waypoint — ${phaseNames[state.activePhase]}`;
-  root.innerHTML = state.view === 'report' ? renderReportView() : renderTrailMap();
+  document.title = state.view === 'report' ? 'Waypoint — report snapshot' : state.view === 'map' ? 'Waypoint — territory map' : `Waypoint — ${phaseNames[state.activePhase]}`;
+  root.innerHTML = state.view === 'report' ? renderReportView() : state.view === 'map' ? renderTerritoryMap() : renderTrailMap();
   syncExportPolling();
 }
 
@@ -2440,6 +2586,21 @@ async function handleClick(event) {
   if (action === 'goto-phase') {
     event.preventDefault();
     navigateToPhase(target.dataset.phase || 'attacks');
+    return;
+  }
+  if (action === 'goto-map') {
+    event.preventDefault();
+    navigateToMap();
+    return;
+  }
+  if (action === 'goto-trail') {
+    event.preventDefault();
+    navigateToPhase(target.dataset.phase || 'attacks');
+    return;
+  }
+  if (action === 'map-select') {
+    state.mapSelectedSegment = target.dataset.seg || '';
+    render();
     return;
   }
   if (action === 'refresh-entities') {
