@@ -6,8 +6,11 @@
     "build": "node --no-warnings build.mjs",
     "lint": "node --no-warnings scripts/check.mjs",
     "test": "node --test scripts/report-renderer.test.mjs scripts/bundle-tools.test.mjs scripts/bundle-export.test.mjs scripts/g3-workspaces.test.mjs && node --no-warnings scripts/check.mjs",
-    "render:report": "node scripts/render-report.mjs"
+    "render:report": "node scripts/render-report.mjs",
+    "dogfood": "node scripts/dogfood.mjs"
   },
   "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "puppeteer-core": "^23.0.0"
+  }
 }

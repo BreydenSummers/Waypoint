@@ -4,7 +4,13 @@ WEB_DIR := web
 BIN_DIR := bin
 BIN := $(BIN_DIR)/waypoint
 
-.PHONY: lint test build smoke clean release-test
+.PHONY: lint test build smoke clean release-test dogfood
+
+# Systematically drives every view/control of a RUNNING app with a headless
+# browser and reports UI bugs. Needs a live, seeded instance:
+#   DOGFOOD_BASE=http://127.0.0.1:8080 DOGFOOD_TOKEN=<owner> DOGFOOD_ENGAGEMENT=<id> make dogfood
+dogfood:
+	$(NODE) --prefix $(WEB_DIR) run dogfood
 
 lint:
 	$(GO) vet ./...
