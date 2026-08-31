@@ -1,4 +1,4 @@
-const sourceHash = "f85469a0c06d7b32ca6c81dc99a2d864f7e29eb568daee8e44d7f422553290f1";
+const sourceHash = "728a88feafdf60093b64d9ba04b54ce5b9910282c0feb886546d7defea4f5cb6";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -57,6 +57,9 @@ const state = {
   mapSelectedSegment: '',
   mapLens: 'off',
   mapHighlightActor: '',
+  atlasSev: new Set(),
+  atlasQuery: '',
+  boardExpanded: new Set(),
   token: 'demo-token',
   auditStatus: 'loading',
   actionsStatus: 'loading',
@@ -188,6 +191,12 @@ function routeFromPath(pathname) {
   if (/^\/engagements\/[^/]+\/map\/?$/.test(pathname)) {
     return { view: 'map', phase: 'attacks' };
   }
+  if (/^\/engagements\/[^/]+\/devices\/?$/.test(pathname)) {
+    return { view: 'devices', phase: 'attacks' };
+  }
+  if (/^\/engagements\/[^/]+\/board\/?$/.test(pathname)) {
+    return { view: 'board', phase: 'attacks' };
+  }
   const match = pathname.match(/^\/engagements\/[^/]+\/(recon|attacks|findings|summit)\/?$/);
   return match ? { view: 'trail', phase: match[1] } : { view: 'trail', phase: 'attacks' };
 }
@@ -202,6 +211,14 @@ function reportPath(engagementId) {
 
 function mapPath(engagementId) {
   return `/engagements/${engagementId}/map`;
+}
+
+function devicesPath(engagementId) {
+  return `/engagements/${engagementId}/devices`;
+}
+
+function boardPath(engagementId) {
+  return `/engagements/${engagementId}/board`;
 }
 
 function reportJsonPath(engagementId) {
@@ -525,6 +542,18 @@ function navigateToReport() {
 function navigateToMap() {
   state.view = 'map';
   pushPath(mapPath(state.engagementId));
+  render();
+}
+
+function navigateToDevices() {
+  state.view = 'devices';
+  pushPath(devicesPath(state.engagementId));
+  render();
+}
+
+function navigateToBoard() {
+  state.view = 'board';
+  pushPath(boardPath(state.engagementId));
   render();
 }
 
@@ -1699,6 +1728,168 @@ function mTrailSVG(trails, positions) {
   }).join('');
 }
 
+/* ============================ Left nav ============================ */
+const NAV_ITEMS = [
+  { key: 'trail', label: 'Trail', icon: '<path d="M6 21c1-6 6-7 6-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 8c0-4 4-5 6-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="21" r="1.6"/><circle cx="18" cy="3" r="1.6"/>' },
+  { key: 'devices', label: 'Devices', icon: '<rect x="4" y="4" width="16" height="4" rx="1.5"/><rect x="4" y="10" width="16" height="4" rx="1.5"/><rect x="4" y="16" width="16" height="4" rx="1.5"/>' },
+  { key: 'map', label: 'Map', icon: '<path d="M3 20 L9 7 L13 14 L16 9 L21 20 Z"/><path d="M9 7 L11 10 L7 10 Z" fill="#fff"/>' },
+  { key: 'board', label: 'Board', icon: '<rect x="4" y="5" width="4" height="15" rx="1.2"/><rect x="10" y="5" width="4" height="10" rx="1.2"/><rect x="16" y="5" width="4" height="7" rx="1.2"/>' },
+  { key: 'report', label: 'Report', icon: '<path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 3v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 12h6M10 16h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
+];
+function renderNav(active) {
+  const items = NAV_ITEMS.map((it) => `<a class="appnav-item${active === it.key ? ' is-active' : ''}" href="#" data-action="goto-view" data-nav="${it.key}" aria-current="${active === it.key ? 'page' : 'false'}" aria-label="${it.label}"><span class="appnav-ico"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">${it.icon}</svg></span><span class="appnav-label">${it.label}</span></a>`).join('');
+  return `<nav class="appnav" aria-label="Views"><span class="appnav-brand" aria-hidden="true"></span>${items}</nav>`;
+}
+
+/* ============================ Device Atlas ============================ */
+function mSevByEntity() {
+  const map = {};
+  (state.findings || []).forEach((f) => { const s = String(f.severity || 'info').toLowerCase(); (f.affectedEntityIds || []).forEach((id) => { if (!(id in map) || MSEV_RANK[s] < MSEV_RANK[map[id]]) map[id] = s; }); });
+  return map;
+}
+function mHostRows() {
+  const sev = mSevByEntity();
+  return (state.entities || []).map((e) => {
+    const ip = mEntityIP(e);
+    const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+    return {
+      id: e.id,
+      name: (e.identifiers && e.identifiers[0] && e.identifiers[0].value) || a.hostname || e.kind || e.id,
+      ip: ip || '', kind: e.kind || 'host', role: a.role || '',
+      subnet: mSubnet(ip) || mSegmentKey(e).label,
+      sev: sev[e.id] || 'info',
+      seen: e.lastSeen ? formatTime(e.lastSeen) : '',
+    };
+  });
+}
+function filteredAtlasRows() {
+  const q = state.atlasQuery.trim().toLowerCase();
+  let rows = mHostRows().filter((r) => {
+    if (state.atlasSev.size && !state.atlasSev.has(r.sev)) return false;
+    if (q && !(`${r.name} ${r.ip} ${r.kind} ${r.role} ${r.subnet}`.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  rows.sort((a, b) => MSEV_RANK[a.sev] - MSEV_RANK[b.sev] || a.name.localeCompare(b.name));
+  return rows;
+}
+function atlasRowsHTML(rows) {
+  return rows.slice(0, 200).map((r) => `<tr>
+      <td><span class="atlas-stripe" style="background:${MSEV_COLOR[r.sev]}"></span></td>
+      <td><span class="atlas-host">${escapeHtml(r.name)}</span></td>
+      <td class="mono muted">${escapeHtml(r.ip || '—')}</td>
+      <td>${escapeHtml(r.kind)}</td>
+      <td class="mono muted">${escapeHtml(r.subnet)}</td>
+      <td><span class="sev-pill"><i style="background:${MSEV_COLOR[r.sev]}"></i>${MSEV_LABEL[r.sev]}</span></td>
+      <td class="muted">${escapeHtml(r.seen)}</td>
+    </tr>`).join('');
+}
+function drawAtlasRows() {
+  const rows = filteredAtlasRows();
+  const body = document.getElementById('atlas-rows');
+  if (body) body.innerHTML = atlasRowsHTML(rows);
+  const foot = document.getElementById('atlas-foot');
+  if (foot) foot.innerHTML = `Showing <b>${Math.min(rows.length, 200)}</b> of <b>${mHostRows().length}</b> hosts`;
+  document.querySelectorAll('#mAtlasFacets .atlas-facet').forEach((el) => { const s = el.dataset.sev; if (s) el.classList.toggle('on', state.atlasSev.has(s)); });
+}
+function renderDeviceAtlas() {
+  const all = mHostRows();
+  const sevCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
+  all.forEach((r) => { sevCounts[r.sev] += 1; });
+  const withFindings = all.filter((r) => r.sev !== 'info').length;
+  const facets = MSEV_ORDER.map((s) => `<label class="atlas-facet${state.atlasSev.has(s) ? ' on' : ''}" data-sev="${s}"><input type="checkbox" data-action="atlas-sev" data-sev="${s}" ${state.atlasSev.has(s) ? 'checked' : ''}/><span class="sev-pill"><i style="background:${MSEV_COLOR[s]}"></i>${MSEV_LABEL[s]}</span><span class="atlas-c num">${sevCounts[s]}</span></label>`).join('');
+  return `
+    <main class="app-shell atlas-shell">
+      ${renderNav('devices')}
+      <header class="masthead">
+        <div class="masthead-copy"><p class="eyebrow">Waypoint · device atlas</p><h1>Devices</h1><p class="subtitle">Every discovered host, filterable by severity — the operator's inventory.</p></div>
+        <div class="masthead-actions">
+          <div class="theme-switcher" role="group" aria-label="Theme selection">
+            <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
+            <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
+          </div>
+          <div class="metrics" aria-label="Inventory summary">
+            <div class="metric"><span class="metric-label">Hosts</span><strong>${all.length.toLocaleString()}</strong></div>
+            <div class="metric"><span class="metric-label">With findings</span><strong>${withFindings}</strong></div>
+            <div class="metric"><span class="metric-label">Critical</span><strong>${sevCounts.critical}</strong></div>
+          </div>
+        </div>
+      </header>
+      <div class="atlas-layout">
+        <aside class="atlas-rail" id="mAtlasFacets">
+          <div class="atlas-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input data-action="atlas-search" placeholder="Search host / IP / kind" value="${escapeHtml(state.atlasQuery)}" aria-label="Search hosts"/></div>
+          <h4>Severity</h4>${facets}
+        </aside>
+        <div class="atlas-main">
+          <div class="atlas-table">
+            <div class="atlas-thead">Host inventory</div>
+            <div class="atlas-scroll"><table>
+              <thead><tr><th></th><th>Host</th><th>Address</th><th>Kind</th><th>Segment</th><th>Severity</th><th>Last seen</th></tr></thead>
+              <tbody id="atlas-rows">${atlasRowsHTML(filteredAtlasRows())}</tbody>
+            </table></div>
+            <div class="atlas-tfoot"><span id="atlas-foot">Showing <b>${Math.min(all.length, 200)}</b> of <b>${all.length}</b> hosts</span><span class="muted">Sorted by severity</span></div>
+          </div>
+        </div>
+      </div>
+    </main>`;
+}
+
+/* ============================ Base Camp Board ============================ */
+const BOARD_COLS = [
+  { key: 'info', label: 'Discovered' },
+  { key: 'low', label: 'Analyzed' },
+  { key: 'medium', label: 'At risk' },
+  { key: 'high', label: 'Exploited' },
+  { key: 'critical', label: 'Owned' },
+];
+function mRecentByActor() {
+  const startedAt = (a) => (a.capture && a.capture.timing && a.capture.timing.startedAt) || a.receivedAt || '';
+  const byActor = {};
+  (state.actions || []).forEach((a) => {
+    const h = (a.actor && (a.actor.handle || a.actor.id)) || 'operator';
+    const t = startedAt(a);
+    if (!byActor[h] || t > byActor[h].t) byActor[h] = { handle: h, kind: a.actor && a.actor.kind, command: (a.capture && a.capture.command) || '', target: (a.capture && a.capture.target && a.capture.target.value) || '', phase: (a.capture && a.capture.phase) || '', t };
+  });
+  return Object.values(byActor).sort((x, y) => (x.t < y.t ? 1 : x.t > y.t ? -1 : 0));
+}
+function renderBaseCampBoard() {
+  const rows = mHostRows();
+  const buckets = { info: [], low: [], medium: [], high: [], critical: [] };
+  rows.forEach((r) => { (buckets[r.sev] || buckets.info).push(r); });
+  const workers = mRecentByActor();
+  const strip = workers.length ? `<div class="board-strip"><span class="board-strip-title">Active now · from recent captures</span><div class="board-workers">${workers.slice(0, 6).map((w) => `<div class="board-worker${w.kind === 'ai_agent' ? ' ai' : ''}"><span class="board-av" style="background:${w.kind === 'ai_agent' ? MSEV_COLOR.high : MPAL.saddle}">${escapeHtml(w.handle.slice(0, 2).toUpperCase())}</span><div class="board-wb"><div class="board-wn">${escapeHtml(w.handle)}${w.kind === 'ai_agent' ? '<b class="ai">AI</b>' : ''}</div><div class="board-wf">${w.command ? `<span class="tg">${escapeHtml(w.command)}</span>${w.target ? ` → ${escapeHtml(w.target)}` : ''}` : 'idle'}</div></div></div>`).join('')}</div></div>` : '';
+  const cardHTML = (r) => `<div class="board-card"><div class="board-card-top"><span class="board-id mono">${escapeHtml(r.name)}</span><span class="sev-tag"><i style="background:${MSEV_COLOR[r.sev]}"></i>${MSEV_LABEL[r.sev]}</span></div><div class="board-ip mono muted">${escapeHtml(r.ip || r.subnet)}</div>${r.role ? `<div class="board-chips"><span class="board-chip">${escapeHtml(r.role)}</span><span class="board-chip">${escapeHtml(r.kind)}</span></div>` : ''}</div>`;
+  const cols = BOARD_COLS.map((c) => {
+    const list = buckets[c.key] || [];
+    const expanded = state.boardExpanded.has(c.key);
+    const shown = expanded ? list : list.slice(0, 6);
+    const more = list.length - shown.length;
+    return `<div class="board-col"><div class="board-col-head"><span class="board-dot" style="background:${MSEV_COLOR[c.key]}"></span><span class="board-col-name">${c.label}</span><span class="board-count num">${list.length}</span></div><div class="board-cards">${shown.map(cardHTML).join('') || '<div class="board-empty">—</div>'}</div>${more > 0 ? `<div class="board-more" data-action="board-more" data-col="${c.key}">↓ ${more} more</div>` : (expanded && list.length > 6 ? `<div class="board-more" data-action="board-more" data-col="${c.key}">↑ collapse</div>` : '')}</div>`;
+  }).join('');
+  const findings = (state.findings || []).slice().sort((a, b) => MSEV_RANK[String(a.severity || 'info').toLowerCase()] - MSEV_RANK[String(b.severity || 'info').toLowerCase()]);
+  const findingCards = findings.map((f) => { const s = String(f.severity || 'info').toLowerCase(); return `<div class="board-card"><div class="board-card-top"><span class="board-id mono">FND</span><span class="sev-tag"><i style="background:${MSEV_COLOR[s]}"></i>${MSEV_LABEL[s]}</span></div><h5 class="board-fh">${escapeHtml(f.title || 'Finding')}</h5><div class="board-ip muted">${escapeHtml(f.status || 'open')} · ${(f.affectedEntityIds || []).length} host${(f.affectedEntityIds || []).length === 1 ? '' : 's'}</div></div>`; }).join('') || '<div class="board-empty">No findings yet</div>';
+  const reportedCol = `<div class="board-col"><div class="board-col-head"><span class="board-dot" style="background:${MPAL.forest}"></span><span class="board-col-name">Reported</span><span class="board-count num">${findings.length}</span></div><div class="board-cards">${findingCards}</div></div>`;
+  return `
+    <main class="app-shell board-shell">
+      ${renderNav('board')}
+      <header class="masthead">
+        <div class="masthead-copy"><p class="eyebrow">Waypoint · base camp board</p><h1>Base camp</h1><p class="subtitle">Hosts progress by risk; who's working on what streams in from recent captures.</p></div>
+        <div class="masthead-actions">
+          <div class="theme-switcher" role="group" aria-label="Theme selection">
+            <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
+            <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
+          </div>
+          <div class="metrics" aria-label="Board summary">
+            <div class="metric"><span class="metric-label">Hosts</span><strong>${rows.length.toLocaleString()}</strong></div>
+            <div class="metric"><span class="metric-label">Active</span><strong>${workers.length}</strong></div>
+            <div class="metric"><span class="metric-label">Findings</span><strong>${findings.length}</strong></div>
+          </div>
+        </div>
+      </header>
+      ${strip}
+      <div class="board-cols">${cols}${reportedCol}</div>
+    </main>`;
+}
+
 function renderTerritoryMap() {
   const segments = mBuildSegments();
   const totalHosts = (state.entities || []).length;
@@ -1739,6 +1930,7 @@ function renderTerritoryMap() {
 
   return `
     <main class="app-shell territory-shell">
+      ${renderNav('map')}
       <header class="masthead">
         <div class="masthead-copy">
           <p class="eyebrow">Waypoint · territory map</p>
@@ -1833,6 +2025,7 @@ function renderTrailMap() {
 
   return `
     <main class="app-shell">
+      ${renderNav('trail')}
       <header class="masthead">
         <div class="masthead-copy">
           <p class="eyebrow">Waypoint · expedition shell</p>
@@ -2385,6 +2578,7 @@ function renderReportView() {
   const snapshot = state.reportSnapshot;
   return `
     <main class="app-shell report-shell" aria-label="Frozen report snapshot">
+      ${renderNav('report')}
       <section class="report-hero artifact">
         <div>
           <p class="eyebrow">Waypoint · frozen report snapshot</p>
@@ -2587,8 +2781,10 @@ function render() {
     root.innerHTML = renderSetupWizard();
     return;
   }
-  document.title = state.view === 'report' ? 'Waypoint — report snapshot' : state.view === 'map' ? 'Waypoint — territory map' : `Waypoint — ${phaseNames[state.activePhase]}`;
-  root.innerHTML = state.view === 'report' ? renderReportView() : state.view === 'map' ? renderTerritoryMap() : renderTrailMap();
+  const titleByView = { report: 'Waypoint — report snapshot', map: 'Waypoint — territory map', devices: 'Waypoint — device atlas', board: 'Waypoint — base camp board' };
+  document.title = titleByView[state.view] || `Waypoint — ${phaseNames[state.activePhase]}`;
+  const viewRenderers = { report: renderReportView, map: renderTerritoryMap, devices: renderDeviceAtlas, board: renderBaseCampBoard };
+  root.innerHTML = (viewRenderers[state.view] || renderTrailMap)();
   syncExportPolling();
 }
 
@@ -2698,6 +2894,28 @@ async function handleClick(event) {
     render();
     return;
   }
+  if (action === 'goto-view') {
+    event.preventDefault();
+    const nav = target.dataset.nav;
+    if (nav === 'trail') navigateToPhase(state.activePhase && state.activePhase !== 'summit' ? state.activePhase : 'attacks');
+    else if (nav === 'devices') navigateToDevices();
+    else if (nav === 'map') navigateToMap();
+    else if (nav === 'board') navigateToBoard();
+    else if (nav === 'report') navigateToReport();
+    return;
+  }
+  if (action === 'atlas-sev') {
+    const s = target.dataset.sev;
+    if (state.atlasSev.has(s)) state.atlasSev.delete(s); else state.atlasSev.add(s);
+    drawAtlasRows();
+    return;
+  }
+  if (action === 'board-more') {
+    const c = target.dataset.col;
+    if (state.boardExpanded.has(c)) state.boardExpanded.delete(c); else state.boardExpanded.add(c);
+    render();
+    return;
+  }
   if (action === 'refresh-entities') {
     await refreshEntities();
     return;
@@ -2707,6 +2925,7 @@ async function handleClick(event) {
     return;
   }
   if (action === 'guide-search') return;
+  if (action === 'atlas-search') return;
   if (action === 'entity-search') return;
   if (action === 'actor-query') return;
   if (action === 'provision-draft') return;
@@ -2908,6 +3127,11 @@ function handleInput(event) {
   }
   if (action === 'guide-search') {
     updateGuideQuery(target.value);
+    return;
+  }
+  if (action === 'atlas-search') {
+    state.atlasQuery = target.value;
+    drawAtlasRows();
     return;
   }
   if (action === 'entity-search') {

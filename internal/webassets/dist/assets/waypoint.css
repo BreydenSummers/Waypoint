@@ -2294,3 +2294,81 @@ a:focus-visible,
 .territory-achip b.ai { font-size: 9px; font-weight: 700; background: var(--deep-bark); color: var(--wheat); padding: 0 4px; border-radius: 4px; margin-left: 1px; }
 .territory-achip:hover { background: var(--page-bg-2); }
 .territory-achip.on { background: var(--wheat); color: var(--deep-bark); }
+
+/* ============================ Left nav + shared ============================ */
+:root:not([data-view="setup"]) body { padding-left: 76px; }
+.appnav { position: fixed; left: 0; top: 0; bottom: 0; width: 76px; z-index: 60; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 6px; background: var(--chrome-surface); border-right: 1px solid var(--chrome-border); backdrop-filter: blur(10px); }
+.appnav-brand { width: 26px; height: 26px; border-radius: 50%; background: var(--lantern); box-shadow: 0 0 0 3px var(--wheat); margin-bottom: 10px; flex: 0 0 auto; }
+.appnav-item { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 64px; padding: 9px 4px; border-radius: 12px; color: var(--chrome-muted); text-decoration: none; }
+.appnav-item:hover { background: var(--page-bg-2); color: var(--chrome-strong); }
+.appnav-item.is-active { background: var(--artifact-parchment); color: var(--harvest); box-shadow: inset 0 0 0 1px var(--artifact-border); }
+.appnav-ico svg { width: 22px; height: 22px; display: block; }
+.appnav-label { font-size: 10px; font-weight: 600; }
+.appnav-item:focus-visible { outline: 2px solid var(--harvest); outline-offset: 2px; }
+
+.mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+.muted { color: var(--chrome-muted); }
+.num { font-variant-numeric: tabular-nums; }
+.sev-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--chrome-strong); white-space: nowrap; }
+.sev-pill i { width: 9px; height: 9px; border-radius: 3px; display: inline-block; }
+.sev-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--chrome-strong); white-space: nowrap; }
+.sev-tag i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+
+/* ============================ Device Atlas ============================ */
+.atlas-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; margin-top: 8px; }
+.atlas-rail { align-self: start; background: var(--workspace-surface); border: 1px solid var(--workspace-border); border-radius: 14px; padding: 14px; }
+.atlas-rail h4 { margin: 14px 0 8px; font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--chrome-muted); }
+.atlas-search { display: flex; align-items: center; gap: 8px; background: var(--page-bg); border: 1px solid var(--chrome-border); border-radius: 10px; padding: 8px 11px; color: var(--chrome-muted); }
+.atlas-search input { background: none; border: 0; color: var(--page-text); font: inherit; width: 100%; outline: none; }
+.atlas-facet { display: flex; align-items: center; gap: 9px; padding: 5px 7px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.atlas-facet:hover { background: var(--page-bg-2); }
+.atlas-facet input { accent-color: var(--harvest); width: 15px; height: 15px; }
+.atlas-facet .atlas-c { margin-left: auto; color: var(--chrome-muted); font-size: 12px; }
+.atlas-table { background: var(--artifact-parchment); border: 1px solid var(--artifact-border); border-radius: 16px; overflow: hidden; box-shadow: 0 18px 40px -30px var(--chrome-shadow); display: flex; flex-direction: column; min-height: 0; }
+.atlas-thead { padding: 12px 16px; border-bottom: 1px solid var(--artifact-border); font-weight: 700; font-size: 14px; }
+.atlas-scroll { overflow: auto; max-height: min(64vh, 680px); }
+.atlas-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.atlas-table thead th { position: sticky; top: 0; background: var(--artifact-map); text-align: left; padding: 8px 16px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--stone-dark); border-bottom: 1px solid var(--artifact-border); white-space: nowrap; }
+.atlas-table tbody td { padding: 8px 16px; border-bottom: 1px solid var(--artifact-border); white-space: nowrap; color: var(--page-text); }
+.atlas-table tbody td.muted { color: var(--chrome-muted); }
+.atlas-table tbody tr:hover { background: var(--page-bg-2); }
+.atlas-stripe { display: inline-block; width: 4px; height: 20px; border-radius: 2px; vertical-align: middle; }
+.atlas-host { font-weight: 600; }
+.atlas-tfoot { padding: 9px 16px; border-top: 1px solid var(--artifact-border); color: var(--chrome-muted); font-size: 12px; display: flex; justify-content: space-between; }
+
+/* ============================ Base Camp Board ============================ */
+.board-strip { margin: 10px 0 6px; background: var(--artifact-parchment); border: 1px solid var(--artifact-border); border-radius: 14px; padding: 12px 14px; }
+.board-strip-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--chrome-muted); font-weight: 700; }
+.board-workers { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.board-worker { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 8px; border-radius: 12px; background: var(--workspace-surface); border: 1px solid var(--workspace-border); min-width: 200px; }
+.board-av { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 700; flex: 0 0 auto; }
+.board-worker.ai .board-av { border-radius: 8px; }
+.board-wn { font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.board-wn b.ai { font-size: 9px; background: var(--deep-bark); color: var(--wheat); padding: 0 4px; border-radius: 4px; }
+.board-wf { font-size: 11.5px; color: var(--chrome-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
+.board-wf .tg { color: var(--harvest); font-weight: 600; }
+.board-cols { display: grid; grid-template-columns: repeat(6, minmax(198px, 1fr)); gap: 12px; margin-top: 10px; overflow-x: auto; align-items: start; }
+.board-col { background: var(--page-bg-2); border: 1px solid var(--workspace-border); border-radius: 14px; padding: 10px; }
+.board-col-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 10px; }
+.board-dot { width: 9px; height: 9px; border-radius: 50%; }
+.board-col-name { font-weight: 700; font-size: 13px; }
+.board-count { margin-left: auto; font-size: 12px; color: var(--chrome-muted); background: var(--artifact-parchment); border: 1px solid var(--artifact-border); border-radius: 999px; padding: 1px 9px; font-weight: 600; }
+.board-cards { display: grid; gap: 9px; }
+.board-card { background: var(--artifact-parchment); border: 1px solid var(--artifact-border); border-radius: 12px; padding: 11px; box-shadow: 0 6px 16px -14px var(--chrome-shadow); }
+.board-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.board-id { font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board-card .sev-tag { margin-left: auto; }
+.board-fh { margin: 2px 0 3px; font-size: 13px; font-weight: 600; line-height: 1.3; }
+.board-ip { font-size: 11.5px; }
+.board-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.board-chip { font-size: 10.5px; color: var(--chrome-muted); background: var(--page-bg); border: 1px solid var(--artifact-border); border-radius: 6px; padding: 1px 7px; }
+.board-more { text-align: center; font-size: 12px; color: var(--chrome-muted); padding: 8px; font-weight: 600; cursor: pointer; }
+.board-more:hover { color: var(--harvest); }
+.board-empty { color: var(--chrome-muted); font-size: 12px; padding: 8px; text-align: center; }
+
+@media (max-width: 720px) {
+  .atlas-layout { grid-template-columns: 1fr; }
+  :root:not([data-view="setup"]) body { padding-left: 64px; }
+  .appnav { width: 64px; }
+  .appnav-item { width: 54px; }
+}
