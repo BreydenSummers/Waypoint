@@ -1006,8 +1006,13 @@ function syncExportPolling() {
     const tick = () => {
       if (!controller.signal.aborted) void refreshExportJobs(controller.signal);
     };
-    tick();
+    // Assign the timer BEFORE the first tick: tick() runs refreshExportJobs,
+    // which calls render(), which calls syncExportPolling() again — if the timer
+    // weren't set yet the guard above would re-enter and recurse until the stack
+    // overflows (and flood the exports endpoint). Setting it first makes the
+    // re-entrant call a no-op.
     state.exportPollTimer = window.setInterval(tick, 3500);
+    tick();
     return;
   }
   if (!shouldPoll && state.exportPollTimer) {
@@ -1581,7 +1586,7 @@ const MFIRE = 'c -4 5 -5 8 -2 11 c -3 0 -5 3 -2 5 c 2 2 7 2 9 0 c 3 -2 1 -5 -2 -
 function mSmoke(x, y, arr) { return `<g>${arr.map((p) => `<circle class="territory-puff" cx="${x}" cy="${y}" r="${p.r}" fill="rgba(180,167,140,1)" style="--dx:${p.dx}px;--o:${p.o};--d:${p.d}s;--dl:${p.dl}s"/>`).join('')}</g>`; }
 function mFire(s = 1) { return `<g transform="scale(${s})">${mSmoke(1, -20, [{ r:2.6, dx:3, o:.42, d:3, dl:0 }, { r:3, dx:-2, o:.36, d:3.5, dl:.9 }, { r:2.3, dx:4, o:.3, d:3.2, dl:1.7 }])}<g class="territory-flame"><path d="M0 -8 C -8 -14 -7 -24 -1 -30 C -2 -22 4 -22 3 -30 C 9 -24 8 -13 0 -8 Z" fill="${MPAL.harvest}"/><path d="M0 -9 C -5 -13 -4 -21 0 -26 C 4 -21 5 -13 0 -9 Z" fill="${MPAL.lantern}"/><path d="M0 -10 C -2 -12 -2 -17 0 -20 C 2 -17 2 -12 0 -10 Z" fill="${MPAL.wheat}"/></g><path d="M-11 -1 L11 -5" stroke="${MPAL.saddle}" stroke-width="4" stroke-linecap="round"/><path d="M-11 -5 L11 -1" stroke="${MPAL.bark}" stroke-width="4" stroke-linecap="round"/></g>`; }
 function mPine(s = 1) { return `<g transform="scale(${s})"><rect x="-1.8" y="-7" width="3.6" height="7" fill="${MPAL.saddle}"/><path d="M0 -30 L7 -20 L-7 -20 Z" fill="${MPAL.forest}"/><path d="M0 -25 L9 -13 L-9 -13 Z" fill="${MPAL.trees}"/><path d="M0 -19 L11 -6 L-11 -6 Z" fill="${MPAL.fern}"/></g>`; }
-function mBadge(n, x, y, color) { return `<g transform="translate(${x},${y})"><rect x="-17" y="-11" width="34" height="18" rx="9" fill="var(--artifact-parchment)" stroke="${color}" stroke-width="1.7"/><text x="0" y="3.5" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="700" fill="var(--chrome-strong)">${n}</text></g>`; }
+function mBadge(n, x, y, color) { return `<g transform="translate(${x},${y})"><rect x="-17" y="-11" width="34" height="18" rx="9" fill="var(--artifact-parchment)" stroke="${color}" stroke-width="1.7"/><text x="0" y="3.5" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="11" font-weight="700" fill="#3b2617">${n}</text></g>`; }
 const M_CAMPS = {
   full: (n, color, s = 1) => `<g transform="scale(${s})"><ellipse cx="0" cy="2" rx="38" ry="7.5" fill="${MPAL.cocoa}" opacity=".18"/><g transform="translate(21,1) scale(.62)">${mPine(1)}</g><g transform="translate(-16,0)"><path d="M0 0 L-12 0 L-6 -18 Z" fill="${color}" stroke="${MPAL.bark}" stroke-width="1.3"/><path d="M-6 -18 L0 0 L3.5 0 L-2.5 -18 Z" fill="${MPAL.saddle}" stroke="${MPAL.bark}" stroke-width="1.3"/></g><g transform="translate(7,0) scale(.6)">${mFire(1)}</g>${mBadge(n, -3, 17, color)}</g>`,
   twin: (n, color, s = 1) => `<g transform="scale(${s})"><ellipse cx="0" cy="2" rx="38" ry="7.5" fill="${MPAL.cocoa}" opacity=".18"/><g transform="translate(-13,0) scale(.95)"><path d="M-9 0 L0 -19 L9 0 Z" fill="${color}" stroke="${MPAL.bark}" stroke-width="1.3" stroke-linejoin="round"/><path d="M-3 0 L0 -7 L3 0 Z" fill="${MPAL.saddle}" stroke="${MPAL.bark}" stroke-width="0.8"/></g><g transform="translate(15,1) scale(.8)"><path d="M-9 0 L0 -19 L9 0 Z" fill="${MPAL.saddle}" stroke="${MPAL.bark}" stroke-width="1.3" stroke-linejoin="round"/></g><g transform="translate(1,0) scale(.4)">${mFire(1)}</g>${mBadge(n, 0, 17, color)}</g>`,
@@ -2391,12 +2396,12 @@ function renderReportView() {
       ${state.reportStatus === 'error' ? `<div class="live-banner"><strong>Report error</strong> ${escapeHtml(state.reportError)}</div>` : ''}
       ${snapshot ? `
         <article class="report-page" aria-label="Printable engagement report">
-          <section class="report-section"><h2>Scope</h2><ul>${snapshot.scope.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
-          <section class="report-section"><h2>Methodology</h2><ul>${snapshot.methodology.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
+          <section class="report-section"><h2>Scope</h2><ul>${(snapshot.scope || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
+          <section class="report-section"><h2>Methodology</h2><ul>${(snapshot.methodology || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
           <section class="report-section">
             <h2>Findings</h2>
             <div class="report-grid">
-              ${snapshot.findings.map((finding) => `
+              ${(snapshot.findings || []).map((finding) => `
                 <article class="report-card">
                   <p class="report-badge">${escapeHtml(finding.severity)}</p>
                   <h3>${escapeHtml(finding.title)}</h3>
@@ -2409,7 +2414,7 @@ function renderReportView() {
           <section class="report-section">
             <h2>Evidence</h2>
             <div class="report-grid">
-              ${snapshot.evidence.map((item) => `
+              ${(snapshot.evidence || []).map((item) => `
                 <article class="report-card">
                   <p class="report-badge">${escapeHtml(item.label)}</p>
                   <p><strong>Source:</strong> ${escapeHtml(item.command)}</p>
@@ -2421,8 +2426,8 @@ function renderReportView() {
                 </article>`).join('')}
             </div>
           </section>
-          <section class="report-section"><h2>Attribution</h2><div class="report-grid">${snapshot.attribution.map((section) => `<article class="report-card"><h3>${escapeHtml(section.title)}</h3><ul>${section.items.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></article>`).join('')}</div></section>
-          <section class="report-section"><h2>Known capture gaps</h2><ul>${snapshot.knownCaptureGaps.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
+          <section class="report-section"><h2>Attribution</h2><div class="report-grid">${(snapshot.attribution || []).map((section) => `<article class="report-card"><h3>${escapeHtml(section.title)}</h3><ul>${(section.items || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></article>`).join('')}</div></section>
+          <section class="report-section"><h2>Known capture gaps</h2><ul>${(snapshot.knownCaptureGaps || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
         </article>` : ''}
     </main>`;
 }
