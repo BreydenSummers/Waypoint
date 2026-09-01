@@ -1602,14 +1602,18 @@ function renderOperationsShell() {
 
 /* ============================ Territory Map ============================
    A cartographic view of the estate: subnets become campsites, sized by host
-   count and coloured by their worst finding severity, laid out so the most
-   compromised segments climb toward the snowy summit (elevation = risk).
+   count and coloured by their worst finding severity, laid out in trust tiers
+   so the crown-jewel segments sit high on the mountain and the endpoints spread
+   across the base (elevation = trust tier: Core → Servers → DMZ/Edge → User).
    Everything here is derived from real /entities + /findings data. */
 const MPAL = { bark:'#4a2f1b', saddle:'#6b4423', trail:'#8b5e34', harvest:'#ba7517', lantern:'#ef9f27', wheat:'#fac775', fern:'#97c459', forest:'#639922', trees:'#6b8e4e', stone:'#b4a78c', stoned:'#8b7355', rust:'#b04c30', cocoa:'#854f0b' };
 const MSEV_COLOR = { critical:'#b04c30', high:'#ba7517', medium:'#ef9f27', low:'#97c459', info:'#b4a78c' };
 const MSEV_RANK = { critical:0, high:1, medium:2, low:3, info:4 };
 const MSEV_LABEL = { critical:'Critical', high:'High', medium:'Medium', low:'Low', info:'Info' };
 const MSEV_ORDER = ['critical','high','medium','low','info'];
+// Trust tiers give the map its elevation, high (Core) to low (endpoints).
+const MTIER_ORDER = [0, 1, 2, 3];
+const MTIER_LABEL = { 0: 'Core', 1: 'Servers', 2: 'DMZ / Edge', 3: 'User / Endpoint' };
 const MFIRE = 'c -4 5 -5 8 -2 11 c -3 0 -5 3 -2 5 c 2 2 7 2 9 0 c 3 -2 1 -5 -2 -5 c 3 -3 1 -7 -3 -11';
 
 function mSmoke(x, y, arr) { return `<g>${arr.map((p) => `<circle class="territory-puff" cx="${x}" cy="${y}" r="${p.r}" fill="rgba(180,167,140,1)" style="--dx:${p.dx}px;--o:${p.o};--d:${p.d}s;--dl:${p.dl}s"/>`).join('')}</g>`; }
@@ -1623,9 +1627,11 @@ const M_CAMPS = {
   cabin: (n, color, s = 1) => `<g transform="scale(${s})"><ellipse cx="0" cy="2" rx="34" ry="7" fill="${MPAL.cocoa}" opacity=".18"/><g transform="translate(-4,0)">${mSmoke(8, -24, [{ r:2.2, dx:2, o:.34, d:3.3, dl:.2 }, { r:2, dx:-2, o:.28, d:3.7, dl:1.3 }])}<rect x="9" y="-24" width="3.6" height="10" fill="${MPAL.bark}"/><rect x="-13" y="-12" width="26" height="12" fill="${color}" stroke="${MPAL.bark}" stroke-width="1.2"/><path d="M-16 -12 L0 -22 L16 -12 Z" fill="${MPAL.saddle}" stroke="${MPAL.bark}" stroke-width="1.2" stroke-linejoin="round"/><rect x="-3.5" y="-8" width="7" height="8" fill="${MPAL.bark}"/><rect x="6" y="-8" width="4.5" height="4.5" fill="${MPAL.wheat}" stroke="${MPAL.bark}" stroke-width="0.6"/></g>${mBadge(n, 0, 17, color)}</g>`,
   hammock: (n, color, s = 1) => `<g transform="scale(${s})"><ellipse cx="0" cy="2" rx="34" ry="6.5" fill="${MPAL.cocoa}" opacity=".16"/><g transform="translate(-18,1) scale(.72)">${mPine(1)}</g><g transform="translate(18,1) scale(.72)">${mPine(1)}</g><path d="M-15 -13 Q 0 -1 15 -13" fill="none" stroke="${color}" stroke-width="3.2" stroke-linecap="round"/><g transform="translate(0,0) scale(.4)">${mFire(1)}</g>${mBadge(n, 0, 17, color)}</g>`,
 };
-const M_POOL = ['hammock', 'cabin', 'dome', 'twin', 'full'];
 function mHash(str) { let h = 2166136261 >>> 0; for (let i = 0; i < str.length; i += 1) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h; }
-function mCampFor(cidr, worst) { if (worst === 'critical') return M_CAMPS.full; return M_CAMPS[M_POOL[mHash(cidr) % M_POOL.length]]; }
+// The Core tier is the flagship full base camp; every other segment draws a
+// varied smaller camp so the tiers read differently down the slope.
+const M_POOL_MINOR = ['hammock', 'cabin', 'dome', 'twin'];
+function mCampFor(cidr, tier) { if (tier === 0) return M_CAMPS.full; return M_CAMPS[M_POOL_MINOR[mHash(cidr) % M_POOL_MINOR.length]]; }
 function mSnowCap(ax, ay, lx, rx, by) { const t = 0.34, lpx = ax + t * (lx - ax), py = ay + t * (by - ay), rpx = ax + t * (rx - ax), midx = (lpx + rpx) / 2; return `M${ax.toFixed(0)} ${ay.toFixed(0)} L${lpx.toFixed(0)} ${py.toFixed(0)} Q ${((lpx + midx) / 2).toFixed(0)} ${(py + 4).toFixed(0)} ${midx.toFixed(0)} ${(py + 1).toFixed(0)} Q ${((midx + rpx) / 2).toFixed(0)} ${(py + 4).toFixed(0)} ${rpx.toFixed(0)} ${py.toFixed(0)} Z`; }
 function mMountainRange(by) {
   const far = `<path d="M-20 ${by} L110 ${by - 58} L182 ${by - 30} L280 ${by - 66} L362 ${by - 32} L470 ${by - 60} L560 ${by - 30} L680 ${by - 58} L782 ${by - 30} L880 ${by - 52} L1020 ${by - 28} L1020 ${by} Z" fill="${MPAL.stone}" opacity=".22"/>`;
@@ -1664,11 +1670,36 @@ function mBuildSegments() {
     if (MSEV_RANK[s] < MSEV_RANK[segs[sk.key].worst]) segs[sk.key].worst = s;
     if (e.id in sevByEntity) segs[sk.key].findings += 1;
   });
-  return Object.values(segs).map((s) => ({ ...s, n: s.hosts.length })).sort((a, b) => MSEV_RANK[a.worst] - MSEV_RANK[b.worst] || b.n - a.n);
+  return Object.values(segs)
+    .map((s) => ({ ...s, n: s.hosts.length, tier: mSegmentTier(s) }))
+    .sort((a, b) => a.tier - b.tier || MSEV_RANK[a.worst] - MSEV_RANK[b.worst] || b.n - a.n);
 }
 function mSegmentRole(seg) {
   for (const h of seg.hosts) { const a = (h.attributes && typeof h.attributes === 'object') ? h.attributes : {}; if (a.role) return String(a.role); }
   return seg.hosts[0] ? (seg.hosts[0].kind || 'segment') : 'segment';
+}
+// Classify a host into a trust tier from its role / kind / exposure. Keyword
+// based so it degrades gracefully on real estates: anything unrecognised falls
+// to the endpoint tier at the base of the mountain.
+function mHostTier(e) {
+  if (e.kind === 'identity') return 0;
+  const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+  const hay = `${String(a.role || '').toLowerCase()} ${String(a.hostname || '').toLowerCase()} ${String(e.kind || '').toLowerCase()}`;
+  const has = (words) => words.some((w) => hay.includes(w));
+  if (has(['domain', 'dc-', 'directory', 'identity', 'pki', 'kerbero', 'ldap', 'active directory'])) return 0;
+  if (has(['server', 'db-', 'database', 'app-', 'sql', 'backup', 'storage', 'virtual', 'hyperv', 'esxi', 'vcenter', 'file'])) return 1;
+  if (a.exposure === 'internet' || has(['dmz', 'web', 'portal', 'gateway', 'edge', 'external', 'proxy', 'vpn', 'waf'])) return 2;
+  if (has(['ws', 'workstation', 'faculty', 'lab', 'student', 'desktop', 'laptop', 'voip', 'phone', 'iot', 'printer', 'mfp', 'kiosk', 'guest', 'endpoint', 'camera'])) return 3;
+  return 3;
+}
+// A segment sits at the tier of its dominant host; ties resolve toward the more
+// trusted (lower) tier, so a subnet holding any core assets reads as high-value.
+function mSegmentTier(seg) {
+  const counts = [0, 0, 0, 0];
+  seg.hosts.forEach((h) => { counts[mHostTier(h)] += 1; });
+  let best = 0;
+  for (let t = 1; t < 4; t += 1) { if (counts[t] > counts[best]) best = t; }
+  return best;
 }
 
 const M_ACTOR_COLORS = ['#ba7517', '#639922', '#b04c30', '#854f0b', '#8b5e34'];
@@ -1890,31 +1921,30 @@ function renderTerritoryMap() {
   const segments = mBuildSegments();
   const totalHosts = (state.entities || []).length;
   const totalFindings = (state.findings || []).length;
-  const bandY = { critical:162, high:300, medium:432, low:558, info:672 };
+  const bandY = { 0:172, 1:322, 2:472, 3:620 };
   const W = 1000, H = 760;
-  const present = MSEV_ORDER.filter((sev) => segments.some((s) => s.worst === sev));
   const nodeSVG = [];
   const positions = {};
-  MSEV_ORDER.forEach((sev) => {
-    const list = segments.filter((s) => s.worst === sev);
+  MTIER_ORDER.forEach((tier) => {
+    const list = segments.filter((s) => s.tier === tier);
     if (!list.length) return;
     const leftPad = 150, rightPad = 60, span = (W - leftPad - rightPad) / Math.max(list.length - 1, 1);
     list.forEach((seg, i) => {
       const x = list.length === 1 ? (leftPad + W - rightPad) / 2 : leftPad + i * span;
-      const y = bandY[sev] + (i % 2 ? 24 : -20);
+      const y = bandY[tier] + (i % 2 ? 24 : -20);
       const scale = 0.72 + Math.min(Math.sqrt(seg.n) / 10, 0.62);
       positions[seg.cidr] = { x, y };
       const sel = state.mapSelectedSegment === seg.cidr;
-      nodeSVG.push(`<g class="territory-camp${sel ? ' is-sel' : ''}" data-action="map-select" data-seg="${escapeHtml(seg.cidr)}" transform="translate(${x.toFixed(0)},${y.toFixed(0)})">${seg.worst === 'critical' ? `<ellipse cx="0" cy="${(-6 * scale).toFixed(0)}" rx="${(30 * scale).toFixed(0)}" ry="${(26 * scale).toFixed(0)}" fill="${MPAL.rust}" opacity=".12"/>` : ''}${mCampFor(seg.cidr, seg.worst)(seg.n, MSEV_COLOR[seg.worst], scale)}<text class="territory-camp-label" x="0" y="${(20 * scale + 30).toFixed(0)}" text-anchor="middle">${escapeHtml(seg.label || seg.cidr)}</text></g>`);
+      nodeSVG.push(`<g class="territory-camp${sel ? ' is-sel' : ''}" data-action="map-select" data-seg="${escapeHtml(seg.cidr)}" transform="translate(${x.toFixed(0)},${y.toFixed(0)})">${seg.worst === 'critical' ? `<ellipse cx="0" cy="${(-6 * scale).toFixed(0)}" rx="${(30 * scale).toFixed(0)}" ry="${(26 * scale).toFixed(0)}" fill="${MPAL.rust}" opacity=".12"/>` : ''}${mCampFor(seg.cidr, seg.tier)(seg.n, MSEV_COLOR[seg.worst], scale)}<text class="territory-camp-label" x="0" y="${(20 * scale + 30).toFixed(0)}" text-anchor="middle">${escapeHtml(seg.label || seg.cidr)}</text></g>`);
     });
   });
-  const riskTicks = MSEV_ORDER.filter((sev) => segments.some((s) => s.worst === sev)).map((sev) => `<text class="territory-tick" x="20" y="${bandY[sev] - 2}">${MSEV_LABEL[sev]} risk</text><text class="territory-tick-sub" x="20" y="${bandY[sev] + 12}">${segments.filter((s) => s.worst === sev).reduce((a, s) => a + s.n, 0)} hosts</text>`).join('');
-  const treeSpots = [[948, 300, 1.15], [70, 470, 1.3], [500, 726, 1.5], [220, 726, 1.25], [832, 724, 1.35], [664, 724, 1.4]];
+  const tierTicks = MTIER_ORDER.filter((tier) => segments.some((s) => s.tier === tier)).map((tier) => `<text class="territory-tick" x="20" y="${bandY[tier] - 2}">${MTIER_LABEL[tier]}</text><text class="territory-tick-sub" x="20" y="${bandY[tier] + 12}">${segments.filter((s) => s.tier === tier).reduce((a, s) => a + s.n, 0)} hosts</text>`).join('');
+  const treeSpots = [[948, 300, 1.15], [430, 548, 1.35], [500, 726, 1.5], [220, 726, 1.25], [832, 724, 1.35], [664, 724, 1.4]];
   const treesSVG = treeSpots.map(([x, y, s]) => `<g transform="translate(${x},${y})">${mPine(s)}</g>`).join('');
   const legend = MSEV_ORDER.map((sev) => `<span class="territory-li"><i style="background:${MSEV_COLOR[sev]}"></i>${MSEV_LABEL[sev]}</span>`).join('');
 
   const sel = segments.find((s) => s.cidr === state.mapSelectedSegment) || segments[0] || null;
-  const sideHTML = sel ? `<h3>Segment</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt">${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml((h.identifiers && h.identifiers[0] && h.identifiers[0].value) || h.kind || h.id)}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}</li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : '<h3>Segment</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>';
+  const sideHTML = sel ? `<h3>Segment</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt"><span class="territory-zone">${escapeHtml(MTIER_LABEL[sel.tier])}</span> · ${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml((h.identifiers && h.identifiers[0] && h.identifiers[0].value) || h.kind || h.id)}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}</li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : '<h3>Segment</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>';
 
   const emptyState = segments.length ? '' : `<div class="territory-empty"><strong>No mapped hosts yet</strong><p>Entities with an IP address appear here as campsites, grouped by /24 subnet. Capture some recon to populate the map.</p></div>`;
 
@@ -1931,7 +1961,7 @@ function renderTerritoryMap() {
         <div class="masthead-copy">
           <p class="eyebrow">Waypoint · territory map</p>
           <h1>The estate</h1>
-          <p class="subtitle">Subnets are campsites — sized by hosts, coloured by their worst finding, climbing toward the summit as risk rises.</p>
+          <p class="subtitle">Subnets are campsites — sized by hosts, coloured by their worst finding, stacked in trust tiers from the endpoints at the base up to the core at the summit.</p>
         </div>
         <div class="masthead-actions">
           <div class="theme-switcher" role="group" aria-label="Theme selection">
@@ -1955,7 +1985,7 @@ function renderTerritoryMap() {
             ${treesSVG}
             ${trailSVG}
             ${nodeSVG.join('')}
-            ${riskTicks}
+            ${tierTicks}
           </svg>
           <div class="territory-legend"><span class="territory-legend-title">Worst finding</span>${legend}</div>
           ${actorLegend}

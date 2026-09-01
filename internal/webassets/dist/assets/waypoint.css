@@ -2263,6 +2263,7 @@ a:focus-visible,
 .territory-side h3 + h3 { margin-top: 18px; }
 .territory-nm { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 600; margin: 0; }
 .territory-mt { color: var(--chrome-muted); font-size: 12px; margin: 2px 0 4px; }
+.territory-zone { display: inline-block; font-weight: 600; color: var(--saddle); background: color-mix(in srgb, var(--harvest) 16%, transparent); border-radius: 6px; padding: 1px 7px; letter-spacing: 0.02em; }
 .territory-hostlist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; max-height: 46vh; overflow-y: auto; }
 .territory-hostlist li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 4px 6px; border-radius: 8px; }
 .territory-hostlist li:hover { background: var(--page-bg-2); }
