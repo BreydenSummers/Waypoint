@@ -30,6 +30,12 @@
   --chrome-shadow: rgba(59, 38, 23, 0.12);
   --workspace-surface: rgba(255, 255, 255, 0.76);
   --workspace-border: rgba(132, 106, 73, 0.24);
+  /* Live inventory surfaces (atlas + board). Theme-aware, unlike the fixed
+     parchment tokens above, which stay paper-coloured for the report snapshot. */
+  --card-surface: #faeeda;
+  --card-head: #e8dcc3;
+  --card-border: #d4c4a0;
+  --card-head-text: #8b7355;
 }
 
 html[data-theme='dark'] {
@@ -43,6 +49,10 @@ html[data-theme='dark'] {
   --chrome-shadow: rgba(0, 0, 0, 0.34);
   --workspace-surface: rgba(32, 25, 20, 0.84);
   --workspace-border: rgba(198, 169, 123, 0.16);
+  --card-surface: #221a14;
+  --card-head: #2c2118;
+  --card-border: rgba(198, 169, 123, 0.2);
+  --card-head-text: #c9b292;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -57,6 +67,10 @@ html[data-theme='dark'] {
     --chrome-shadow: rgba(0, 0, 0, 0.34);
     --workspace-surface: rgba(32, 25, 20, 0.84);
     --workspace-border: rgba(198, 169, 123, 0.16);
+    --card-surface: #221a14;
+    --card-head: #2c2118;
+    --card-border: rgba(198, 169, 123, 0.2);
+    --card-head-text: #c9b292;
   }
 }
 
@@ -2221,7 +2235,7 @@ a:focus-visible,
 .territory-shell { max-width: 1320px; }
 .territory-layout {
   display: grid;
-  grid-template-columns: 1fr 320px;
+  grid-template-columns: minmax(0, 1fr) 360px;
   gap: 18px;
   margin-top: 8px;
 }
@@ -2268,8 +2282,8 @@ a:focus-visible,
 .territory-hostlist li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 4px 6px; border-radius: 8px; }
 .territory-hostlist li:hover { background: var(--page-bg-2); }
 .territory-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
-.territory-hn { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.territory-hip { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--chrome-muted); }
+.territory-hn { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.territory-hip { flex: 0 0 auto; margin-left: auto; padding-left: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--chrome-muted); white-space: nowrap; }
 .territory-more { font-size: 12px; color: var(--chrome-muted); margin: 6px 2px 0; }
 .territory-empty {
   position: absolute; inset: 0; display: flex; flex-direction: column;
@@ -2325,20 +2339,20 @@ a:focus-visible,
 .atlas-facet:hover { background: var(--page-bg-2); }
 .atlas-facet input { accent-color: var(--harvest); width: 15px; height: 15px; }
 .atlas-facet .atlas-c { margin-left: auto; color: var(--chrome-muted); font-size: 12px; }
-.atlas-table { background: var(--artifact-parchment); border: 1px solid var(--artifact-border); border-radius: 16px; overflow: hidden; box-shadow: 0 18px 40px -30px var(--chrome-shadow); display: flex; flex-direction: column; min-height: 0; }
-.atlas-thead { padding: 12px 16px; border-bottom: 1px solid var(--artifact-border); font-weight: 700; font-size: 14px; }
+.atlas-table { background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 16px; overflow: hidden; box-shadow: 0 18px 40px -30px var(--chrome-shadow); display: flex; flex-direction: column; min-height: 0; }
+.atlas-thead { padding: 12px 16px; border-bottom: 1px solid var(--card-border); font-weight: 700; font-size: 14px; }
 .atlas-scroll { overflow: auto; max-height: min(64vh, 680px); }
 .atlas-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.atlas-table thead th { position: sticky; top: 0; background: var(--artifact-map); text-align: left; padding: 8px 16px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--stone-dark); border-bottom: 1px solid var(--artifact-border); white-space: nowrap; }
-.atlas-table tbody td { padding: 8px 16px; border-bottom: 1px solid var(--artifact-border); white-space: nowrap; color: var(--page-text); }
+.atlas-table thead th { position: sticky; top: 0; background: var(--card-head); text-align: left; padding: 8px 16px; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--card-head-text); border-bottom: 1px solid var(--card-border); white-space: nowrap; }
+.atlas-table tbody td { padding: 8px 16px; border-bottom: 1px solid var(--card-border); white-space: nowrap; color: var(--page-text); }
 .atlas-table tbody td.muted { color: var(--chrome-muted); }
 .atlas-table tbody tr:hover { background: var(--page-bg-2); }
 .atlas-stripe { display: inline-block; width: 4px; height: 20px; border-radius: 2px; vertical-align: middle; }
 .atlas-host { font-weight: 600; }
-.atlas-tfoot { padding: 9px 16px; border-top: 1px solid var(--artifact-border); color: var(--chrome-muted); font-size: 12px; display: flex; justify-content: space-between; }
+.atlas-tfoot { padding: 9px 16px; border-top: 1px solid var(--card-border); color: var(--chrome-muted); font-size: 12px; display: flex; justify-content: space-between; }
 
 /* ============================ Base Camp Board ============================ */
-.board-strip { margin: 10px 0 6px; background: var(--artifact-parchment); border: 1px solid var(--artifact-border); border-radius: 14px; padding: 12px 14px; }
+.board-strip { margin: 10px 0 6px; background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 14px; padding: 12px 14px; }
 .board-strip-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--chrome-muted); font-weight: 700; }
 .board-workers { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .board-worker { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 8px; border-radius: 12px; background: var(--workspace-surface); border: 1px solid var(--workspace-border); min-width: 200px; }
@@ -2348,21 +2362,21 @@ a:focus-visible,
 .board-wn b.ai { font-size: 9px; background: var(--deep-bark); color: var(--wheat); padding: 0 4px; border-radius: 4px; }
 .board-wf { font-size: 11.5px; color: var(--chrome-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px; }
 .board-wf .tg { color: var(--harvest); font-weight: 600; }
-.board-cols { display: grid; grid-template-columns: repeat(6, minmax(198px, 1fr)); gap: 12px; margin-top: 10px; overflow-x: auto; align-items: start; }
+.board-cols { display: grid; grid-template-columns: repeat(6, minmax(176px, 1fr)); gap: 12px; margin-top: 10px; overflow-x: auto; overflow-y: hidden; padding-bottom: 4px; align-items: start; scrollbar-width: thin; }
 .board-col { background: var(--page-bg-2); border: 1px solid var(--workspace-border); border-radius: 14px; padding: 10px; }
 .board-col-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px 10px; }
 .board-dot { width: 9px; height: 9px; border-radius: 50%; }
 .board-col-name { font-weight: 700; font-size: 13px; }
-.board-count { margin-left: auto; font-size: 12px; color: var(--chrome-muted); background: var(--artifact-parchment); border: 1px solid var(--artifact-border); border-radius: 999px; padding: 1px 9px; font-weight: 600; }
+.board-count { margin-left: auto; font-size: 12px; color: var(--chrome-muted); background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 999px; padding: 1px 9px; font-weight: 600; }
 .board-cards { display: grid; gap: 9px; }
-.board-card { background: var(--artifact-parchment); border: 1px solid var(--artifact-border); border-radius: 12px; padding: 11px; box-shadow: 0 6px 16px -14px var(--chrome-shadow); }
+.board-card { background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 12px; padding: 11px; box-shadow: 0 6px 16px -14px var(--chrome-shadow); }
 .board-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
 .board-id { font-size: 11.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board-card .sev-tag { margin-left: auto; }
 .board-fh { margin: 2px 0 3px; font-size: 13px; font-weight: 600; line-height: 1.3; }
 .board-ip { font-size: 11.5px; }
 .board-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-.board-chip { font-size: 10.5px; color: var(--chrome-muted); background: var(--page-bg); border: 1px solid var(--artifact-border); border-radius: 6px; padding: 1px 7px; }
+.board-chip { font-size: 10.5px; color: var(--chrome-muted); background: var(--page-bg); border: 1px solid var(--card-border); border-radius: 6px; padding: 1px 7px; }
 .board-more { text-align: center; font-size: 12px; color: var(--chrome-muted); padding: 8px; font-weight: 600; cursor: pointer; }
 .board-more:hover { color: var(--harvest); }
 .board-empty { color: var(--chrome-muted); font-size: 12px; padding: 8px; text-align: center; }

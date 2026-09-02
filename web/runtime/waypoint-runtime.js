@@ -1774,6 +1774,20 @@ function mSevByEntity() {
   (state.findings || []).forEach((f) => { const s = String(f.severity || 'info').toLowerCase(); (f.affectedEntityIds || []).forEach((id) => { if (!(id in map) || MSEV_RANK[s] < MSEV_RANK[map[id]]) map[id] = s; }); });
   return map;
 }
+// mEntityName resolves a human-readable label for an entity. It prefers a named
+// attribute (e.g. an identity's sAMAccountName), then any identifier that is not
+// a raw AD SID, and only falls back to a SID/kind/id when nothing better exists —
+// so identities render as "jdoe", never "S-1-5-21-…".
+function mEntityName(e) {
+  const a = (e && e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+  const readable = a.hostname || a.sam || a.name || a.principal || a.displayName;
+  if (readable) return String(readable);
+  const ids = (e && e.identifiers) || [];
+  const named = ids.find((id) => id && id.value && id.type !== 'ad_sid');
+  if (named) return String(named.value);
+  const any = ids.find((id) => id && id.value);
+  return String((any && any.value) || (e && e.kind) || (e && e.id) || '');
+}
 function mHostRows() {
   const sev = mSevByEntity();
   return (state.entities || []).map((e) => {
@@ -1781,7 +1795,7 @@ function mHostRows() {
     const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
     return {
       id: e.id,
-      name: (e.identifiers && e.identifiers[0] && e.identifiers[0].value) || a.hostname || e.kind || e.id,
+      name: mEntityName(e),
       ip: ip || '', kind: e.kind || 'host', role: a.role || '',
       subnet: mSubnet(ip) || mSegmentKey(e).label,
       sev: sev[e.id] || 'info',
@@ -1944,7 +1958,7 @@ function renderTerritoryMap() {
   const legend = MSEV_ORDER.map((sev) => `<span class="territory-li"><i style="background:${MSEV_COLOR[sev]}"></i>${MSEV_LABEL[sev]}</span>`).join('');
 
   const sel = segments.find((s) => s.cidr === state.mapSelectedSegment) || segments[0] || null;
-  const sideHTML = sel ? `<h3>Segment</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt"><span class="territory-zone">${escapeHtml(MTIER_LABEL[sel.tier])}</span> · ${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml((h.identifiers && h.identifiers[0] && h.identifiers[0].value) || h.kind || h.id)}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}</li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : '<h3>Segment</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>';
+  const sideHTML = sel ? `<h3>Segment</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt"><span class="territory-zone">${escapeHtml(MTIER_LABEL[sel.tier])}</span> · ${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml(mEntityName(h))}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}</li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : '<h3>Segment</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>';
 
   const emptyState = segments.length ? '' : `<div class="territory-empty"><strong>No mapped hosts yet</strong><p>Entities with an IP address appear here as campsites, grouped by /24 subnet. Capture some recon to populate the map.</p></div>`;
 
