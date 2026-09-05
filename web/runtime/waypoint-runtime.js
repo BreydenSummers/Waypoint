@@ -56,6 +56,15 @@ const state = {
   atlasSev: new Set(),
   atlasQuery: '',
   boardExpanded: new Set(),
+  assetKind: 'hosts',
+  assetQuery: '',
+  assetAccess: new Set(),
+  assetTier: new Set(),
+  capQuery: '',
+  capActor: new Set(),
+  capType: new Set(),
+  drawer: null,
+  evidenceCache: {},
   token: 'demo-token',
   auditStatus: 'loading',
   actionsStatus: 'loading',
@@ -193,6 +202,9 @@ function routeFromPath(pathname) {
   if (/^\/engagements\/[^/]+\/board\/?$/.test(pathname)) {
     return { view: 'board', phase: 'attacks' };
   }
+  if (/^\/engagements\/[^/]+\/captures\/?$/.test(pathname)) {
+    return { view: 'captures', phase: 'attacks' };
+  }
   const match = pathname.match(/^\/engagements\/[^/]+\/(recon|attacks|findings|summit)\/?$/);
   return match ? { view: 'trail', phase: match[1] } : { view: 'trail', phase: 'attacks' };
 }
@@ -215,6 +227,10 @@ function devicesPath(engagementId) {
 
 function boardPath(engagementId) {
   return `/engagements/${engagementId}/board`;
+}
+
+function capturesPath(engagementId) {
+  return `/engagements/${engagementId}/captures`;
 }
 
 function reportJsonPath(engagementId) {
@@ -550,6 +566,12 @@ function navigateToDevices() {
 function navigateToBoard() {
   state.view = 'board';
   pushPath(boardPath(state.engagementId));
+  render();
+}
+
+function navigateToCaptures() {
+  state.view = 'captures';
+  pushPath(capturesPath(state.engagementId));
   render();
 }
 
@@ -1686,19 +1708,19 @@ function mHostTier(e) {
   const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
   const hay = `${String(a.role || '').toLowerCase()} ${String(a.hostname || '').toLowerCase()} ${String(e.kind || '').toLowerCase()}`;
   const has = (words) => words.some((w) => hay.includes(w));
-  if (has(['domain', 'dc-', 'directory', 'identity', 'pki', 'kerbero', 'ldap', 'active directory'])) return 0;
+  // Tier 0 is the identity control plane — domain controllers, AD/PKI, KDCs.
+  // Match precise infra terms so "domain-member" workstations don't count.
+  if (has(['dc-', 'domain controller', 'domain-controller', 'directory', 'pki', 'adcs', 'certificate authority', 'kerbero', 'ldap', 'active directory'])) return 0;
   if (has(['server', 'db-', 'database', 'app-', 'sql', 'backup', 'storage', 'virtual', 'hyperv', 'esxi', 'vcenter', 'file'])) return 1;
   if (a.exposure === 'internet' || has(['dmz', 'web', 'portal', 'gateway', 'edge', 'external', 'proxy', 'vpn', 'waf'])) return 2;
-  if (has(['ws', 'workstation', 'faculty', 'lab', 'student', 'desktop', 'laptop', 'voip', 'phone', 'iot', 'printer', 'mfp', 'kiosk', 'guest', 'endpoint', 'camera'])) return 3;
+  if (has(['ws', 'workstation', 'member', 'faculty', 'lab', 'student', 'desktop', 'laptop', 'voip', 'phone', 'iot', 'printer', 'mfp', 'kiosk', 'guest', 'endpoint', 'camera'])) return 3;
   return 3;
 }
-// A segment sits at the tier of its dominant host; ties resolve toward the more
-// trusted (lower) tier, so a subnet holding any core assets reads as high-value.
+// A segment takes the tier of its most-trusted host, so any subnet holding a
+// core asset (e.g. a DC in a workstation VLAN) reads as high-value on the map.
 function mSegmentTier(seg) {
-  const counts = [0, 0, 0, 0];
-  seg.hosts.forEach((h) => { counts[mHostTier(h)] += 1; });
-  let best = 0;
-  for (let t = 1; t < 4; t += 1) { if (counts[t] > counts[best]) best = t; }
+  let best = 3;
+  seg.hosts.forEach((h) => { const t = mHostTier(h); if (t < best) best = t; });
   return best;
 }
 
@@ -1758,7 +1780,8 @@ function mTrailSVG(trails, positions) {
 /* ============================ Left nav ============================ */
 const NAV_ITEMS = [
   { key: 'trail', label: 'Trail', icon: '<path d="M6 21c1-6 6-7 6-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 8c0-4 4-5 6-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="21" r="1.6"/><circle cx="18" cy="3" r="1.6"/>' },
-  { key: 'devices', label: 'Devices', icon: '<rect x="4" y="4" width="16" height="4" rx="1.5"/><rect x="4" y="10" width="16" height="4" rx="1.5"/><rect x="4" y="16" width="16" height="4" rx="1.5"/>' },
+  { key: 'devices', label: 'Assets', icon: '<rect x="4" y="4" width="16" height="4" rx="1.5"/><rect x="4" y="10" width="16" height="4" rx="1.5"/><rect x="4" y="16" width="16" height="4" rx="1.5"/>' },
+  { key: 'captures', label: 'Captures', icon: '<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="m7 9 3 3-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 15h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
   { key: 'map', label: 'Map', icon: '<path d="M3 20 L9 7 L13 14 L16 9 L21 20 Z"/><path d="M9 7 L11 10 L7 10 Z" fill="#fff"/>' },
   { key: 'board', label: 'Board', icon: '<rect x="4" y="5" width="4" height="15" rx="1.2"/><rect x="10" y="5" width="4" height="10" rx="1.2"/><rect x="16" y="5" width="4" height="7" rx="1.2"/>' },
   { key: 'report', label: 'Report', icon: '<path d="M7 3h7l4 4v14H7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M14 3v4h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M10 12h6M10 16h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
@@ -1803,75 +1826,370 @@ function mHostRows() {
     };
   });
 }
-function filteredAtlasRows() {
-  const q = state.atlasQuery.trim().toLowerCase();
-  let rows = mHostRows().filter((r) => {
-    if (state.atlasSev.size && !state.atlasSev.has(r.sev)) return false;
-    if (q && !(`${r.name} ${r.ip} ${r.kind} ${r.role} ${r.subnet}`.toLowerCase().includes(q))) return false;
+/* ===================== Assets: derived from real capture data ===================== */
+const ACC_RANK = { none: 0, user: 1, admin: 2, system: 3 };
+const ACC_ORDER = ['system', 'admin', 'user', 'none'];
+const ACC_LABEL = { none: 'No access', user: 'User', admin: 'Local admin', system: 'SYSTEM' };
+const ACC_COLOR = { none: MPAL.stone, user: MPAL.lantern, admin: MPAL.harvest, system: MPAL.rust };
+const ATIER = { 0: { label: 'Domain ownership', short: 'T0', color: '#7a2f1a' }, 1: { label: 'Server', short: 'T1', color: MPAL.harvest }, 2: { label: 'Endpoint', short: 'T2', color: MPAL.stoned } };
+const EXPO_LABEL = { inet: 'Internet-facing', pivot: 'Pivot', data: 'Sensitive data' };
+
+function mObs(e) { return (e && Array.isArray(e.observations)) ? e.observations : []; }
+function mAttrs(o) { const a = o && o.attributes; if (!a) return {}; if (typeof a === 'string') { try { return JSON.parse(a); } catch { return {}; } } return a; }
+// Collapse the map's 0–3 host tier to the 3-tier asset model (T0 domain / T1 server / T2 endpoint).
+// Identities tier by privilege: a Domain Admin principal is Tier 0, others Tier 2.
+function mAssetTier(e) {
+  if (e.kind === 'identity') {
+    const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+    const priv = `${String(a.memberOf || '')} ${String(a.privilege || '')}`.toLowerCase();
+    return (priv.includes('domain admin') || priv.includes('enterprise admin') || priv.includes('administrators')) ? 0 : 2;
+  }
+  const t = mHostTier(e);
+  return t <= 1 ? t : (t === 2 ? 1 : 2);
+}
+// Every name this asset is known by, for matching capture targets / credential targets.
+function mAssetTargets(e) {
+  const set = new Set();
+  (e.identifiers || []).forEach((id) => { if (id.value) set.add(String(id.value).toLowerCase()); });
+  const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+  if (a.hostname) set.add(String(a.hostname).toLowerCase());
+  const ip = mEntityIP(e); if (ip) set.add(ip.toLowerCase());
+  const nm = mEntityName(e); if (nm) set.add(nm.toLowerCase());
+  return set;
+}
+// Access state, derived from the host's access/credential observations.
+function mAccessFor(e) {
+  let rank = 0; let ownsDomain = false;
+  const bump = (lvl) => { if (ACC_RANK[lvl] > rank) rank = ACC_RANK[lvl]; };
+  mObs(e).forEach((o) => {
+    const a = mAttrs(o);
+    if (a.success === false) return;
+    if (o.kind === 'access') {
+      const lv = String(a.access || '').toLowerCase();
+      if (lv.includes('system') || lv.includes('root') || lv.includes('domain admin')) bump('system');
+      else if (lv.includes('admin')) bump('admin');
+      else if (lv) bump('user');
+    }
+    if (o.kind === 'credential') {
+      const method = String(a.method || '').toLowerCase();
+      const priv = String(a.privilege || a.impact || '').toLowerCase();
+      if (method.includes('dcsync') || method.includes('secretsdump') || priv.includes('golden') || priv.includes('domain admin')) bump('system');
+      else bump('user');
+      if (priv.includes('domain admin') || priv.includes('golden')) ownsDomain = true;
+    }
+  });
+  const level = rank === 3 ? 'system' : rank === 2 ? 'admin' : rank === 1 ? 'user' : 'none';
+  return { level, rank, ownsDomain: ownsDomain && rank > 0 };
+}
+function mServicesFor(e) {
+  const svcs = []; const seen = new Set(); let os = '';
+  mObs(e).forEach((o) => {
+    const a = mAttrs(o);
+    if ((o.kind === 'service' || o.kind === 'host') && a.os && !os) os = String(a.os);
+    if (o.kind === 'service' && Array.isArray(a.services)) a.services.forEach((s) => { const k = String(s); if (!seen.has(k)) { seen.add(k); svcs.push(k); } });
+    if (o.kind === 'host' && a.port) { const k = String(a.port); if (!seen.has(k)) { seen.add(k); svcs.push(k); } }
+  });
+  const ea = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+  if (ea.os && !os) os = String(ea.os);
+  return { os: os || (e.kind === 'identity' ? 'Directory principal' : 'Unknown'), services: svcs };
+}
+function mExposureFor(e) {
+  const tags = []; const ea = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+  if (String(ea.exposure || '').toLowerCase() === 'internet' || mHostTier(e) === 2) tags.push('inet');
+  const role = String(ea.role || '').toLowerCase();
+  if (role.includes('file') || role.includes('gateway') || role.includes('proxy') || role.includes('sql') || role.includes('database')) tags.push('pivot');
+  return tags;
+}
+function mCredentialsFor(e) {
+  const targets = mAssetTargets(e); const out = []; const seen = new Set();
+  (state.entities || []).forEach((ent) => {
+    mObs(ent).forEach((o) => {
+      if (o.kind !== 'credential' && o.kind !== 'access') return;
+      const a = mAttrs(o); if (a.success === false) return;
+      const tgt = String(a.target || '').toLowerCase();
+      if (!(ent.id === e.id || (tgt && targets.has(tgt)))) return;
+      const user = a.user || mEntityName(ent); if (!user) return;
+      const priv = String(a.privilege || a.impact || '').toLowerCase();
+      const accStr = String(a.access || '').toLowerCase();
+      let scope = 'user';
+      if (priv.includes('domain admin') || priv.includes('golden')) scope = 'domain';
+      else if (accStr.includes('system') || accStr.includes('admin')) scope = 'local';
+      const how = o.kind === 'credential' ? (a.method || 'captured') : (a.access ? `${a.access} access` : 'access');
+      const key = `${user}|${how}`; if (seen.has(key)) return; seen.add(key);
+      out.push({ user, scope, how, source: o.sourceActionId || '' });
+    });
+  });
+  return out;
+}
+function mCapturesFor(e) {
+  const targets = mAssetTargets(e); const srcIds = new Set();
+  mObs(e).forEach((o) => { if (o.sourceActionId) srcIds.add(o.sourceActionId); });
+  return (state.actions || []).filter((ac) => {
+    if (srcIds.has(ac.id)) return true;
+    const tv = String((ac.capture && ac.capture.target && ac.capture.target.value) || '').toLowerCase();
+    return tv && targets.has(tv);
+  });
+}
+function mAssetRows() {
+  const sev = mSevByEntity();
+  return (state.entities || []).map((e) => {
+    const acc = mAccessFor(e);
+    return {
+      id: e.id, entity: e, name: mEntityName(e), ip: mEntityIP(e) || '', kind: e.kind || 'host',
+      tier: mAssetTier(e), access: acc.level, accessRank: acc.rank, ownsDomain: acc.ownsDomain,
+      expo: mExposureFor(e), sev: sev[e.id] || 'info', seg: mSegmentKey(e).label,
+      isHost: e.kind !== 'identity', svc: mServicesFor(e),
+    };
+  });
+}
+function mAssetDataset() { const isHost = state.assetKind !== 'identities'; return mAssetRows().filter((r) => r.isHost === isHost); }
+function mFilteredAssets() {
+  const q = state.assetQuery.trim().toLowerCase();
+  let rows = mAssetDataset().filter((r) => {
+    if (state.assetAccess.size && !state.assetAccess.has(r.access)) return false;
+    if (state.assetTier.size && !state.assetTier.has(String(r.tier))) return false;
+    if (q && !(`${r.name} ${r.ip} ${r.kind} ${r.seg} ${r.svc.os} ${r.svc.services.join(' ')}`.toLowerCase().includes(q))) return false;
     return true;
   });
-  rows.sort((a, b) => MSEV_RANK[a.sev] - MSEV_RANK[b.sev] || a.name.localeCompare(b.name));
+  rows.sort((a, b) => a.tier - b.tier || b.accessRank - a.accessRank || a.name.localeCompare(b.name));
   return rows;
 }
-function atlasRowsHTML(rows) {
-  return rows.slice(0, 200).map((r) => `<tr>
-      <td><span class="atlas-stripe" style="background:${MSEV_COLOR[r.sev]}"></span></td>
-      <td><span class="atlas-host">${escapeHtml(r.name)}</span></td>
-      <td class="mono muted">${escapeHtml(r.ip || '—')}</td>
-      <td>${escapeHtml(r.kind)}</td>
-      <td class="mono muted">${escapeHtml(r.subnet)}</td>
-      <td><span class="sev-pill"><i style="background:${MSEV_COLOR[r.sev]}"></i>${MSEV_LABEL[r.sev]}</span></td>
-      <td class="muted">${escapeHtml(r.seen)}</td>
-    </tr>`).join('');
+function mAccPips(level) {
+  const n = ACC_RANK[level]; let s = '';
+  for (let i = 0; i < 3; i += 1) { const on = i < n; s += `<span class="apip${on ? ' f' : ''}" style="${on ? `background:${ACC_COLOR[level]}` : ''}"></span>`; }
+  return `<span class="apips">${s}</span>`;
 }
-function drawAtlasRows() {
-  const rows = filteredAtlasRows();
-  const body = document.getElementById('atlas-rows');
-  if (body) body.innerHTML = atlasRowsHTML(rows);
-  const foot = document.getElementById('atlas-foot');
-  if (foot) foot.innerHTML = `Showing <b>${Math.min(rows.length, 200)}</b> of <b>${mHostRows().length}</b> hosts`;
-  document.querySelectorAll('#mAtlasFacets .atlas-facet').forEach((el) => { const s = el.dataset.sev; if (s) el.classList.toggle('on', state.atlasSev.has(s)); });
+function mExpoTags(expo) { return expo.length ? `<span class="aexpo">${expo.map((k) => `<span class="aetag ${k}">${EXPO_LABEL[k] || k}</span>`).join('')}</span>` : ''; }
+function mTierCell(r) { const t = ATIER[r.tier]; return `<div class="atiercell"><span class="atier"><span class="atbadge t${r.tier}">${t.short}</span><span class="atier-label t${r.tier}">${t.label}</span></span>${mExpoTags(r.expo)}</div>`; }
+function mAssetRowsHTML(rows) {
+  const isHost = state.assetKind !== 'identities';
+  return rows.slice(0, 300).map((r) => {
+    const acc = r.access;
+    const svc = isHost
+      ? (r.svc.services.length ? `<span class="asvc">${r.svc.services.slice(0, 4).map((s) => `<span class="aport">${escapeHtml(s)}</span>`).join('')}${r.svc.services.length > 4 ? `<span class="aport">+${r.svc.services.length - 4}</span>` : ''}</span>` : '<span class="muted">—</span>')
+      : `<span class="mono muted" style="font-size:11px">${escapeHtml((r.entity.identifiers && r.entity.identifiers[0] && r.entity.identifiers[0].value) || '').slice(-9)}</span>`;
+    const find = r.sev !== 'info' ? `<span class="asev"><i style="background:${MSEV_COLOR[r.sev]}"></i><span style="color:${MSEV_COLOR[r.sev]};font-weight:700">${MSEV_LABEL[r.sev]}</span></span>` : '<span class="muted">—</span>';
+    return `<tr class="arow" data-action="open-asset" data-id="${r.id}">
+      <td><div class="aname">${escapeHtml(r.name)}</div><div class="asub mono">${escapeHtml(r.ip || '—')}</div></td>
+      <td><div class="acell"><span class="aacc">${mAccPips(acc)}<span class="aacc-label" style="color:${ACC_COLOR[acc]}">${ACC_LABEL[acc]}</span></span>${r.ownsDomain ? '<span class="aowns">Owns domain</span>' : ''}</div></td>
+      <td class="muted">${escapeHtml(r.svc.os)}</td>
+      <td>${svc}</td>
+      <td>${mTierCell(r)}</td>
+      <td class="muted mono" style="font-size:11.5px">${escapeHtml(r.seg)}</td>
+      <td>${find}</td>
+    </tr>`;
+  }).join('');
 }
 function renderDeviceAtlas() {
-  const all = mHostRows();
-  const sevCounts = { critical: 0, high: 0, medium: 0, low: 0, info: 0 };
-  all.forEach((r) => { sevCounts[r.sev] += 1; });
-  const withFindings = all.filter((r) => r.sev !== 'info').length;
-  const facets = MSEV_ORDER.map((s) => `<label class="atlas-facet${state.atlasSev.has(s) ? ' on' : ''}" data-sev="${s}"><input type="checkbox" data-action="atlas-sev" data-sev="${s}" ${state.atlasSev.has(s) ? 'checked' : ''}/><span class="sev-pill"><i style="background:${MSEV_COLOR[s]}"></i>${MSEV_LABEL[s]}</span><span class="atlas-c num">${sevCounts[s]}</span></label>`).join('');
+  const isHost = state.assetKind !== 'identities';
+  const hosts = mAssetRows().filter((r) => r.isHost);
+  const idents = mAssetRows().filter((r) => !r.isHost);
+  const all = [...hosts, ...idents];
+  const reachable = hosts.filter((r) => r.access !== 'none').length;
+  const owned = hosts.filter((r) => r.accessRank >= 2).length;
+  const tier0 = all.filter((r) => r.tier === 0).length;
+  const domainOwned = all.some((r) => r.ownsDomain);
+  const accCounts = {}; ACC_ORDER.forEach((a) => { accCounts[a] = hosts.filter((r) => r.access === a).length; });
+  const tierCounts = { 0: 0, 1: 0, 2: 0 }; hosts.forEach((r) => { tierCounts[r.tier] += 1; });
+  const accFacets = ACC_ORDER.map((a) => `<span class="afacet${state.assetAccess.has(a) ? ' on' : ''}" data-action="asset-access" data-val="${a}"><span class="adot" style="background:${ACC_COLOR[a]}"></span>${ACC_LABEL[a]}<span class="an">${accCounts[a]}</span></span>`).join('');
+  const tierFacets = [0, 1, 2].map((t) => `<span class="afacet${state.assetTier.has(String(t)) ? ' on' : ''}" data-action="asset-tier" data-val="${t}"><span class="adot" style="background:${ATIER[t].color}"></span>Tier ${t} · ${ATIER[t].label}<span class="an">${tierCounts[t]}</span></span>`).join('');
+  const rows = mFilteredAssets();
   return `
     <main class="app-shell atlas-shell">
       ${renderNav('devices')}
       <header class="masthead">
-        <div class="masthead-copy"><p class="eyebrow">Waypoint · device atlas</p><h1>Devices</h1><p class="subtitle">Every discovered host, filterable by severity — the operator's inventory.</p></div>
+        <div class="masthead-copy"><p class="eyebrow">Waypoint · attack surface</p><h1>Assets</h1><p class="subtitle">Every machine and identity we've discovered — ranked by tier, marked by how deep we are on it.</p></div>
         <div class="masthead-actions">
           <div class="theme-switcher" role="group" aria-label="Theme selection">
             <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
             <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
           </div>
-          <div class="metrics" aria-label="Inventory summary">
-            <div class="metric"><span class="metric-label">Hosts</span><strong>${all.length.toLocaleString()}</strong></div>
-            <div class="metric"><span class="metric-label">With findings</span><strong>${withFindings}</strong></div>
-            <div class="metric"><span class="metric-label">Critical</span><strong>${sevCounts.critical}</strong></div>
-          </div>
         </div>
       </header>
-      <div class="atlas-layout">
-        <aside class="atlas-rail" id="mAtlasFacets">
-          <div class="atlas-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg><input data-action="atlas-search" placeholder="Search host / IP / kind" value="${escapeHtml(state.atlasQuery)}" aria-label="Search hosts"/></div>
-          <h4>Severity</h4>${facets}
-        </aside>
-        <div class="atlas-main">
-          <div class="atlas-table">
-            <div class="atlas-thead">Host inventory</div>
-            <div class="atlas-scroll"><table>
-              <thead><tr><th></th><th>Host</th><th>Address</th><th>Kind</th><th>Segment</th><th>Severity</th><th>Last seen</th></tr></thead>
-              <tbody id="atlas-rows">${atlasRowsHTML(filteredAtlasRows())}</tbody>
-            </table></div>
-            <div class="atlas-tfoot"><span id="atlas-foot">Showing <b>${Math.min(all.length, 200)}</b> of <b>${all.length}</b> hosts</span><span class="muted">Sorted by severity</span></div>
-          </div>
+      <div class="akpis">
+        <div class="akpi" style="--kc:${ACC_COLOR.user}"><div class="akpi-l">Reachable</div><div class="akpi-v">${reachable}<small> / ${hosts.length}</small></div><div class="akpi-s">hosts with a foothold</div></div>
+        <div class="akpi" style="--kc:${ACC_COLOR.admin}"><div class="akpi-l">Footholds owned</div><div class="akpi-v">${owned}</div><div class="akpi-s">admin access or better</div></div>
+        <div class="akpi" style="--kc:${ATIER[0].color}"><div class="akpi-l">Tier 0 assets</div><div class="akpi-v">${tier0}</div><div class="akpi-s">domain-ownership tier</div></div>
+        <div class="akpi" style="--kc:${ATIER[0].color}"><div class="akpi-l">Domain ownership</div><div class="akpi-v text" style="color:${ATIER[0].color}">${domainOwned ? 'Achieved' : 'Not yet'}</div><div class="akpi-s">${domainOwned ? 'a Domain Admin credential is recovered' : 'no path confirmed'}</div></div>
+      </div>
+      <div class="atoolbar">
+        <div class="aseg">
+          <button class="${isHost ? 'on' : ''}" data-action="asset-kind" data-kind="hosts">Hosts <span class="acnt">${hosts.length}</span></button>
+          <button class="${!isHost ? 'on' : ''}" data-action="asset-kind" data-kind="identities">Identities <span class="acnt">${idents.length}</span></button>
         </div>
+        <label class="asearch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5" stroke-linecap="round"/></svg><input data-action="asset-search" placeholder="Search asset, IP, service, OS…" value="${escapeHtml(state.assetQuery)}" aria-label="Search assets"/></label>
+      </div>
+      ${isHost ? `<div class="afacets"><div class="afgroup"><span class="afcap">Access</span>${accFacets}</div><div class="afgroup"><span class="afcap">Tier</span>${tierFacets}</div></div>` : ''}
+      <div class="atable">
+        <div class="atscroll"><table>
+          <thead><tr><th>${isHost ? 'Host' : 'Principal'}</th><th>Access</th><th>${isHost ? 'OS / platform' : 'Type'}</th><th>${isHost ? 'Services' : 'SID'}</th><th>Tier</th><th>Segment</th><th>Findings</th></tr></thead>
+          <tbody id="asset-rows">${mAssetRowsHTML(rows) || `<tr><td colspan="7" class="board-empty">No ${isHost ? 'hosts' : 'identities'} match.</td></tr>`}</tbody>
+        </table></div>
+        <div class="atfoot"><span id="asset-foot">Showing <b>${Math.min(rows.length, 300)}</b> of <b>${(isHost ? hosts : idents).length}</b> ${isHost ? 'hosts' : 'identities'}</span><span class="muted">Sorted by tier, then access depth</span></div>
       </div>
     </main>`;
+}
+
+function drawAssetRows() {
+  const rows = mFilteredAssets();
+  const b = document.getElementById('asset-rows');
+  if (b) b.innerHTML = mAssetRowsHTML(rows) || `<tr><td colspan="7" class="board-empty">No matches.</td></tr>`;
+  const isHost = state.assetKind !== 'identities';
+  const base = mAssetRows().filter((r) => r.isHost === isHost).length;
+  const f = document.getElementById('asset-foot');
+  if (f) f.innerHTML = `Showing <b>${Math.min(rows.length, 300)}</b> of <b>${base}</b> ${isHost ? 'hosts' : 'identities'}`;
+}
+
+/* ============================ Captures ============================ */
+const CAP_TYPES = ['recon', 'attack', 'creds', 'loot'];
+const CAP_TYPE_LABEL = { recon: 'Recon', attack: 'Attack', creds: 'Creds', loot: 'Loot' };
+function mCapStart(ac) { return (ac.capture && ac.capture.timing && ac.capture.timing.startedAt) || ac.receivedAt || ''; }
+function mCapType(ac) {
+  const c = String((ac.capture && ac.capture.command) || '').toLowerCase();
+  const plugin = String((ac.capture && ac.capture.parsing && ac.capture.parsing.plugin && ac.capture.parsing.plugin.id) || '').toLowerCase();
+  const hay = `${c} ${plugin}`;
+  if (/secretsdump|ntds|dcsync|\bdump\b|golden|loot/.test(hay)) return 'loot';
+  if (/hashcat|kerberoast|getuserspns|spray|hydra|crack|password|\bhash\b|\bcred/.test(hay)) return 'creds';
+  return (ac.capture && ac.capture.phase) === 'recon' ? 'recon' : 'attack';
+}
+function mCapStatus(ac) {
+  const ex = (ac.capture && ac.capture.execution) || {};
+  if (typeof ex.exitCode === 'number' && ex.exitCode !== 0) return 'bad';
+  if (['failed', 'error', 'timeout', 'killed'].includes(String(ex.status || '').toLowerCase())) return 'bad';
+  return 'ok';
+}
+function mActorColor(h) { const pal = ['#6b4423', '#854f0b', '#5f8a2e', '#8b5e34', '#b04c30', '#ba7517']; return pal[mHash(String(h)) % pal.length]; }
+function mActorChip(actor) {
+  const h = (actor && (actor.handle || actor.id)) || 'operator';
+  const agent = actor && actor.kind === 'ai_agent';
+  return `<span class="cactor"><span class="cav${agent ? ' agent' : ''}" style="background:${mActorColor(h)}">${escapeHtml(h.slice(0, 2).toUpperCase())}</span><span class="cactor-n">${escapeHtml(h)}${agent ? '<span class="cai">AI</span>' : ''}</span></span>`;
+}
+function mCapById(id) { return (state.actions || []).find((a) => a.id === id) || null; }
+function mCapActors() { const s = new Set(); (state.actions || []).forEach((a) => { const h = a.actor && (a.actor.handle || a.actor.id); if (h) s.add(h); }); return [...s]; }
+function mFilteredCaptures() {
+  const q = state.capQuery.trim().toLowerCase();
+  return (state.actions || []).filter((ac) => {
+    const h = (ac.actor && (ac.actor.handle || ac.actor.id)) || '';
+    if (state.capActor.size && !state.capActor.has(h)) return false;
+    if (state.capType.size && !state.capType.has(mCapType(ac))) return false;
+    if (q && !(`${(ac.capture && ac.capture.command) || ''} ${(ac.capture && ac.capture.target && ac.capture.target.value) || ''} ${h}`.toLowerCase().includes(q))) return false;
+    return true;
+  }).sort((a, b) => { const ta = mCapStart(a); const tb = mCapStart(b); return tb < ta ? -1 : tb > ta ? 1 : 0; });
+}
+function mCaptureRowsHTML(list) {
+  return list.slice(0, 300).map((ac) => {
+    const st = mCapStatus(ac); const ty = mCapType(ac); const c = ac.capture || {};
+    const tgt = (c.target && c.target.value) || '—';
+    const when = mCapStart(ac) ? formatTime(mCapStart(ac)) : '';
+    return `<tr class="crow" data-action="open-capture" data-id="${ac.id}"><td><span class="cst ${st}"><i></i>${st === 'ok' ? 'Success' : 'Failed'}</span></td><td><div class="ccmd mono">${escapeHtml(c.command || '—')}</div></td><td><div class="mono" style="font-size:12px">${escapeHtml(tgt)}</div></td><td>${mActorChip(ac.actor)}</td><td><span class="ctag ${ty}">${CAP_TYPE_LABEL[ty]}</span></td><td class="muted">${escapeHtml(when)}</td></tr>`;
+  }).join('');
+}
+function drawCaptureRows() {
+  const list = mFilteredCaptures();
+  const b = document.getElementById('cap-rows');
+  if (b) b.innerHTML = mCaptureRowsHTML(list) || '<tr><td colspan="6" class="board-empty">No captures match.</td></tr>';
+  const f = document.getElementById('cap-foot');
+  if (f) f.innerHTML = `Showing <b>${Math.min(list.length, 300)}</b> of <b>${(state.actions || []).length}</b> captures`;
+}
+function renderCapturesView() {
+  const total = (state.actions || []).length;
+  const ops = mCapActors().length;
+  const okc = (state.actions || []).filter((a) => mCapStatus(a) === 'ok').length;
+  const rate = total ? Math.round((okc / total) * 100) : 0;
+  const latest = mFilteredCaptures()[0] || (state.actions || [])[0];
+  const actorFacets = mCapActors().map((h) => `<span class="afacet${state.capActor.has(h) ? ' on' : ''}" data-action="cap-actor" data-val="${escapeHtml(h)}">${escapeHtml(h)}<span class="an">${(state.actions || []).filter((a) => (a.actor && (a.actor.handle || a.actor.id)) === h).length}</span></span>`).join('');
+  const typeFacets = CAP_TYPES.map((t) => `<span class="afacet${state.capType.has(t) ? ' on' : ''}" data-action="cap-type" data-val="${t}"><span class="ctag ${t}">${CAP_TYPE_LABEL[t]}</span><span class="an">${(state.actions || []).filter((a) => mCapType(a) === t).length}</span></span>`).join('');
+  const list = mFilteredCaptures();
+  return `
+    <main class="app-shell atlas-shell">
+      ${renderNav('captures')}
+      <header class="masthead">
+        <div class="masthead-copy"><p class="eyebrow">Waypoint · evidence</p><h1>Captures</h1><p class="subtitle">Every command run in the engagement, attributed and hashed. Open any capture for its full output.</p></div>
+        <div class="masthead-actions"><div class="theme-switcher" role="group" aria-label="Theme selection"><button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button><button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button></div></div>
+      </header>
+      <div class="akpis">
+        <div class="akpi" style="--kc:${MPAL.harvest}"><div class="akpi-l">Captures</div><div class="akpi-v">${total}</div><div class="akpi-s">commands recorded</div></div>
+        <div class="akpi" style="--kc:${ACC_COLOR.admin}"><div class="akpi-l">Operators</div><div class="akpi-v">${ops}</div><div class="akpi-s">humans + agents</div></div>
+        <div class="akpi" style="--kc:${MPAL.forest}"><div class="akpi-l">Success rate</div><div class="akpi-v">${rate}<small>%</small></div><div class="akpi-s">${total - okc} failed</div></div>
+        <div class="akpi" style="--kc:${MPAL.stoned}"><div class="akpi-l">Latest</div><div class="akpi-v text">${latest ? escapeHtml(formatTime(mCapStart(latest))) : '—'}</div><div class="akpi-s">most recent capture</div></div>
+      </div>
+      <div class="atoolbar"><label class="asearch" style="flex:1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5" stroke-linecap="round"/></svg><input data-action="cap-search" placeholder="Search command, target, actor…" value="${escapeHtml(state.capQuery)}" aria-label="Search captures"/></label></div>
+      <div class="afacets"><div class="afgroup"><span class="afcap">Actor</span>${actorFacets}</div><div class="afgroup"><span class="afcap">Type</span>${typeFacets}</div></div>
+      <div class="atable"><div class="atscroll"><table><thead><tr><th style="width:120px">Status</th><th>Command</th><th>Target</th><th>Actor</th><th>Type</th><th>When</th></tr></thead><tbody id="cap-rows">${mCaptureRowsHTML(list) || '<tr><td colspan="6" class="board-empty">No captures match.</td></tr>'}</tbody></table></div>
+      <div class="atfoot"><span id="cap-foot">Showing <b>${Math.min(list.length, 300)}</b> of <b>${total}</b> captures</span><span class="muted">Newest first · evidence is hashed and immutable</span></div></div>
+    </main>`;
+}
+
+/* ============================ Drawer: asset dossier + capture detail ============================ */
+function openAssetDossier(id) { state.drawer = { kind: 'asset', id }; render(); }
+function openCaptureDrawer(id, from) { state.drawer = { kind: 'capture', id, from: from || null }; render(); }
+function closeDrawer(silent) { const had = !!state.drawer; state.drawer = null; if (had && !silent) render(); }
+function ensureCaptureEvidence(actionId) {
+  const ac = mCapById(actionId); if (!ac) return;
+  const refs = ac.evidenceReferences || {};
+  ['stdout', 'stderr'].forEach((role) => {
+    const ref = refs[role]; if (!ref || !ref.id || !ref.byteLength) return;
+    const cur = state.evidenceCache[ref.id];
+    if (cur && (cur.status === 'ready' || cur.status === 'loading' || cur.status === 'error')) return;
+    state.evidenceCache[ref.id] = { status: 'loading', text: '' };
+    apiText(ref.downloadPath || `/api/v1/evidence/${ref.id}/content`, state.token)
+      .then((text) => { state.evidenceCache[ref.id] = { status: 'ready', text: String(text == null ? '' : text) }; if (state.drawer && state.drawer.id === actionId) render(); })
+      .catch((err) => { state.evidenceCache[ref.id] = { status: 'error', text: (err && err.message) || 'Unable to load evidence' }; if (state.drawer && state.drawer.id === actionId) render(); });
+  });
+}
+function mScopeClass(s) { return s === 'domain' ? 'scope-domain' : s === 'local' ? 'scope-local' : 'scope-user'; }
+function mScopeLabel(s) { return s === 'domain' ? 'Domain Admin' : s === 'local' ? 'Local admin' : 'User'; }
+function mCapSrcLine(actionId) { const ac = mCapById(actionId); if (!ac) return ''; const tool = String((ac.capture && ac.capture.command) || 'capture').split(/\s+/)[0]; return `<div class="dsrc"><span>Evidence · <span class="mono">${escapeHtml(tool)}</span></span><span class="dsrc-go">View capture →</span></div>`; }
+function mAssetForCapture(ac) {
+  const tv = String((ac.capture && ac.capture.target && ac.capture.target.value) || '').toLowerCase();
+  return (state.entities || []).find((e) => mObs(e).some((o) => o.sourceActionId === ac.id) || (tv && mAssetTargets(e).has(tv))) || null;
+}
+function renderAssetDrawer(e) {
+  const row = mAssetRows().find((r) => r.id === e.id) || {};
+  const acc = mAccessFor(e); const t = ATIER[mAssetTier(e)]; const isHost = e.kind !== 'identity';
+  const svc = mServicesFor(e); const creds = mCredentialsFor(e); const caps = mCapturesFor(e);
+  const finds = (state.findings || []).filter((f) => (f.affectedEntityIds || []).includes(e.id));
+  const sid = !isHost ? ((e.identifiers || []).find((id) => id.type === 'ad_sid') || {}).value : '';
+  const meta = `<div class="dkv"><div><dt>${isHost ? 'Address' : 'Directory'}</dt><dd class="mono">${escapeHtml(mEntityIP(e) || (isHost ? '—' : 'AD'))}</dd></div><div><dt>${isHost ? 'Platform' : 'Type'}</dt><dd>${escapeHtml(svc.os)}</dd></div><div><dt>Tier</dt><dd style="color:${t.color}">Tier ${mAssetTier(e)} · ${t.label}</dd></div><div><dt>Segment</dt><dd class="mono" style="font-size:12px">${escapeHtml(mSegmentKey(e).label)}</dd></div>${sid ? `<div><dt>SID</dt><dd class="mono" style="font-size:11px">${escapeHtml(sid)}</dd></div>` : ''}</div>`;
+  const ports = svc.services.length ? `<div class="dsec"><h3>Services &amp; ports</h3><div class="dports">${svc.services.map((s) => `<span class="dport">${escapeHtml(s)}</span>`).join('')}</div></div>` : '';
+  const credsHtml = creds.length ? `<div class="dsec"><h3>Valid credentials <span class="dbadge">${creds.length}</span></h3>${creds.map((c) => `<div class="dcred${c.source ? ' dsrclink' : ''}"${c.source ? ` data-action="open-capture" data-id="${c.source}" data-from="${e.id}"` : ''}><div class="dcred-row"><div class="dcred-main"><div class="dcred-user mono">${escapeHtml(c.user)}</div><div class="dcred-how">${escapeHtml(c.how)}</div></div><span class="dcred-scope ${mScopeClass(c.scope)}">${mScopeLabel(c.scope)}</span></div>${c.source ? mCapSrcLine(c.source) : ''}</div>`).join('')}</div>` : '';
+  const findsHtml = finds.length ? `<div class="dsec"><h3>Findings <span class="dbadge">${finds.length}</span></h3>${finds.map((f) => { const s = String(f.severity || 'info').toLowerCase(); const src = (f.evidenceActionIds || [])[0]; return `<div class="dfind${src ? ' dsrclink' : ''}" style="--fc:${MSEV_COLOR[s]}"${src ? ` data-action="open-capture" data-id="${src}" data-from="${e.id}"` : ''}><div class="dfind-t">${escapeHtml(f.title || 'Finding')}</div><div class="dfind-m">${MSEV_LABEL[s]} · ${escapeHtml(f.status || 'open')}</div>${src ? mCapSrcLine(src) : ''}</div>`; }).join('')}</div>` : '';
+  const capsHtml = caps.length ? `<div class="dsec"><h3>What we ran here <span class="dbadge">${caps.length}</span></h3>${caps.slice(0, 40).map((ac) => { const st = mCapStatus(ac); const h = (ac.actor && (ac.actor.handle || ac.actor.id)) || 'operator'; return `<div class="dcap" data-action="open-capture" data-id="${ac.id}" data-from="${e.id}"><div class="dcap-top"><span class="dcap-cmd mono">${escapeHtml((ac.capture && ac.capture.command) || '—')}</span><span class="dcap-go">→</span></div><div class="dcap-meta"><span class="cst ${st}"><i></i>${st === 'ok' ? 'Success' : 'Failed'}</span>·<span>${escapeHtml(h)}</span>·<span>${escapeHtml(mCapStart(ac) ? formatTime(mCapStart(ac)) : '')}</span></div></div>`; }).join('')}</div>` : '';
+  return `<div class="dh"><div class="dh-top"><div><h2>${escapeHtml(mEntityName(e))}</h2><div class="dh-meta">${escapeHtml((e.attributes && e.attributes.role) || (isHost ? 'Host' : 'Identity'))}</div></div><button class="dclose" data-action="close-drawer" aria-label="Close">✕</button></div><div class="dh-badges"><span class="atbadge t${mAssetTier(e)}">${t.short}</span><span class="aacc">${mAccPips(acc.level)}<span class="aacc-label" style="color:${ACC_COLOR[acc.level]}">${ACC_LABEL[acc.level]}</span></span>${acc.ownsDomain ? '<span class="aowns">Owns domain</span>' : ''}${mExpoTags(row.expo || mExposureFor(e))}</div></div><div class="dbody"><div class="dsec"><h3>Overview</h3>${meta}</div>${ports}${credsHtml}${findsHtml}${capsHtml}</div>`;
+}
+function renderCaptureDrawer(id, from) {
+  const ac = mCapById(id);
+  if (!ac) return `<div class="dh"><div class="dh-top"><h2>Capture</h2><button class="dclose" data-action="close-drawer">✕</button></div></div><div class="dbody"><p class="muted">This capture is no longer loaded.</p></div>`;
+  const c = ac.capture || {}; const st = mCapStatus(ac); const ty = mCapType(ac);
+  const ex = c.execution || {}; const refs = ac.evidenceReferences || {};
+  const fromEntity = from ? (state.entities || []).find((e) => e.id === from) : null;
+  const back = fromEntity ? `<div class="dh-back" data-action="open-asset" data-id="${fromEntity.id}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>Back to ${escapeHtml(mEntityName(fromEntity))}</div>` : '';
+  const meta = `<div class="dkv"><div><dt>Actor</dt><dd>${escapeHtml((ac.actor && (ac.actor.handle || ac.actor.id)) || '—')}${ac.actor && ac.actor.kind === 'ai_agent' ? ' (agent)' : ''}</dd></div><div><dt>Target</dt><dd>${escapeHtml((c.target && c.target.value) || '—')}${c.target && c.target.port ? ` : ${c.target.port}` : ''}</dd></div><div><dt>When</dt><dd>${escapeHtml(mCapStart(ac) ? formatTime(mCapStart(ac)) : '—')}</dd></div><div><dt>Exit code</dt><dd style="color:${st === 'ok' ? MPAL.forest : MSEV_COLOR.critical}">${typeof ex.exitCode === 'number' ? ex.exitCode : '—'} · ${escapeHtml(ex.status || (st === 'ok' ? 'success' : 'failed'))}</dd></div></div>`;
+  const attach = mAssetForCapture(ac);
+  const attachHtml = attach ? `<div class="dsec"><h3>Attached to</h3><div class="dlinkrow" data-action="open-asset" data-id="${attach.id}"><div><div class="dlink-main">${escapeHtml(mEntityName(attach))}</div><div class="dlink-sub">Tier ${mAssetTier(attach)} · ${ATIER[mAssetTier(attach)].label} · ${escapeHtml(mSegmentKey(attach).label)}</div></div><span class="dlink-go">View asset →</span></div></div>` : '';
+  return `<div class="dh">${back}<div class="dh-top"><h2 class="cmd mono">${escapeHtml(c.command || 'Capture')}</h2><button class="dclose" data-action="close-drawer" aria-label="Close">✕</button></div><div class="dh-badges"><span class="cst ${st}"><i></i>${st === 'ok' ? 'Success' : 'Failed'}</span><span class="ctag ${ty}">${CAP_TYPE_LABEL[ty]}</span>${mActorChip(ac.actor)}</div></div><div class="dbody"><div class="dsec"><h3>Capture</h3>${meta}</div><div class="dsec"><h3>Output</h3>${mTermPane(refs.stdout, 'stdout')}${mTermPane(refs.stderr, 'stderr')}<div class="devnote">${CHECK_SVG}<span><b>Bundle verified</b> — evidence is content-addressed and size-checked on read.</span></div></div>${attachHtml}</div>`;
+}
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const EMPTY_SHA = 'e3b0c442…7852b855';
+function mTermPane(ref, role) {
+  const isErr = role === 'stderr';
+  if (!ref || !ref.id) return `<div class="cterm ${isErr ? 'err' : ''}"><div class="cterm-h"><span class="cth-l"><b>${role}</b><span>unavailable</span></span></div><pre class="empty">— no ${role} evidence —</pre></div>`;
+  const bytes = ref.byteLength || 0;
+  const sha = bytes ? (String(ref.sha256 || '').slice(0, 8) + '…' + String(ref.sha256 || '').slice(-6)) : EMPTY_SHA;
+  const cache = state.evidenceCache[ref.id] || { status: bytes ? 'idle' : 'ready', text: '' };
+  let body;
+  if (!bytes) body = `<pre class="empty">— no ${role} —</pre>`;
+  else if (cache.status === 'ready') body = `<pre>${escapeHtml(cache.text)}</pre>`;
+  else if (cache.status === 'error') body = `<pre class="empty">${escapeHtml(cache.text)}</pre>`;
+  else body = `<pre class="empty">Loading…</pre>`;
+  const verified = (!bytes || cache.status === 'ready') ? `<span class="cverified">${CHECK_SVG} verified</span>` : '';
+  return `<div class="cterm ${isErr ? 'err' : ''}"><div class="cterm-h"><span class="cth-l"><b>${role}</b><span>${bytes} bytes</span>·<span class="mono">${escapeHtml(sha)}</span></span>${verified}</div>${body}</div>`;
+}
+function renderDrawer() {
+  if (!state.drawer) return '';
+  const inner = state.drawer.kind === 'capture' ? renderCaptureDrawer(state.drawer.id, state.drawer.from) : (function () { const e = (state.entities || []).find((x) => x.id === state.drawer.id); return e ? renderAssetDrawer(e) : ''; })();
+  if (!inner) return '';
+  return `<div class="dscrim" data-action="close-drawer"></div><aside class="ddrawer is-open" role="dialog" aria-modal="true">${inner}</aside>`;
 }
 
 /* ============================ Base Camp Board ============================ */
@@ -2821,10 +3139,11 @@ function render() {
     root.innerHTML = renderSetupWizard();
     return;
   }
-  const titleByView = { report: 'Waypoint — report snapshot', map: 'Waypoint — territory map', devices: 'Waypoint — device atlas', board: 'Waypoint — base camp board' };
+  const titleByView = { report: 'Waypoint — report snapshot', map: 'Waypoint — territory map', devices: 'Waypoint — assets', captures: 'Waypoint — captures', board: 'Waypoint — base camp board' };
   document.title = titleByView[state.view] || `Waypoint — ${phaseNames[state.activePhase]}`;
-  const viewRenderers = { report: renderReportView, map: renderTerritoryMap, devices: renderDeviceAtlas, board: renderBaseCampBoard };
-  root.innerHTML = (viewRenderers[state.view] || renderTrailMap)();
+  const viewRenderers = { report: renderReportView, map: renderTerritoryMap, devices: renderDeviceAtlas, captures: renderCapturesView, board: renderBaseCampBoard };
+  root.innerHTML = (viewRenderers[state.view] || renderTrailMap)() + renderDrawer();
+  if (state.drawer && state.drawer.kind === 'capture') ensureCaptureEvidence(state.drawer.id);
   syncExportPolling();
 }
 
@@ -2938,18 +3257,21 @@ async function handleClick(event) {
     event.preventDefault();
     const nav = target.dataset.nav;
     if (nav === 'trail') navigateToPhase(state.activePhase && state.activePhase !== 'summit' ? state.activePhase : 'attacks');
-    else if (nav === 'devices') navigateToDevices();
-    else if (nav === 'map') navigateToMap();
-    else if (nav === 'board') navigateToBoard();
-    else if (nav === 'report') navigateToReport();
+    else if (nav === 'devices') { closeDrawer(true); navigateToDevices(); }
+    else if (nav === 'captures') { closeDrawer(true); navigateToCaptures(); }
+    else if (nav === 'map') { closeDrawer(true); navigateToMap(); }
+    else if (nav === 'board') { closeDrawer(true); navigateToBoard(); }
+    else if (nav === 'report') { closeDrawer(true); navigateToReport(); }
     return;
   }
-  if (action === 'atlas-sev') {
-    const s = target.dataset.sev;
-    if (state.atlasSev.has(s)) state.atlasSev.delete(s); else state.atlasSev.add(s);
-    drawAtlasRows();
-    return;
-  }
+  if (action === 'asset-kind') { state.assetKind = target.dataset.kind; state.assetAccess.clear(); state.assetTier.clear(); render(); return; }
+  if (action === 'asset-access') { const v = target.dataset.val; if (state.assetAccess.has(v)) state.assetAccess.delete(v); else state.assetAccess.add(v); render(); return; }
+  if (action === 'asset-tier') { const v = target.dataset.val; if (state.assetTier.has(v)) state.assetTier.delete(v); else state.assetTier.add(v); render(); return; }
+  if (action === 'open-asset') { openAssetDossier(target.dataset.id); return; }
+  if (action === 'open-capture') { openCaptureDrawer(target.dataset.id, target.dataset.from || null); return; }
+  if (action === 'close-drawer') { closeDrawer(); return; }
+  if (action === 'cap-actor') { const v = target.dataset.val; if (state.capActor.has(v)) state.capActor.delete(v); else state.capActor.add(v); render(); return; }
+  if (action === 'cap-type') { const v = target.dataset.val; if (state.capType.has(v)) state.capType.delete(v); else state.capType.add(v); render(); return; }
   if (action === 'board-more') {
     const c = target.dataset.col;
     if (state.boardExpanded.has(c)) state.boardExpanded.delete(c); else state.boardExpanded.add(c);
@@ -2965,7 +3287,8 @@ async function handleClick(event) {
     return;
   }
   if (action === 'guide-search') return;
-  if (action === 'atlas-search') return;
+  if (action === 'asset-search') return;
+  if (action === 'cap-search') return;
   if (action === 'entity-search') return;
   if (action === 'actor-query') return;
   if (action === 'provision-draft') return;
@@ -3169,9 +3492,14 @@ function handleInput(event) {
     updateGuideQuery(target.value);
     return;
   }
-  if (action === 'atlas-search') {
-    state.atlasQuery = target.value;
-    drawAtlasRows();
+  if (action === 'asset-search') {
+    state.assetQuery = target.value;
+    drawAssetRows();
+    return;
+  }
+  if (action === 'cap-search') {
+    state.capQuery = target.value;
+    drawCaptureRows();
     return;
   }
   if (action === 'entity-search') {

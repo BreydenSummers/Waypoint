@@ -144,34 +144,71 @@ async function main() {
   await visit('report', `/engagements/${ENGAGEMENT}/summit/report`, 3000);
   if (await $count('.report-hero') === 0 && await $count('.report-section') === 0) bug('high', 'report', 'report body did not render');
 
-  // -------- Device Atlas --------
+  // -------- Assets --------
   await visit('devices', `/engagements/${ENGAGEMENT}/devices`);
   const atlasNav = await page.$$eval('.appnav-item.is-active', (e) => e.map((x) => x.dataset.nav)).catch(() => []);
-  if (!atlasNav.includes('devices')) bug('medium', 'devices', 'nav active-state not "devices"', JSON.stringify(atlasNav));
-  const totalHosts = await $count('#atlas-rows tr');
-  if (totalHosts === 0) bug('high', 'devices', 'host table is empty');
-  // facet counts should sum to the metric total
-  const facetSum = await page.$$eval('.atlas-facet .atlas-c', (e) => e.reduce((s, x) => s + (parseInt(x.textContent, 10) || 0), 0)).catch(() => 0);
-  const metricHosts = await page.$eval('.metric strong', (e) => parseInt(e.textContent.replace(/[^0-9]/g, ''), 10)).catch(() => -1);
-  if (facetSum !== metricHosts) bug('medium', 'devices', 'severity facet counts do not sum to host total', `facets=${facetSum} total=${metricHosts}`);
+  if (!atlasNav.includes('devices')) bug('medium', 'assets', 'nav active-state not "devices"', JSON.stringify(atlasNav));
+  const totalHosts = await $count('#asset-rows tr.arow');
+  if (totalHosts === 0) bug('high', 'assets', 'asset table is empty');
   // search filters the table down
-  const beforeSearch = await $count('#atlas-rows tr');
-  await page.focus('.atlas-search input').catch(() => {});
-  await page.type('.atlas-search input', 'zzz-no-such-host', { delay: 5 }).catch(() => {});
+  const beforeSearch = await $count('#asset-rows tr.arow');
+  await page.focus('.asearch input').catch(() => {});
+  await page.type('.asearch input', 'zzz-no-such-host', { delay: 5 }).catch(() => {});
   await sleep(300);
-  const afterNoMatch = await $count('#atlas-rows tr');
-  if (afterNoMatch !== 0) bug('medium', 'devices', 'search did not filter (no-match query still shows rows)', `rows=${afterNoMatch}`);
-  await page.evaluate(() => { const i = document.querySelector('.atlas-search input'); if (i) { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); } });
+  const afterNoMatch = await $count('#asset-rows tr.arow');
+  if (afterNoMatch !== 0) bug('medium', 'assets', 'search did not filter (no-match query still shows rows)', `rows=${afterNoMatch}`);
+  await page.evaluate(() => { const i = document.querySelector('.asearch input'); if (i) { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); } });
   await sleep(300);
-  const afterClear = await $count('#atlas-rows tr');
-  if (afterClear < Math.min(beforeSearch, 1)) bug('medium', 'devices', 'clearing search did not restore rows', `rows=${afterClear}`);
-  // a severity facet narrows the table
-  if (await click('[data-action="atlas-sev"][data-sev="critical"]')) {
+  const afterClear = await $count('#asset-rows tr.arow');
+  if (afterClear < Math.min(beforeSearch, 1)) bug('medium', 'assets', 'clearing search did not restore rows', `rows=${afterClear}`);
+  // a tier facet narrows the table
+  if (await click('[data-action="asset-tier"][data-val="0"]')) {
     await sleep(300);
-    const crit = await $count('#atlas-rows tr');
-    if (crit === 0) notes.push('devices: critical facet yields 0 rows (ok if none critical)');
-    if (crit > afterClear) bug('medium', 'devices', 'severity facet increased the row count', `all=${afterClear} critical=${crit}`);
-    await click('[data-action="atlas-sev"][data-sev="critical"]');
+    const t0 = await $count('#asset-rows tr.arow');
+    if (t0 === 0) notes.push('assets: tier-0 facet yields 0 rows (ok if none)');
+    if (t0 > afterClear) bug('medium', 'assets', 'tier facet increased the row count', `all=${afterClear} tier0=${t0}`);
+    await click('[data-action="asset-tier"][data-val="0"]');
+    await sleep(200);
+  }
+  // opening a row reveals the dossier drawer
+  await click('#asset-rows tr.arow');
+  await sleep(400);
+  if (await $count('.ddrawer.is-open') === 0) bug('high', 'assets', 'asset dossier drawer did not open on row click');
+  else {
+    if (await $count('.ddrawer .dsec') === 0) bug('medium', 'assets', 'dossier opened but has no sections');
+    await click('.ddrawer .dclose'); await sleep(300);
+    if (await $count('.ddrawer.is-open') !== 0) bug('low', 'assets', 'dossier close button did not close the drawer');
+  }
+  // identities tab switches dataset
+  if (await click('[data-action="asset-kind"][data-kind="identities"]')) {
+    await sleep(300);
+    if (await $count('#asset-rows tr.arow') === 0) notes.push('assets: identities tab empty (ok if none discovered)');
+    await click('[data-action="asset-kind"][data-kind="hosts"]');
+    await sleep(200);
+  }
+
+  // -------- Captures --------
+  await visit('captures', `/engagements/${ENGAGEMENT}/captures`);
+  const capRows = await $count('#cap-rows tr.crow');
+  if (capRows === 0) bug('high', 'captures', 'capture log is empty');
+  // opening a capture reveals output terminals
+  await click('#cap-rows tr.crow');
+  await sleep(700);
+  if (await $count('.ddrawer.is-open') === 0) bug('high', 'captures', 'capture detail drawer did not open');
+  else {
+    if (await $count('.ddrawer .cterm') < 2) bug('medium', 'captures', 'capture detail missing stdout/stderr terminals');
+    // the stdout terminal should resolve out of the loading state
+    const stdoutText = await page.$eval('.ddrawer .cterm pre', (e) => e.textContent).catch(() => '');
+    if (/Loading…/.test(stdoutText)) bug('medium', 'captures', 'stdout evidence stuck loading');
+    await click('.ddrawer .dclose'); await sleep(300);
+  }
+  // actor facet narrows the log
+  const capAll = await $count('#cap-rows tr.crow');
+  if (await click('.afacet[data-action="cap-actor"]')) {
+    await sleep(300);
+    const filtered = await $count('#cap-rows tr.crow');
+    if (filtered > capAll) bug('medium', 'captures', 'actor facet increased the row count', `all=${capAll} filtered=${filtered}`);
+    await click('.afacet.on[data-action="cap-actor"]'); await sleep(200);
   }
 
   // -------- Territory Map --------
@@ -215,7 +252,7 @@ async function main() {
 
   // -------- Left nav navigation --------
   ctx = 'nav';
-  const navSeq = ['devices', 'map', 'board', 'report', 'trail'];
+  const navSeq = ['devices', 'captures', 'map', 'board', 'report', 'trail'];
   for (const n of navSeq) {
     const ok = await click(`[data-action="goto-view"][data-nav="${n}"]`);
     if (!ok) { bug('high', 'nav', `nav item "${n}" not found`); continue; }
@@ -223,7 +260,7 @@ async function main() {
     const active = await page.$$eval('.appnav-item.is-active', (e) => e.map((x) => x.dataset.nav)).catch(() => []);
     if (!active.includes(n)) bug('medium', 'nav', `clicking "${n}" did not set it active`, JSON.stringify(active));
     const url = await page.evaluate(() => location.pathname);
-    const wantFrag = { devices: '/devices', map: '/map', board: '/board', report: '/report', trail: '/attacks' }[n];
+    const wantFrag = { devices: '/devices', captures: '/captures', map: '/map', board: '/board', report: '/report', trail: '/attacks' }[n];
     if (wantFrag && !url.endsWith(wantFrag) && !(n === 'trail' && /\/(recon|attacks|findings|summit)$/.test(url))) bug('low', 'nav', `URL did not update for "${n}"`, url);
   }
 
@@ -234,7 +271,7 @@ async function main() {
   await sleep(300);
   const themed = await page.evaluate(() => document.documentElement.dataset.theme);
   if (themed !== 'dark') bug('low', 'theme', 'dark theme did not apply', String(themed));
-  if (await $count('#atlas-rows tr') === 0) bug('medium', 'theme', 'device atlas broke after theme switch');
+  if (await $count('#asset-rows tr.arow') === 0) bug('medium', 'theme', 'assets table broke after theme switch');
 
   faviconNote();
   await browser.close();
