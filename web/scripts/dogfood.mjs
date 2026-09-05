@@ -96,6 +96,11 @@ async function main() {
   // authenticate: load once, plant the token, then reload so the app boots authed
   await page.goto(eng('/attacks'), { waitUntil: 'domcontentloaded' });
   await page.evaluate((t) => localStorage.setItem('waypoint-token', t), TOKEN);
+  // The first load booted before the token was planted, so its requests fell
+  // back to a bogus token and 401'd. Reload so the app boots authed and let
+  // those doomed responses drain before any view is measured — otherwise the
+  // stray 401s bleed into the first visited view and read as a false failure.
+  await page.reload({ waitUntil: 'networkidle2' });
 
   const $count = (sel) => page.$$eval(sel, (els) => els.length).catch(() => 0);
   const $texts = (sel) => page.$$eval(sel, (els) => els.map((e) => e.textContent.trim())).catch(() => []);

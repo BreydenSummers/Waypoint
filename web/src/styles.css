@@ -1174,6 +1174,10 @@ html[data-theme='dark'] .field-group input {
 .finding-list {
   display: grid;
   gap: 10px;
+  max-height: 62vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
 }
 
 .finding-card {
@@ -1892,6 +1896,7 @@ html[data-theme='dark'] .report-card {
 .report-snippet {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   padding: 10px 12px;
   border-radius: 12px;
   background: rgba(139, 94, 52, 0.08);
