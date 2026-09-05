@@ -892,13 +892,29 @@ async function refreshAudit(signal) {
   render();
 }
 
+// loadAllPages follows the cursor so large estates aren't truncated at one page.
+// Capped so a runaway dataset can't spin forever; the cap is far above any real
+// engagement's asset/capture count.
+async function loadAllPages(basePath, token, signal, cap = 3000) {
+  const items = []; let after = '';
+  for (let i = 0; i < 60 && items.length < cap; i += 1) {
+    const sep = basePath.includes('?') ? '&' : '?';
+    const path = after ? `${basePath}${sep}after=${encodeURIComponent(after)}` : basePath;
+    const page = await apiJson(path, token, signal);
+    if (Array.isArray(page.items)) items.push(...page.items);
+    const meta = page.page || {};
+    if (!meta.hasMore || !meta.nextCursor) break;
+    after = meta.nextCursor;
+  }
+  return items;
+}
+
 async function refreshActions(signal) {
   state.actionsStatus = 'loading';
   state.actionsError = '';
   render();
   try {
-    const page = await apiJson('/api/v1/actions?limit=100', state.token, signal);
-    state.actions = Array.isArray(page.items) ? page.items : [];
+    state.actions = await loadAllPages('/api/v1/actions?limit=200', state.token, signal);
     if (!state.selectedActionId && state.actions.length) {
       state.selectedActionId = state.actions.find((action) => action.capture.phase === 'attacks')?.id || state.actions[0].id;
     }
@@ -915,8 +931,7 @@ async function refreshEntities(signal) {
   state.entityConflict = '';
   render();
   try {
-    const page = await apiJson('/api/v1/entities?limit=100', state.token, signal);
-    state.entities = Array.isArray(page.items) ? page.items : [];
+    state.entities = await loadAllPages('/api/v1/entities?limit=200', state.token, signal);
     if (!state.selectedEntityId && state.entities.length) state.selectedEntityId = state.entities[0].id;
     state.entitiesStatus = 'ready';
   } catch (error) {
@@ -2131,6 +2146,25 @@ function renderCapturesView() {
 function openAssetDossier(id) { state.drawer = { kind: 'asset', id }; render(); }
 function openCaptureDrawer(id, from) { state.drawer = { kind: 'capture', id, from: from || null }; render(); }
 function closeDrawer(silent) { const had = !!state.drawer; state.drawer = null; if (had && !silent) render(); }
+// Fetch an evidence stream as bytes and recompute its SHA-256 in the browser,
+// so "verified" means the client re-derived the hash from the fetched bytes —
+// not that it trusted the server's number. verified is null when Web Crypto is
+// unavailable (then we fall back to displaying the server-declared digest).
+async function fetchEvidenceVerified(ref, token, signal) {
+  const res = await fetch(ref.downloadPath || `/api/v1/evidence/${ref.id}/content`, { headers: authHeaders(token, newRequestId()), cache: 'no-store', signal });
+  if (!res.ok) throw new Error(`evidence ${res.status}`);
+  const buf = await res.arrayBuffer();
+  const text = new TextDecoder().decode(buf);
+  let verified = null;
+  try {
+    if (window.crypto && window.crypto.subtle && window.crypto.subtle.digest) {
+      const digest = await window.crypto.subtle.digest('SHA-256', buf);
+      const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      verified = hex.toLowerCase() === String(ref.sha256 || '').toLowerCase();
+    }
+  } catch (_) { verified = null; }
+  return { text, verified };
+}
 function ensureCaptureEvidence(actionId) {
   const ac = mCapById(actionId); if (!ac) return;
   const refs = ac.evidenceReferences || {};
@@ -2138,10 +2172,10 @@ function ensureCaptureEvidence(actionId) {
     const ref = refs[role]; if (!ref || !ref.id || !ref.byteLength) return;
     const cur = state.evidenceCache[ref.id];
     if (cur && (cur.status === 'ready' || cur.status === 'loading' || cur.status === 'error')) return;
-    state.evidenceCache[ref.id] = { status: 'loading', text: '' };
-    apiText(ref.downloadPath || `/api/v1/evidence/${ref.id}/content`, state.token)
-      .then((text) => { state.evidenceCache[ref.id] = { status: 'ready', text: String(text == null ? '' : text) }; if (state.drawer && state.drawer.id === actionId) render(); })
-      .catch((err) => { state.evidenceCache[ref.id] = { status: 'error', text: (err && err.message) || 'Unable to load evidence' }; if (state.drawer && state.drawer.id === actionId) render(); });
+    state.evidenceCache[ref.id] = { status: 'loading', text: '', verified: null };
+    fetchEvidenceVerified(ref, state.token)
+      .then((res) => { state.evidenceCache[ref.id] = { status: 'ready', text: res.text, verified: res.verified }; if (state.drawer && state.drawer.id === actionId) render(); })
+      .catch((err) => { state.evidenceCache[ref.id] = { status: 'error', text: (err && err.message) || 'Unable to load evidence', verified: null }; if (state.drawer && state.drawer.id === actionId) render(); });
   });
 }
 function mScopeClass(s) { return s === 'domain' ? 'scope-domain' : s === 'local' ? 'scope-local' : 'scope-user'; }
@@ -2174,23 +2208,52 @@ function renderCaptureDrawer(id, from) {
   const meta = `<div class="dkv"><div><dt>Actor</dt><dd>${escapeHtml((ac.actor && (ac.actor.handle || ac.actor.id)) || '—')}${ac.actor && ac.actor.kind === 'ai_agent' ? ' (agent)' : ''}</dd></div><div><dt>Target</dt><dd>${escapeHtml((c.target && c.target.value) || '—')}${c.target && c.target.port ? ` : ${c.target.port}` : ''}</dd></div><div><dt>When</dt><dd>${escapeHtml(mCapStart(ac) ? formatTime(mCapStart(ac)) : '—')}</dd></div><div><dt>Exit code</dt><dd style="color:${st === 'ok' ? MPAL.forest : MSEV_COLOR.critical}">${typeof ex.exitCode === 'number' ? ex.exitCode : '—'} · ${escapeHtml(ex.status || (st === 'ok' ? 'success' : 'failed'))}</dd></div></div>`;
   const attach = mAssetForCapture(ac);
   const attachHtml = attach ? `<div class="dsec"><h3>Attached to</h3><div class="dlinkrow" data-action="open-asset" data-id="${attach.id}"><div><div class="dlink-main">${escapeHtml(mEntityName(attach))}</div><div class="dlink-sub">Tier ${mAssetTier(attach)} · ${ATIER[mAssetTier(attach)].label} · ${escapeHtml(mSegmentKey(attach).label)}</div></div><span class="dlink-go">View asset →</span></div></div>` : '';
-  return `<div class="dh">${back}<div class="dh-top"><h2 class="cmd mono">${escapeHtml(c.command || 'Capture')}</h2><button class="dclose" data-action="close-drawer" aria-label="Close">✕</button></div><div class="dh-badges"><span class="cst ${st}"><i></i>${st === 'ok' ? 'Success' : 'Failed'}</span><span class="ctag ${ty}">${CAP_TYPE_LABEL[ty]}</span>${mActorChip(ac.actor)}</div></div><div class="dbody"><div class="dsec"><h3>Capture</h3>${meta}</div><div class="dsec"><h3>Output</h3>${mTermPane(refs.stdout, 'stdout')}${mTermPane(refs.stderr, 'stderr')}<div class="devnote">${CHECK_SVG}<span><b>Bundle verified</b> — evidence is content-addressed and size-checked on read.</span></div></div>${attachHtml}</div>`;
+  const verdict = mBundleVerdict(ac);
+  const note = verdict === 'mismatch'
+    ? `<div class="devnote bad">${WARN_SVG}<span><b>Hash mismatch</b> — a stream digest did not match the sealed evidence. Do not trust this output.</span></div>`
+    : verdict === 'verified'
+      ? `<div class="devnote">${CHECK_SVG}<span><b>Bundle verified</b> — stream hashes recomputed in your browser and match the sealed evidence.</span></div>`
+      : `<div class="devnote pending">${CHECK_SVG}<span>Verifying evidence hashes…</span></div>`;
+  return `<div class="dh">${back}<div class="dh-top"><h2 class="cmd mono">${escapeHtml(c.command || 'Capture')}</h2><button class="dclose" data-action="close-drawer" aria-label="Close">✕</button></div><div class="dh-badges"><span class="cst ${st}"><i></i>${st === 'ok' ? 'Success' : 'Failed'}</span><span class="ctag ${ty}">${CAP_TYPE_LABEL[ty]}</span>${mActorChip(ac.actor)}</div></div><div class="dbody"><div class="dsec"><h3>Capture</h3>${meta}</div><div class="dsec"><h3>Output</h3>${mTermPane(refs.stdout, 'stdout')}${mTermPane(refs.stderr, 'stderr')}${note}</div>${attachHtml}</div>`;
 }
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+const WARN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>';
 const EMPTY_SHA = 'e3b0c442…7852b855';
 function mTermPane(ref, role) {
   const isErr = role === 'stderr';
   if (!ref || !ref.id) return `<div class="cterm ${isErr ? 'err' : ''}"><div class="cterm-h"><span class="cth-l"><b>${role}</b><span>unavailable</span></span></div><pre class="empty">— no ${role} evidence —</pre></div>`;
   const bytes = ref.byteLength || 0;
   const sha = bytes ? (String(ref.sha256 || '').slice(0, 8) + '…' + String(ref.sha256 || '').slice(-6)) : EMPTY_SHA;
-  const cache = state.evidenceCache[ref.id] || { status: bytes ? 'idle' : 'ready', text: '' };
+  const cache = state.evidenceCache[ref.id] || { status: bytes ? 'idle' : 'ready', verified: null, text: '' };
   let body;
   if (!bytes) body = `<pre class="empty">— no ${role} —</pre>`;
   else if (cache.status === 'ready') body = `<pre>${escapeHtml(cache.text)}</pre>`;
   else if (cache.status === 'error') body = `<pre class="empty">${escapeHtml(cache.text)}</pre>`;
   else body = `<pre class="empty">Loading…</pre>`;
-  const verified = (!bytes || cache.status === 'ready') ? `<span class="cverified">${CHECK_SVG} verified</span>` : '';
-  return `<div class="cterm ${isErr ? 'err' : ''}"><div class="cterm-h"><span class="cth-l"><b>${role}</b><span>${bytes} bytes</span>·<span class="mono">${escapeHtml(sha)}</span></span>${verified}</div>${body}</div>`;
+  let badge = '';
+  if (!bytes) badge = `<span class="cverified">${CHECK_SVG} verified</span>`;
+  else if (cache.status === 'ready') {
+    if (cache.verified === true) badge = `<span class="cverified">${CHECK_SVG} verified</span>`;
+    else if (cache.verified === false) badge = `<span class="cmismatch">⚠ hash mismatch</span>`;
+    else badge = `<span class="cverified soft">${CHECK_SVG} server-hashed</span>`;
+  }
+  return `<div class="cterm ${isErr ? 'err' : ''}"><div class="cterm-h"><span class="cth-l"><b>${role}</b><span>${bytes} bytes</span>·<span class="mono">${escapeHtml(sha)}</span></span>${badge}</div>${body}</div>`;
+}
+// Overall bundle verdict across a capture's evidence streams for the footer note.
+function mBundleVerdict(ac) {
+  const refs = (ac && ac.evidenceReferences) || {};
+  let anyChecked = false; let allOk = true; let mismatch = false;
+  ['stdout', 'stderr'].forEach((role) => {
+    const ref = refs[role]; if (!ref || !ref.id || !ref.byteLength) return;
+    const c = state.evidenceCache[ref.id];
+    if (!c || c.status !== 'ready') { allOk = false; return; }
+    if (c.verified === true) anyChecked = true;
+    else if (c.verified === false) { mismatch = true; allOk = false; }
+    else allOk = false;
+  });
+  if (mismatch) return 'mismatch';
+  if (anyChecked && allOk) return 'verified';
+  return 'pending';
 }
 function renderDrawer() {
   if (!state.drawer) return '';

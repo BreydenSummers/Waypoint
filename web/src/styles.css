@@ -2525,3 +2525,9 @@ html[data-theme='dark'] .ctag.loot { color: #c8583a; }
 .devnote { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--chrome-muted); margin-top: 4px; }
 .devnote svg { width: 15px; height: 15px; color: #5f8a2e; flex: 0 0 auto; }
 .devnote b { color: #5f8a2e; }
+.cverified.soft { color: var(--chrome-muted); }
+.cmismatch { color: #b04c30; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+html[data-theme='dark'] .cmismatch { color: #e08a6a; }
+.devnote.bad { color: #b04c30; } .devnote.bad svg { color: #b04c30; } .devnote.bad b { color: #b04c30; }
+html[data-theme='dark'] .devnote.bad, html[data-theme='dark'] .devnote.bad svg, html[data-theme='dark'] .devnote.bad b { color: #e08a6a; }
+.devnote.pending svg { color: var(--chrome-muted); }
