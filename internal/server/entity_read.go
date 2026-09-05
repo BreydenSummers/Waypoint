@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -37,10 +38,28 @@ type entityReadResponse struct {
 	Kind            string                    `json:"kind"`
 	Identifiers     []captureEntityIdentifier `json:"identifiers"`
 	Attributes      json.RawMessage           `json:"attributes"`
+	Access          entityAccessRollup        `json:"access"`
+	Credentials     []credentialSummary       `json:"credentials"`
 	Observations    []entityObservationItem   `json:"observations"`
 	FirstSeen       time.Time                 `json:"firstSeen"`
 	LastSeen        time.Time                 `json:"lastSeen"`
 	Revision        int                       `json:"revision"`
+}
+
+// entityAccessRollup summarises how much access an operator has established on an
+// entity, derived from its access/credential observations. It is a read-only
+// projection — the authoritative value the UI and reports render.
+type entityAccessRollup struct {
+	Level      string `json:"level"` // none | user | admin | system
+	OwnsDomain bool   `json:"ownsDomain"`
+}
+
+// credentialSummary distils a captured credential/access observation on an entity.
+type credentialSummary struct {
+	User           string `json:"user"`
+	Scope          string `json:"scope"` // domain | local | user
+	Method         string `json:"method"`
+	SourceActionID string `json:"sourceActionId,omitempty"`
 }
 
 type entityObservationItem struct {
@@ -150,10 +169,16 @@ func handleEntityList(w http.ResponseWriter, r *http.Request, db *sql.DB, actor 
 		writeProblem(w, *pb)
 		return
 	}
+	kind, pb := parseEntityKindFilter(r.URL.Query().Get("kind"))
+	if pb != nil {
+		pb.RequestID = reqID
+		writeProblem(w, *pb)
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	page, err := loadEntityPage(ctx, db, actor.EngagementID, after, limit)
+	page, err := loadEntityPage(ctx, db, actor.EngagementID, after, limit, kind)
 	if err != nil {
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load entity page failed"})
 		return
@@ -209,7 +234,21 @@ func parseEntityPageCursor(v string) (*entityPageCursor, *captureProblem) {
 	return cursor, nil
 }
 
-func loadEntityPage(ctx context.Context, db *sql.DB, engagementID string, after *entityPageCursor, limit int) (entityPageResponse, error) {
+// parseEntityKindFilter validates an optional ?kind= filter. Kind is a freeform
+// text column (host, identity, segment, …); we only bound its length and reject
+// control characters so it can be used as a safe equality filter.
+func parseEntityKindFilter(v string) (string, *captureProblem) {
+	k := strings.TrimSpace(v)
+	if k == "" {
+		return "", nil
+	}
+	if len(k) > 64 || strings.ContainsAny(k, controlChars) {
+		return "", badField("/kind", "invalid_value", "kind must be printable text up to 64 characters.")
+	}
+	return k, nil
+}
+
+func loadEntityPage(ctx context.Context, db *sql.DB, engagementID string, after *entityPageCursor, limit int, kind string) (entityPageResponse, error) {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return entityPageResponse{}, err
@@ -222,15 +261,20 @@ func loadEntityPage(ctx context.Context, db *sql.DB, engagementID string, after 
 		afterSeen = after.FirstSeen
 		afterID = after.ID
 	}
+	var kindFilter any
+	if strings.TrimSpace(kind) != "" {
+		kindFilter = kind
+	}
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id
 		FROM entity
 		WHERE engagement_id = $1
 		  AND merged_into_entity_id IS NULL
 		  AND ($2::timestamptz IS NULL OR (first_seen, id) > ($2, $3))
+		  AND ($5::text IS NULL OR kind = $5)
 		ORDER BY first_seen ASC, id ASC
 		LIMIT $4
-	`, engagementID, afterSeen, afterID, limit+1)
+	`, engagementID, afterSeen, afterID, limit+1, kindFilter)
 	if err != nil {
 		return entityPageResponse{}, err
 	}
@@ -297,6 +341,7 @@ func loadEntityReadResponseWithTx(ctx context.Context, q queryer, engagementID, 
 	if err != nil {
 		return entityReadResponse{}, err
 	}
+	access, creds := deriveEntityAccess(observations)
 	return entityReadResponse{
 		ContractVersion: entityReadContractVersion,
 		ID:              row.ID,
@@ -304,11 +349,111 @@ func loadEntityReadResponseWithTx(ctx context.Context, q queryer, engagementID, 
 		Kind:            row.Kind,
 		Identifiers:     entityIdentifiersFromRow(row, observations),
 		Attributes:      normalizeJSONObject(row.Attributes),
+		Access:          access,
+		Credentials:     creds,
 		Observations:    observations,
 		FirstSeen:       row.FirstSeen,
 		LastSeen:        row.LastSeen,
 		Revision:        row.Revision,
 	}, nil
+}
+
+// deriveEntityAccess computes the access rollup and credential list for an entity
+// from its access/credential observations. Mirrors the client heuristic so the
+// server value is authoritative: SYSTEM/root/DA access or a dcsync/secretsdump/
+// golden/Domain-Admin credential reads as SYSTEM; a Domain-Admin credential also
+// confers domain ownership.
+func deriveEntityAccess(observations []entityObservationItem) (entityAccessRollup, []credentialSummary) {
+	rank := 0
+	owns := false
+	creds := make([]credentialSummary, 0)
+	seen := map[string]bool{}
+	bump := func(n int) {
+		if n > rank {
+			rank = n
+		}
+	}
+	for _, o := range observations {
+		if o.Kind != "access" && o.Kind != "credential" {
+			continue
+		}
+		attrs := decodeObservationAttrs(o.Attributes)
+		if b, ok := attrs["success"].(bool); ok && !b {
+			continue
+		}
+		user, _ := attrs["user"].(string)
+		method, _ := attrs["method"].(string)
+		accessStr, _ := attrs["access"].(string)
+		priv := strings.ToLower(fmt.Sprintf("%v %v", attrs["privilege"], attrs["impact"]))
+		la := strings.ToLower(accessStr)
+		switch o.Kind {
+		case "access":
+			if strings.Contains(la, "system") || strings.Contains(la, "root") || strings.Contains(la, "domain admin") {
+				bump(3)
+			} else if strings.Contains(la, "admin") {
+				bump(2)
+			} else if la != "" {
+				bump(1)
+			}
+		case "credential":
+			m := strings.ToLower(method)
+			if strings.Contains(m, "dcsync") || strings.Contains(m, "secretsdump") || strings.Contains(priv, "golden") || strings.Contains(priv, "domain admin") {
+				bump(3)
+			} else {
+				bump(1)
+			}
+			if strings.Contains(priv, "domain admin") || strings.Contains(priv, "golden") {
+				owns = true
+			}
+		}
+		if user == "" {
+			continue
+		}
+		scope := "user"
+		if strings.Contains(priv, "domain admin") || strings.Contains(priv, "golden") {
+			scope = "domain"
+		} else if strings.Contains(la, "system") || strings.Contains(la, "admin") {
+			scope = "local"
+		}
+		how := method
+		if o.Kind == "access" {
+			if accessStr != "" {
+				how = accessStr + " access"
+			} else {
+				how = "access"
+			}
+		}
+		if how == "" {
+			how = "captured"
+		}
+		key := user + "|" + how
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		creds = append(creds, credentialSummary{User: user, Scope: scope, Method: how, SourceActionID: o.SourceActionID})
+	}
+	level := "none"
+	switch rank {
+	case 3:
+		level = "system"
+	case 2:
+		level = "admin"
+	case 1:
+		level = "user"
+	}
+	return entityAccessRollup{Level: level, OwnsDomain: owns && rank > 0}, creds
+}
+
+func decodeObservationAttrs(raw json.RawMessage) map[string]any {
+	if len(raw) == 0 {
+		return map[string]any{}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil || m == nil {
+		return map[string]any{}
+	}
+	return m
 }
 
 func loadCanonicalEntityRow(ctx context.Context, q queryer, engagementID, entityID string) (entityReadRow, error) {

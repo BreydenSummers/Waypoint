@@ -1857,8 +1857,10 @@ function mAssetTargets(e) {
   const nm = mEntityName(e); if (nm) set.add(nm.toLowerCase());
   return set;
 }
-// Access state, derived from the host's access/credential observations.
+// Access state. Prefers the server-computed rollup (authoritative) and falls
+// back to deriving it from the entity's observations for older responses.
 function mAccessFor(e) {
+  if (e && e.access && e.access.level) return { level: e.access.level, rank: ACC_RANK[e.access.level] || 0, ownsDomain: !!e.access.ownsDomain };
   let rank = 0; let ownsDomain = false;
   const bump = (lvl) => { if (ACC_RANK[lvl] > rank) rank = ACC_RANK[lvl]; };
   mObs(e).forEach((o) => {
@@ -1900,23 +1902,28 @@ function mExposureFor(e) {
   if (role.includes('file') || role.includes('gateway') || role.includes('proxy') || role.includes('sql') || role.includes('database')) tags.push('pivot');
   return tags;
 }
+// Credentials valid on a host: the server-computed rollup for the entity itself,
+// augmented with credentials captured elsewhere whose target names this host.
 function mCredentialsFor(e) {
-  const targets = mAssetTargets(e); const out = []; const seen = new Set();
+  const out = []; const seen = new Set();
+  const push = (user, scope, how, source) => { if (!user) return; const key = `${user}|${how}`; if (seen.has(key)) return; seen.add(key); out.push({ user, scope, how, source: source || '' }); };
+  (e.credentials || []).forEach((c) => push(c.user, c.scope, c.method, c.sourceActionId));
+  const targets = mAssetTargets(e);
   (state.entities || []).forEach((ent) => {
+    if (ent.id === e.id) return;
     mObs(ent).forEach((o) => {
       if (o.kind !== 'credential' && o.kind !== 'access') return;
       const a = mAttrs(o); if (a.success === false) return;
       const tgt = String(a.target || '').toLowerCase();
-      if (!(ent.id === e.id || (tgt && targets.has(tgt)))) return;
-      const user = a.user || mEntityName(ent); if (!user) return;
+      if (!(tgt && targets.has(tgt))) return;
+      const user = a.user || mEntityName(ent);
       const priv = String(a.privilege || a.impact || '').toLowerCase();
       const accStr = String(a.access || '').toLowerCase();
       let scope = 'user';
       if (priv.includes('domain admin') || priv.includes('golden')) scope = 'domain';
       else if (accStr.includes('system') || accStr.includes('admin')) scope = 'local';
       const how = o.kind === 'credential' ? (a.method || 'captured') : (a.access ? `${a.access} access` : 'access');
-      const key = `${user}|${how}`; if (seen.has(key)) return; seen.add(key);
-      out.push({ user, scope, how, source: o.sourceActionId || '' });
+      push(user, scope, how, o.sourceActionId);
     });
   });
   return out;
