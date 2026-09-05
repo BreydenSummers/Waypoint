@@ -65,6 +65,7 @@ const state = {
   capType: new Set(),
   drawer: null,
   evidenceCache: {},
+  attachFor: null,
   token: 'demo-token',
   auditStatus: 'loading',
   actionsStatus: 'loading',
@@ -1852,8 +1853,10 @@ const EXPO_LABEL = { inet: 'Internet-facing', pivot: 'Pivot', data: 'Sensitive d
 function mObs(e) { return (e && Array.isArray(e.observations)) ? e.observations : []; }
 function mAttrs(o) { const a = o && o.attributes; if (!a) return {}; if (typeof a === 'string') { try { return JSON.parse(a); } catch { return {}; } } return a; }
 // Collapse the map's 0–3 host tier to the 3-tier asset model (T0 domain / T1 server / T2 endpoint).
-// Identities tier by privilege: a Domain Admin principal is Tier 0, others Tier 2.
+// An operator's stored tier override wins; identities tier by privilege
+// (a Domain Admin principal is Tier 0, others Tier 2).
 function mAssetTier(e) {
+  if (e && e.tierOverride !== undefined && e.tierOverride !== null) return e.tierOverride;
   if (e.kind === 'identity') {
     const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
     const priv = `${String(a.memberOf || '')} ${String(a.privilege || '')}`.toLowerCase();
@@ -2143,6 +2146,36 @@ function renderCapturesView() {
 }
 
 /* ============================ Drawer: asset dossier + capture detail ============================ */
+async function attachCaptureToFinding(findingId, captureId, expectedRevision) {
+  const finding = (state.findings || []).find((f) => f.id === findingId);
+  if (!finding) return;
+  try {
+    const response = await fetch(`/api/v1/findings/${findingId}`, {
+      method: 'PATCH',
+      headers: { ...authHeaders(state.token, newRequestId()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedRevision, addEvidenceActionIds: [captureId] }),
+    });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const updated = await response.json();
+    state.findings = state.findings.map((item) => (item.id === updated.id ? updated : item));
+  } catch (_) { /* leave the picker open on failure; the finding is unchanged */ }
+  state.attachFor = null;
+  render();
+}
+async function setEntityTier(entityId, tier, expectedRevision) {
+  const tierOverride = tier === 'auto' ? null : Number(tier);
+  try {
+    const response = await fetch(`/api/v1/entities/${entityId}`, {
+      method: 'PATCH',
+      headers: { ...authHeaders(state.token, newRequestId()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tierOverride, expectedRevision }),
+    });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const updated = await response.json();
+    state.entities = (state.entities || []).map((ent) => (ent.id === updated.id ? updated : ent));
+  } catch (_) { /* leave the entity unchanged on failure */ }
+  render();
+}
 function openAssetDossier(id) { state.drawer = { kind: 'asset', id }; render(); }
 function openCaptureDrawer(id, from) { state.drawer = { kind: 'capture', id, from: from || null }; render(); }
 function closeDrawer(silent) { const had = !!state.drawer; state.drawer = null; if (had && !silent) render(); }
@@ -2194,9 +2227,23 @@ function renderAssetDrawer(e) {
   const meta = `<div class="dkv"><div><dt>${isHost ? 'Address' : 'Directory'}</dt><dd class="mono">${escapeHtml(mEntityIP(e) || (isHost ? '—' : 'AD'))}</dd></div><div><dt>${isHost ? 'Platform' : 'Type'}</dt><dd>${escapeHtml(svc.os)}</dd></div><div><dt>Tier</dt><dd style="color:${t.color}">Tier ${mAssetTier(e)} · ${t.label}</dd></div><div><dt>Segment</dt><dd class="mono" style="font-size:12px">${escapeHtml(mSegmentKey(e).label)}</dd></div>${sid ? `<div><dt>SID</dt><dd class="mono" style="font-size:11px">${escapeHtml(sid)}</dd></div>` : ''}</div>`;
   const ports = svc.services.length ? `<div class="dsec"><h3>Services &amp; ports</h3><div class="dports">${svc.services.map((s) => `<span class="dport">${escapeHtml(s)}</span>`).join('')}</div></div>` : '';
   const credsHtml = creds.length ? `<div class="dsec"><h3>Valid credentials <span class="dbadge">${creds.length}</span></h3>${creds.map((c) => `<div class="dcred${c.source ? ' dsrclink' : ''}"${c.source ? ` data-action="open-capture" data-id="${c.source}" data-from="${e.id}"` : ''}><div class="dcred-row"><div class="dcred-main"><div class="dcred-user mono">${escapeHtml(c.user)}</div><div class="dcred-how">${escapeHtml(c.how)}</div></div><span class="dcred-scope ${mScopeClass(c.scope)}">${mScopeLabel(c.scope)}</span></div>${c.source ? mCapSrcLine(c.source) : ''}</div>`).join('')}</div>` : '';
-  const findsHtml = finds.length ? `<div class="dsec"><h3>Findings <span class="dbadge">${finds.length}</span></h3>${finds.map((f) => { const s = String(f.severity || 'info').toLowerCase(); const src = (f.evidenceActionIds || [])[0]; return `<div class="dfind${src ? ' dsrclink' : ''}" style="--fc:${MSEV_COLOR[s]}"${src ? ` data-action="open-capture" data-id="${src}" data-from="${e.id}"` : ''}><div class="dfind-t">${escapeHtml(f.title || 'Finding')}</div><div class="dfind-m">${MSEV_LABEL[s]} · ${escapeHtml(f.status || 'open')}</div>${src ? mCapSrcLine(src) : ''}</div>`; }).join('')}</div>` : '';
+  const findsHtml = finds.length ? `<div class="dsec"><h3>Findings <span class="dbadge">${finds.length}</span></h3>${finds.map((f) => {
+    const s = String(f.severity || 'info').toLowerCase();
+    const evids = f.evidenceActionIds || [];
+    const evLinks = evids.map((id) => { const ac = mCapById(id); const tool = ac ? String((ac.capture && ac.capture.command) || 'capture').split(/\s+/)[0] : 'capture'; return `<div class="devlink" data-action="open-capture" data-id="${id}" data-from="${e.id}"><span>Evidence · <span class="mono">${escapeHtml(tool)}</span></span><span class="dsrc-go">View capture →</span></div>`; }).join('');
+    const linked = new Set(evids);
+    const candidates = mCapturesFor(e).filter((ac) => !linked.has(ac.id));
+    const attachOpen = state.attachFor === f.id;
+    const attach = candidates.length ? `<div class="dattach"><div class="dattach-toggle" data-action="finding-attach-toggle" data-finding="${f.id}">${attachOpen ? '×' : '+'} Attach a capture</div>${attachOpen ? `<div class="dattach-list">${candidates.slice(0, 20).map((ac) => `<div class="dattach-item" data-action="finding-attach" data-finding="${f.id}" data-cap="${ac.id}" data-rev="${f.revision}"><span class="mono">${escapeHtml((ac.capture && ac.capture.command) || '—')}</span><span class="dattach-add">Attach</span></div>`).join('')}</div>` : ''}</div>` : '';
+    return `<div class="dfind2" style="--fc:${MSEV_COLOR[s]}"><div class="dfind-t">${escapeHtml(f.title || 'Finding')}</div><div class="dfind-m">${MSEV_LABEL[s]} · ${escapeHtml(f.status || 'open')} · ${evids.length} capture${evids.length === 1 ? '' : 's'}</div>${evLinks}${attach}</div>`;
+  }).join('')}</div>` : '';
   const capsHtml = caps.length ? `<div class="dsec"><h3>What we ran here <span class="dbadge">${caps.length}</span></h3>${caps.slice(0, 40).map((ac) => { const st = mCapStatus(ac); const h = (ac.actor && (ac.actor.handle || ac.actor.id)) || 'operator'; return `<div class="dcap" data-action="open-capture" data-id="${ac.id}" data-from="${e.id}"><div class="dcap-top"><span class="dcap-cmd mono">${escapeHtml((ac.capture && ac.capture.command) || '—')}</span><span class="dcap-go">→</span></div><div class="dcap-meta"><span class="cst ${st}"><i></i>${st === 'ok' ? 'Success' : 'Failed'}</span>·<span>${escapeHtml(h)}</span>·<span>${escapeHtml(mCapStart(ac) ? formatTime(mCapStart(ac)) : '')}</span></div></div>`; }).join('')}</div>` : '';
-  return `<div class="dh"><div class="dh-top"><div><h2>${escapeHtml(mEntityName(e))}</h2><div class="dh-meta">${escapeHtml((e.attributes && e.attributes.role) || (isHost ? 'Host' : 'Identity'))}</div></div><button class="dclose" data-action="close-drawer" aria-label="Close">✕</button></div><div class="dh-badges"><span class="atbadge t${mAssetTier(e)}">${t.short}</span><span class="aacc">${mAccPips(acc.level)}<span class="aacc-label" style="color:${ACC_COLOR[acc.level]}">${ACC_LABEL[acc.level]}</span></span>${acc.ownsDomain ? '<span class="aowns">Owns domain</span>' : ''}${mExpoTags(row.expo || mExposureFor(e))}</div></div><div class="dbody"><div class="dsec"><h3>Overview</h3>${meta}</div>${ports}${credsHtml}${findsHtml}${capsHtml}</div>`;
+  const curTier = mAssetTier(e);
+  const overridden = e.tierOverride !== undefined && e.tierOverride !== null;
+  const rev = e.revision || 0;
+  const tierBtns = [0, 1, 2].map((tv) => `<button class="dtier-btn${overridden && curTier === tv ? ' on' : ''}" data-action="set-tier" data-id="${e.id}" data-tier="${tv}" data-rev="${rev}">T${tv}</button>`).join('');
+  const tierControl = `<div class="dtier"><span class="dtier-cap">Tier</span>${tierBtns}<button class="dtier-btn${overridden ? '' : ' on'}" data-action="set-tier" data-id="${e.id}" data-tier="auto" data-rev="${rev}">Auto</button>${overridden ? '<span class="dtier-note">manual override</span>' : ''}</div>`;
+  return `<div class="dh"><div class="dh-top"><div><h2>${escapeHtml(mEntityName(e))}</h2><div class="dh-meta">${escapeHtml((e.attributes && e.attributes.role) || (isHost ? 'Host' : 'Identity'))}</div></div><button class="dclose" data-action="close-drawer" aria-label="Close">✕</button></div><div class="dh-badges"><span class="atbadge t${curTier}">${ATIER[curTier].short}</span><span class="aacc">${mAccPips(acc.level)}<span class="aacc-label" style="color:${ACC_COLOR[acc.level]}">${ACC_LABEL[acc.level]}</span></span>${acc.ownsDomain ? '<span class="aowns">Owns domain</span>' : ''}${mExpoTags(row.expo || mExposureFor(e))}</div>${tierControl}</div><div class="dbody"><div class="dsec"><h3>Overview</h3>${meta}</div>${ports}${credsHtml}${findsHtml}${capsHtml}</div>`;
 }
 function renderCaptureDrawer(id, from) {
   const ac = mCapById(id);
@@ -3342,6 +3389,9 @@ async function handleClick(event) {
   if (action === 'close-drawer') { closeDrawer(); return; }
   if (action === 'cap-actor') { const v = target.dataset.val; if (state.capActor.has(v)) state.capActor.delete(v); else state.capActor.add(v); render(); return; }
   if (action === 'cap-type') { const v = target.dataset.val; if (state.capType.has(v)) state.capType.delete(v); else state.capType.add(v); render(); return; }
+  if (action === 'finding-attach-toggle') { const id = target.dataset.finding; state.attachFor = state.attachFor === id ? null : id; render(); return; }
+  if (action === 'finding-attach') { await attachCaptureToFinding(target.dataset.finding, target.dataset.cap, Number(target.dataset.rev)); return; }
+  if (action === 'set-tier') { await setEntityTier(target.dataset.id, target.dataset.tier, Number(target.dataset.rev)); return; }
   if (action === 'board-more') {
     const c = target.dataset.col;
     if (state.boardExpanded.has(c)) state.boardExpanded.delete(c); else state.boardExpanded.add(c);

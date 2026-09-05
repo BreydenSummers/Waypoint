@@ -17,7 +17,10 @@ import (
 const findingContractVersion = "1.0.0"
 
 type findingPromoteRequest struct {
-	SourceActionID    string   `json:"sourceActionId"`
+	SourceActionID string `json:"sourceActionId"`
+	// EvidenceActionIDs corroborate the finding with additional captures beyond
+	// the promoted attack action. The source action is always included first.
+	EvidenceActionIDs []string `json:"evidenceActionIds,omitempty"`
 	Title             string   `json:"title"`
 	Severity          string   `json:"severity"`
 	AffectedEntityIDs []string `json:"affectedEntityIds,omitempty"`
@@ -26,12 +29,16 @@ type findingPromoteRequest struct {
 }
 
 type findingUpdateRequest struct {
-	ExpectedRevision  *int      `json:"expectedRevision,omitempty"`
-	Title             *string   `json:"title,omitempty"`
-	Severity          *string   `json:"severity,omitempty"`
-	AffectedEntityIDs *[]string `json:"affectedEntityIds,omitempty"`
-	Remediation       *string   `json:"remediation,omitempty"`
-	Status            *string   `json:"status,omitempty"`
+	ExpectedRevision *int    `json:"expectedRevision,omitempty"`
+	Title            *string `json:"title,omitempty"`
+	Severity         *string `json:"severity,omitempty"`
+	// AddEvidenceActionIDs attaches more corroborating captures to a finding.
+	// Evidence links are append-only: new ids are added, existing ones can never
+	// be removed or reordered.
+	AddEvidenceActionIDs []string  `json:"addEvidenceActionIds,omitempty"`
+	AffectedEntityIDs    *[]string `json:"affectedEntityIds,omitempty"`
+	Remediation          *string   `json:"remediation,omitempty"`
+	Status               *string   `json:"status,omitempty"`
 }
 
 type findingListResponse struct {
@@ -308,6 +315,9 @@ func applyFindingPromotion(ctx context.Context, tx *sql.Tx, actor actorRecord, r
 	if pb := validateUUIDList(req.AffectedEntityIDs, "/affectedEntityIds"); pb != nil {
 		return findingItem{}, pb, nil
 	}
+	if pb := validateUUIDList(req.EvidenceActionIDs, "/evidenceActionIds"); pb != nil {
+		return findingItem{}, pb, nil
+	}
 
 	action, pb, err := loadAttackAction(ctx, tx, actor.EngagementID, req.SourceActionID)
 	if pb != nil || err != nil {
@@ -315,6 +325,23 @@ func applyFindingPromotion(ctx context.Context, tx *sql.Tx, actor actorRecord, r
 	}
 	if action.Phase != "attacks" {
 		return findingItem{}, &captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "finding_conflict", Retryable: false, Detail: "only attack actions can be promoted."}, nil
+	}
+
+	// Evidence set: the promoted attack action first, then any corroborating
+	// captures, deduped and existence-checked within the engagement.
+	evidenceActions := []string{req.SourceActionID}
+	for _, id := range normalizeUUIDs(req.EvidenceActionIDs) {
+		if id == req.SourceActionID || sliceHasString(evidenceActions, id) {
+			continue
+		}
+		ok, err := actionExistsInEngagement(ctx, tx, actor.EngagementID, id)
+		if err != nil {
+			return findingItem{}, nil, err
+		}
+		if !ok {
+			return findingItem{}, badField("/evidenceActionIds", "unknown_action", "evidenceActionIds must reference actions in this engagement."), nil
+		}
+		evidenceActions = append(evidenceActions, id)
 	}
 
 	affected := normalizeUUIDs(req.AffectedEntityIDs)
@@ -331,10 +358,10 @@ func applyFindingPromotion(ctx context.Context, tx *sql.Tx, actor actorRecord, r
 
 	findingID := newUUID()
 	now := time.Now().UTC()
-	if _, err := tx.ExecContext(ctx, `INSERT INTO finding (id, engagement_id, title, severity, affected_entity_ids, evidence_action_ids, remediation, status, promoted_by, promoted_at, revision, created_at, updated_at) VALUES ($1, $2, $3, $4, $5::uuid[], $6::uuid[], $7, $8, $9, $10, 1, $10, $10)`, findingID, actor.EngagementID, strings.TrimSpace(req.Title), strings.TrimSpace(req.Severity), uuidArrayLiteral(affected), uuidArrayLiteral([]string{req.SourceActionID}), strings.TrimSpace(req.Remediation), strings.TrimSpace(req.Status), actor.ID, now); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO finding (id, engagement_id, title, severity, affected_entity_ids, evidence_action_ids, remediation, status, promoted_by, promoted_at, revision, created_at, updated_at) VALUES ($1, $2, $3, $4, $5::uuid[], $6::uuid[], $7, $8, $9, $10, 1, $10, $10)`, findingID, actor.EngagementID, strings.TrimSpace(req.Title), strings.TrimSpace(req.Severity), uuidArrayLiteral(affected), uuidArrayLiteral(evidenceActions), strings.TrimSpace(req.Remediation), strings.TrimSpace(req.Status), actor.ID, now); err != nil {
 		return findingItem{}, nil, err
 	}
-	if err := appendFindingAuditEvent(ctx, tx, actor, reqID, "finding.promoted", findingID, 1, map[string]any{"sourceActionId": req.SourceActionID, "affectedEntityIds": affected, "evidenceActionIds": []string{req.SourceActionID}, "title": strings.TrimSpace(req.Title), "severity": strings.TrimSpace(req.Severity), "status": strings.TrimSpace(req.Status)}); err != nil {
+	if err := appendFindingAuditEvent(ctx, tx, actor, reqID, "finding.promoted", findingID, 1, map[string]any{"sourceActionId": req.SourceActionID, "affectedEntityIds": affected, "evidenceActionIds": evidenceActions, "title": strings.TrimSpace(req.Title), "severity": strings.TrimSpace(req.Severity), "status": strings.TrimSpace(req.Status)}); err != nil {
 		return findingItem{}, nil, err
 	}
 	row, err := loadFindingRow(ctx, tx, actor.EngagementID, findingID)
@@ -414,13 +441,32 @@ func applyFindingUpdate(ctx context.Context, tx *sql.Tx, actor actorRecord, find
 			changed = true
 		}
 	}
+	if len(req.AddEvidenceActionIDs) > 0 {
+		if pb := validateUUIDList(req.AddEvidenceActionIDs, "/addEvidenceActionIds"); pb != nil {
+			return findingItem{}, pb, nil
+		}
+		for _, id := range normalizeUUIDs(req.AddEvidenceActionIDs) {
+			if sliceHasString(updated.EvidenceActionIDs, id) {
+				continue
+			}
+			ok, err := actionExistsInEngagement(ctx, tx, actor.EngagementID, id)
+			if err != nil {
+				return findingItem{}, nil, err
+			}
+			if !ok {
+				return findingItem{}, badField("/addEvidenceActionIds", "unknown_action", "addEvidenceActionIds must reference actions in this engagement."), nil
+			}
+			updated.EvidenceActionIDs = append(updated.EvidenceActionIDs, id)
+			changed = true
+		}
+	}
 	if !changed {
 		return findingItem{}, &captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", Retryable: false, Detail: "at least one finding field must change."}, nil
 	}
 
 	updated.Revision = row.Revision + 1
 	updated.UpdatedAt = time.Now().UTC()
-	if _, err := tx.ExecContext(ctx, `UPDATE finding SET title = $2, severity = $3, affected_entity_ids = $4::uuid[], remediation = $5, status = $6, revision = $7, updated_at = $8 WHERE id = $1`, findingID, updated.Title, updated.Severity, uuidArrayLiteral(updated.AffectedEntityIDs), updated.Remediation, updated.Status, updated.Revision, updated.UpdatedAt); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE finding SET title = $2, severity = $3, affected_entity_ids = $4::uuid[], evidence_action_ids = $5::uuid[], remediation = $6, status = $7, revision = $8, updated_at = $9 WHERE id = $1`, findingID, updated.Title, updated.Severity, uuidArrayLiteral(updated.AffectedEntityIDs), uuidArrayLiteral(updated.EvidenceActionIDs), updated.Remediation, updated.Status, updated.Revision, updated.UpdatedAt); err != nil {
 		return findingItem{}, nil, err
 	}
 	eventType := "finding.revised"
@@ -532,6 +578,26 @@ func loadAttackAction(ctx context.Context, q queryer, engagementID, actionID str
 		return findingActionRow{}, nil, err
 	}
 	return row, nil, nil
+}
+
+// actionExistsInEngagement reports whether an action id belongs to the
+// engagement. Used to validate corroborating evidence links (any action, not
+// just attacks, may support a finding).
+func actionExistsInEngagement(ctx context.Context, q queryer, engagementID, actionID string) (bool, error) {
+	var exists bool
+	if err := q.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM action WHERE engagement_id = $1 AND id = $2)`, engagementID, actionID).Scan(&exists); err != nil {
+		return false, err
+	}
+	return exists, nil
+}
+
+func sliceHasString(values []string, target string) bool {
+	for _, v := range values {
+		if v == target {
+			return true
+		}
+	}
+	return false
 }
 
 func loadActionAffectedEntities(ctx context.Context, q queryer, engagementID, actionID string) ([]string, error) {

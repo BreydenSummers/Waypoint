@@ -38,6 +38,7 @@ type entityReadResponse struct {
 	Kind            string                    `json:"kind"`
 	Identifiers     []captureEntityIdentifier `json:"identifiers"`
 	Attributes      json.RawMessage           `json:"attributes"`
+	TierOverride    *int                      `json:"tierOverride,omitempty"`
 	Access          entityAccessRollup        `json:"access"`
 	Credentials     []credentialSummary       `json:"credentials"`
 	Observations    []entityObservationItem   `json:"observations"`
@@ -82,6 +83,7 @@ type entityReadRow struct {
 	Revision           int
 	MergedIntoEntityID sql.NullString
 	Attributes         json.RawMessage
+	TierOverride       sql.NullInt64
 	FirstSeen          time.Time
 	LastSeen           time.Time
 }
@@ -186,14 +188,23 @@ func handleEntityList(w http.ResponseWriter, r *http.Request, db *sql.DB, actor 
 	writeJSONWithHeaders(w, http.StatusOK, page, reqID)
 }
 
+type entityTierOverrideRequest struct {
+	TierOverride     *int `json:"tierOverride"`
+	ExpectedRevision *int `json:"expectedRevision,omitempty"`
+}
+
 func handleEntityItem(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, entityID string) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
+	if r.Method != http.MethodGet && r.Method != http.MethodPatch {
+		w.Header().Set("Allow", http.MethodGet+", "+http.MethodPatch)
 		http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
 		return
 	}
 	if !isUUID(entityID) {
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: "entity id must be a UUID."})
+		return
+	}
+	if r.Method == http.MethodPatch {
+		handleEntityTierOverride(w, r, db, actor, reqID, entityID)
 		return
 	}
 
@@ -206,6 +217,79 @@ func handleEntityItem(w http.ResponseWriter, r *http.Request, db *sql.DB, actor 
 			return
 		}
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load entity failed"})
+		return
+	}
+	writeJSONWithHeaders(w, http.StatusOK, item, reqID)
+}
+
+// handleEntityTierOverride sets or clears an operator's tier override on an
+// entity. Operator/owner only; revision-guarded and audit-logged. A null
+// tierOverride clears the override (revert to the derived tier).
+func handleEntityTierOverride(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, entityID string) {
+	if !isLifecycleOperator(actor) {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusForbidden), Status: http.StatusForbidden, Code: "forbidden", RequestID: reqID, Retryable: false, Detail: "only an operator or owner can override an asset's tier."})
+		return
+	}
+	body, err := ioReadAllLimited(r.Body, 1<<16)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: "request body is invalid"})
+		return
+	}
+	var req entityTierOverrideRequest
+	if err := decodeStrictJSON(body, &req); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: err.Error()})
+		return
+	}
+	if req.TierOverride != nil && (*req.TierOverride < 0 || *req.TierOverride > 2) {
+		pb := badField("/tierOverride", "invalid_range", "tierOverride must be 0, 1, 2, or null.")
+		pb.RequestID = reqID
+		writeProblem(w, *pb)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "begin tx failed"})
+		return
+	}
+	defer tx.Rollback()
+
+	var revision int
+	if err := tx.QueryRowContext(ctx, `SELECT revision FROM entity WHERE engagement_id = $1 AND id = $2 AND merged_into_entity_id IS NULL FOR UPDATE`, actor.EngagementID, entityID).Scan(&revision); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusNotFound), Status: http.StatusNotFound, Code: "not_found", RequestID: reqID, Retryable: false, Detail: "entity not found"})
+			return
+		}
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "load entity failed"})
+		return
+	}
+	if req.ExpectedRevision != nil && *req.ExpectedRevision != revision {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusConflict), Status: http.StatusConflict, Code: "entity_conflict", RequestID: reqID, Retryable: false, Detail: "entity revision has changed; reload and retry."})
+		return
+	}
+
+	newRevision := revision + 1
+	var overrideArg any
+	if req.TierOverride != nil {
+		overrideArg = *req.TierOverride
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE entity SET tier_override = $3, revision = $4, updated_at = now() WHERE engagement_id = $1 AND id = $2`, actor.EngagementID, entityID, overrideArg, newRevision); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "update tier override failed"})
+		return
+	}
+	if err := appendEntityAuditEvent(ctx, tx, actor, reqID, "entity.tier-overridden", entityID, newRevision, map[string]any{"tierOverride": req.TierOverride, "revision": newRevision}); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "audit tier override failed"})
+		return
+	}
+	item, err := loadEntityReadResponseWithTx(ctx, tx, actor.EngagementID, entityID)
+	if err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "reload entity failed"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "commit tier override failed"})
 		return
 	}
 	writeJSONWithHeaders(w, http.StatusOK, item, reqID)
@@ -342,6 +426,11 @@ func loadEntityReadResponseWithTx(ctx context.Context, q queryer, engagementID, 
 		return entityReadResponse{}, err
 	}
 	access, creds := deriveEntityAccess(observations)
+	var tierOverride *int
+	if row.TierOverride.Valid {
+		v := int(row.TierOverride.Int64)
+		tierOverride = &v
+	}
 	return entityReadResponse{
 		ContractVersion: entityReadContractVersion,
 		ID:              row.ID,
@@ -349,6 +438,7 @@ func loadEntityReadResponseWithTx(ctx context.Context, q queryer, engagementID, 
 		Kind:            row.Kind,
 		Identifiers:     entityIdentifiersFromRow(row, observations),
 		Attributes:      normalizeJSONObject(row.Attributes),
+		TierOverride:    tierOverride,
 		Access:          access,
 		Credentials:     creds,
 		Observations:    observations,
@@ -461,20 +551,20 @@ func loadCanonicalEntityRow(ctx context.Context, q queryer, engagementID, entity
 	var mergedInto sql.NullString
 	if err := q.QueryRowContext(ctx, `
 		WITH RECURSIVE lineage AS (
-			SELECT id, engagement_id, kind, key_type, key_value, revision, merged_into_entity_id, attributes, first_seen, last_seen
+			SELECT id, engagement_id, kind, key_type, key_value, revision, merged_into_entity_id, attributes, tier_override, first_seen, last_seen
 			FROM entity
 			WHERE engagement_id = $1 AND id = $2
 			UNION ALL
-			SELECT e.id, e.engagement_id, e.kind, e.key_type, e.key_value, e.revision, e.merged_into_entity_id, e.attributes, e.first_seen, e.last_seen
+			SELECT e.id, e.engagement_id, e.kind, e.key_type, e.key_value, e.revision, e.merged_into_entity_id, e.attributes, e.tier_override, e.first_seen, e.last_seen
 			FROM entity e
 			JOIN lineage l ON e.id = l.merged_into_entity_id
 			WHERE e.engagement_id = $1
 		)
-		SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes, first_seen, last_seen
+		SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes, tier_override, first_seen, last_seen
 		FROM lineage
 		WHERE merged_into_entity_id IS NULL
 		LIMIT 1
-	`, engagementID, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.FirstSeen, &row.LastSeen); err != nil {
+	`, engagementID, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.TierOverride, &row.FirstSeen, &row.LastSeen); err != nil {
 		return entityReadRow{}, err
 	}
 	if mergedInto.Valid && mergedInto.String != "" {

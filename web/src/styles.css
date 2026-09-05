@@ -2531,3 +2531,20 @@ html[data-theme='dark'] .cmismatch { color: #e08a6a; }
 .devnote.bad { color: #b04c30; } .devnote.bad svg { color: #b04c30; } .devnote.bad b { color: #b04c30; }
 html[data-theme='dark'] .devnote.bad, html[data-theme='dark'] .devnote.bad svg, html[data-theme='dark'] .devnote.bad b { color: #e08a6a; }
 .devnote.pending svg { color: var(--chrome-muted); }
+.dfind2 { background: var(--page-bg-2); border: 1px solid var(--card-border); border-radius: 11px; padding: 11px 13px; margin-bottom: 8px; border-left: 3px solid var(--fc, var(--harvest)); }
+.devlink { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 9px; padding-top: 9px; border-top: 1px dashed var(--card-border); font-size: 11px; color: var(--chrome-muted); cursor: pointer; }
+.devlink:hover .dsrc-go { text-decoration: underline; }
+.dattach { margin-top: 9px; }
+.dattach-toggle { font-size: 11.5px; font-weight: 700; color: var(--harvest); cursor: pointer; display: inline-block; padding-top: 4px; }
+.dattach-list { margin-top: 7px; display: flex; flex-direction: column; gap: 5px; }
+.dattach-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 8px; padding: 7px 10px; font-size: 11.5px; cursor: pointer; }
+.dattach-item:hover { border-color: var(--harvest); }
+.dattach-item .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--page-text); }
+.dattach-add { color: var(--harvest); font-weight: 700; white-space: nowrap; }
+.dtier { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+.dtier-cap { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--chrome-muted); margin-right: 3px; }
+.dtier-btn { border: 1px solid var(--card-border); background: var(--page-bg-2); color: var(--chrome-muted); font: inherit; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 8px; cursor: pointer; }
+.dtier-btn:hover { border-color: var(--harvest); color: var(--page-text); }
+.dtier-btn.on { background: var(--harvest); color: #fff; border-color: var(--harvest); }
+.dtier-note { font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #7a2f1a; margin-left: 4px; }
+html[data-theme='dark'] .dtier-note { color: #c8583a; }

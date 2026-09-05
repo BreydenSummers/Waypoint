@@ -244,6 +244,12 @@ func TestDatabaseProtectionsRejectMutations(t *testing.T) {
 	mustExec(t, db, `INSERT INTO observation (id, engagement_id, action_id, result_id, entity_id, kind, identifiers, attributes) VALUES (gen_random_uuid(), $1, $2, $3, $4, 'host', '[]'::jsonb, '{}'::jsonb)`, engagementID, actionID, resultID, entityID)
 	findingID := "00000000-0000-0000-0000-000000000017"
 	mustExec(t, db, `INSERT INTO finding (id, engagement_id, title, severity, status) VALUES ($1, $2, 'Weak SSH', 'low', 'open')`, findingID, engagementID)
+	// Evidence links are append-only: growing the set is allowed, but the prior
+	// links must remain an exact prefix — no removal, reordering, or rewriting.
+	mustExec(t, db, `UPDATE finding SET evidence_action_ids = ARRAY[$1]::uuid[] WHERE id = $2`, actionID, findingID)
+	mustExec(t, db, `UPDATE finding SET evidence_action_ids = ARRAY[$1, $2]::uuid[] WHERE id = $3`, actionID, deleteActionID, findingID)
+	mustReject(t, db, `UPDATE finding SET evidence_action_ids = ARRAY[$1]::uuid[] WHERE id = $2`, deleteActionID, findingID)
+	mustReject(t, db, `UPDATE finding SET evidence_action_ids = ARRAY[]::uuid[] WHERE id = $1`, findingID)
 	mustReject(t, db, `UPDATE finding SET evidence_action_ids = ARRAY[$1]::uuid[] WHERE id = $2`, actionID, findingID)
 	mustExec(t, db, `INSERT INTO audit_event (engagement_id, actor_id, actor_kind, actor_handle, actor_role, actor_agent_name, actor_model, actor_version, actor_authorized_by, origin_kind, subject_type, subject_id, request_id, correlation_id, data) VALUES ($1, $2, 'ai_agent', 'bot', 'operator', 'Waypoint', 'gpt-4.1', '1.0', $3, 'rest', 'action', $4, 'req-1', 'corr-1', '{}'::jsonb)`, engagementID, aiID, humanID, actionID)
 

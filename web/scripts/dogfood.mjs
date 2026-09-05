@@ -176,6 +176,13 @@ async function main() {
   if (await $count('.ddrawer.is-open') === 0) bug('high', 'assets', 'asset dossier drawer did not open on row click');
   else {
     if (await $count('.ddrawer .dsec') === 0) bug('medium', 'assets', 'dossier opened but has no sections');
+    // tier override control is present
+    if (await $count('.ddrawer .dtier-btn') === 0) bug('medium', 'assets', 'dossier missing the tier override control');
+    // a finding with a source capture reveals an attach picker
+    if (await click('.ddrawer [data-action="finding-attach-toggle"]')) {
+      await sleep(250);
+      if (await $count('.ddrawer .dattach-list') === 0) notes.push('assets: attach toggle showed no candidate captures (ok if all linked)');
+    }
     await click('.ddrawer .dclose'); await sleep(300);
     if (await $count('.ddrawer.is-open') !== 0) bug('low', 'assets', 'dossier close button did not close the drawer');
   }
