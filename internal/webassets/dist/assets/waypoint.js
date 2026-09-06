@@ -1,4 +1,4 @@
-const sourceHash = "c4c44f06e5fbaa706c2c83da5a6d3077fbc349ec82384c2b0f93544e803584fe";
+const sourceHash = "e1fe0f02443b9880296ab077c1ee49a893fc4b3651125917dc0d36afd0ac79e7";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -211,7 +211,10 @@ function routeFromPath(pathname) {
     return { view: 'captures', phase: 'attacks' };
   }
   const match = pathname.match(/^\/engagements\/[^/]+\/(recon|attacks|findings|summit)\/?$/);
-  return match ? { view: 'trail', phase: match[1] } : { view: 'trail', phase: 'attacks' };
+  if (match) return { view: 'trail', phase: match[1] };
+  // Unknown paths fall back to the attacks trail; flag it so boot can rewrite
+  // the address bar to the view actually shown instead of leaving a URL that lies.
+  return { view: 'trail', phase: 'attacks', unmatched: true };
 }
 
 function phasePath(engagementId, phase) {
@@ -499,9 +502,18 @@ function summaryLineForFinding(finding) {
   return `${finding.severity} · ${finding.status}`;
 }
 
+function notableAlertDetail(details) {
+  const match = isRecord(details.match) ? details.match : {};
+  if (match.user && match.target) return `${match.user} → ${match.target}`;
+  return match.segment || match.cidr || match.subnet || match.target || '';
+}
+
 function buildAuditSummary(event) {
   const details = isRecord(event.data) ? event.data : {};
-  if (event.type === 'alert.notable') return `${details.ruleId || 'notable alert'} · ${details.title || event.subject.id}`;
+  if (event.type === 'alert.notable') {
+    const detail = notableAlertDetail(details);
+    return `${details.ruleTitle || details.ruleId || 'notable alert'}${detail ? ` · ${detail}` : ''}`;
+  }
   if (event.type === 'finding.promoted') return `Finding promoted · ${details.title || event.subject.id}`;
   if (event.type === 'entity.merged') return 'Entity merged';
   if (event.type === 'entity.split') return 'Entity split';
@@ -511,6 +523,10 @@ function buildAuditSummary(event) {
   if (event.type === 'actor.revoked') return `Actor revoked · ${details.actorId || event.subject.id}`;
   if (event.type === 'out-of-band.flagged') return `Claim flagged · ${details.claimKind || event.subject.id}`;
   if (event.type === 'out-of-band.resolved') return `Claim resolved · ${details.claimKind || event.subject.id}`;
+  if (event.type.startsWith('export.')) {
+    const failure = isRecord(details.failure) && details.failure.code ? ` · ${details.failure.code}` : '';
+    return `Export ${details.state || event.type.slice('export.'.length)}${failure}`;
+  }
   return jsonText(details).slice(0, 120);
 }
 
@@ -1344,16 +1360,17 @@ async function saveFinding(form) {
   }
 }
 
-async function startSummitExport() {
+async function startSummitExport(retryOfJobId) {
   state.exportAbort?.abort();
   const controller = new AbortController();
   state.exportAbort = controller;
   state.summitActionError = '';
   state.selectedExportJobError = '';
-  state.summitRequestNote = 'Submitting a persisted export job to the server.';
+  state.summitRequestNote = retryOfJobId ? `Retrying failed export job ${retryOfJobId}.` : 'Submitting a persisted export job to the server.';
   render();
   try {
-    const created = await apiJsonPost(exportsPath(), state.token, { formatVersion: apiVersion }, controller.signal);
+    const body = retryOfJobId ? { formatVersion: apiVersion, retryOfJobId } : { formatVersion: apiVersion };
+    const created = await apiJsonPost(exportsPath(), state.token, body, controller.signal);
     state.selectedExportJobId = created.id;
     state.summitRequestNote = `Export job ${created.id} queued by ${created.requestedBy.handle}.`;
     await refreshExportJobs(controller.signal);
@@ -2359,7 +2376,7 @@ function renderBaseCampBoard() {
             <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
           </div>
           <div class="metrics" aria-label="Board summary">
-            <div class="metric"><span class="metric-label">Hosts</span><strong>${rows.length.toLocaleString()}</strong></div>
+            <div class="metric"><span class="metric-label">Assets</span><strong>${rows.length.toLocaleString()}</strong></div>
             <div class="metric"><span class="metric-label">Active</span><strong>${workers.length}</strong></div>
             <div class="metric"><span class="metric-label">Findings</span><strong>${findings.length}</strong></div>
           </div>
@@ -2425,7 +2442,7 @@ function renderTerritoryMap() {
           <a class="secondary-link" href="${escapeHtml(phasePath(state.engagementId, 'attacks'))}" data-action="goto-trail">← Trail</a>
           <div class="metrics" aria-label="Estate summary">
             <div class="metric"><span class="metric-label">Segments</span><strong>${segments.length}</strong></div>
-            <div class="metric"><span class="metric-label">Hosts</span><strong>${totalHosts.toLocaleString()}</strong></div>
+            <div class="metric"><span class="metric-label">Assets</span><strong>${totalHosts.toLocaleString()}</strong></div>
             <div class="metric"><span class="metric-label">Findings</span><strong>${totalFindings}</strong></div>
           </div>
         </div>
@@ -2485,12 +2502,19 @@ function renderTrailMap() {
   const alertItems = alerts.length
     ? alerts.map((entry, index) => {
         const data = isRecord(entry.data) ? entry.data : {};
-        return `<li class="${index === 0 ? 'is-current' : ''}"><strong>${escapeHtml(data.ruleId || 'trail alert')}</strong> · ${escapeHtml(data.title || buildAuditSummary(entry))}<br>${escapeHtml(entry.actor?.handle || '')} · ${escapeHtml(formatTime(entry.occurredAt))}${data.sourceActionId ? ` · action ${escapeHtml(data.sourceActionId)}` : ''}</li>`;
+        const detail = notableAlertDetail(data);
+        return `<li class="${index === 0 ? 'is-current' : ''}"><strong>${escapeHtml(data.ruleTitle || data.ruleId || 'trail alert')}</strong>${detail ? ` · ${escapeHtml(detail)}` : ''}<br>${escapeHtml(entry.actor?.handle || '')} · ${escapeHtml(formatTime(entry.occurredAt))}${data.sourceActionId ? ` · action ${escapeHtml(data.sourceActionId)}` : ''}</li>`;
       }).join('')
     : '';
 
-  const guideList = guideNotesVisible.length
-    ? guideNotesVisible.map((note) => `
+  // The active phase note already renders as the briefing card above the
+  // list; repeat it here only when it matched an explicit search.
+  const guideQueryActive = Boolean(state.guideQuery.trim());
+  const guideListNotes = guideQueryActive
+    ? guideNotesVisible
+    : guideNotesVisible.filter((note) => !activeGuideNote || note.id !== activeGuideNote.id);
+  const guideList = guideListNotes.length
+    ? guideListNotes.map((note) => `
       <article class="guide-note-card" id="${escapeHtml(note.id)}">
         <p class="guide-note-kicker">${escapeHtml(phaseNames[note.phase])} · reviewed note</p>
         <h3>${escapeHtml(note.title)}</h3>
@@ -2500,7 +2524,7 @@ function renderTrailMap() {
           <div><dt>Risks</dt><dd>${escapeHtml(note.risks)}</dd></div>
         </dl>
       </article>`).join('')
-    : '<p class="guide-note-empty">No reviewed notes match this search.</p>';
+    : (guideQueryActive ? '<p class="guide-note-empty">No reviewed notes match this search.</p>' : '');
 
   return `
     <main class="app-shell">
@@ -2519,7 +2543,7 @@ function renderTrailMap() {
           <a class="secondary-link" href="${escapeHtml(mapPath(state.engagementId))}" data-action="goto-map">⛰ Territory map</a>
           <label class="field-group">
             <span>Operator token</span>
-            <input value="${escapeHtml(state.token)}" data-action="update-token" placeholder="Bearer token" aria-label="Operator token" />
+            <input type="password" autocomplete="off" value="${escapeHtml(state.token)}" data-action="update-token" placeholder="Bearer token" aria-label="Operator token" />
           </label>
           <div class="progress-pill" aria-label="Trail progress">${escapeHtml(trailStatusText)}</div>
           <div class="metrics" aria-label="Engagement progress">
@@ -2623,7 +2647,9 @@ function renderTrailMap() {
                   <span class="sr-only">Search reviewed guide notes</span>
                   <input value="${escapeHtml(state.guideQuery)}" data-action="guide-search" placeholder="Search reviewed phases and techniques" aria-label="Search reviewed guide notes" />
                 </label>
-                <button type="button" class="primary-button" data-action="goto-phase" data-phase="${nextGuidePhase}">Continue to ${escapeHtml(phaseNames[nextGuidePhase])} →</button>
+                ${state.activePhase === 'summit'
+                  ? `<a class="primary-button" href="${escapeHtml(reportPath(state.engagementId))}" data-action="go-next">Open report preview →</a>`
+                  : `<button type="button" class="primary-button" data-action="goto-phase" data-phase="${nextGuidePhase}">Continue to ${escapeHtml(phaseNames[nextGuidePhase])} →</button>`}
               </div>
               <div class="guide-note-list" aria-label="Reviewed guide notes">${guideList}</div>
             </div>
@@ -2958,6 +2984,7 @@ function renderSummitWorkspace() {
       </div>
       <div class="summit-controls">
         <button type="button" class="primary-button" data-action="run-export" ${state.exportAbort ? 'disabled' : ''}>Start export job</button>
+        <button type="button" class="secondary-link" data-action="retry-export" data-id="${job ? escapeHtml(job.id) : ''}" ${!job || job.state !== 'failed' || !(job.failure && job.failure.retryable) || state.exportAbort ? 'disabled' : ''}>Retry failed job</button>
         <button type="button" class="secondary-link" data-action="refresh-export-jobs" ${state.exportJobsStatus === 'loading' ? 'disabled' : ''}>Refresh jobs</button>
         <button type="button" class="secondary-link" data-action="cancel-export" ${!job || job.state === 'completed' || job.state === 'failed' || job.state === 'cancelled' ? 'disabled' : ''}>Cancel selected job</button>
         <button type="button" class="secondary-link" data-action="open-verified-pdf" ${!summitDownloadReady ? 'disabled' : ''}>Open verified PDF</button>
@@ -3055,6 +3082,16 @@ function renderSummitWorkspace() {
 
 function renderReportView() {
   const snapshot = state.reportSnapshot;
+  // Resolve a finding's "Action N" evidence labels against the snapshot's own
+  // evidence cards so the reference reads as the command it points at.
+  const evidenceByLabel = {};
+  (snapshot?.evidence || []).forEach((item) => { if (item.label) evidenceByLabel[item.label] = item; });
+  const evidenceRef = (label) => {
+    const card = evidenceByLabel[label];
+    if (!card) return label;
+    const what = [String(card.command || '').split(/\s+/)[0], card.target].filter(Boolean).join(' on ');
+    return what ? `${label} (${what})` : label;
+  };
   return `
     <main class="app-shell report-shell" aria-label="Frozen report snapshot">
       ${renderNav('report')}
@@ -3083,7 +3120,7 @@ function renderReportView() {
                   <p class="report-badge">${escapeHtml(finding.severity)}</p>
                   <h3>${escapeHtml(finding.title)}</h3>
                   <p>${escapeHtml(finding.status ? `${finding.status} · ` : '')}${escapeHtml(finding.promotedBy ? `Promoted by ${finding.promotedBy}` : '')}</p>
-                  <p><strong>Evidence:</strong> ${escapeHtml((finding.evidence || []).join(', '))}</p>
+                  <p><strong>Evidence:</strong> ${escapeHtml((finding.evidence || []).map(evidenceRef).join(', '))}</p>
                   <p><strong>Remediation:</strong> ${escapeHtml(finding.remediation)}</p>
                 </article>`).join('')}
             </div>
@@ -3159,22 +3196,22 @@ function renderSetupWizard() {
           ${state.setupCodeRequired ? `
             <label class="finding-field finding-field-wide">
               <span>Setup code</span>
-              <input value="${escapeHtml(draft.code)}" data-action="setup-draft" data-field="code" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" aria-describedby="setup-code-hint" />
+              <input id="setup-code" name="setupCode" value="${escapeHtml(draft.code)}" data-action="setup-draft" data-field="code" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" aria-describedby="setup-code-hint" />
             </label>
             <p class="guide-note-empty setup-hint" id="setup-code-hint">Find this in your server logs — look for the “WAYPOINT — FIRST-TIME SETUP” banner (e.g. <code>docker compose logs waypoint</code>).</p>
           ` : ''}
           <div class="setup-fieldset">
             <p class="setup-section-label">Engagement</p>
             <div class="setup-grid">
-              <label class="finding-field"><span>Name</span><input value="${escapeHtml(draft.engagementName)}" data-action="setup-draft" data-field="engagementName" placeholder="Autumn Campus Assessment" /></label>
-              <label class="finding-field"><span>Client</span><input value="${escapeHtml(draft.client)}" data-action="setup-draft" data-field="client" placeholder="Acme University" /></label>
-              <label class="finding-field finding-field-wide"><span>Scope</span><input value="${escapeHtml(draft.scope)}" data-action="setup-draft" data-field="scope" placeholder="campus /16, excludes dorm VLANs" /></label>
+              <label class="finding-field"><span>Name</span><input id="setup-engagement-name" name="engagementName" value="${escapeHtml(draft.engagementName)}" data-action="setup-draft" data-field="engagementName" placeholder="Autumn Campus Assessment" /></label>
+              <label class="finding-field"><span>Client</span><input id="setup-client" name="client" value="${escapeHtml(draft.client)}" data-action="setup-draft" data-field="client" placeholder="Acme University" /></label>
+              <label class="finding-field finding-field-wide"><span>Scope</span><input id="setup-scope" name="scope" value="${escapeHtml(draft.scope)}" data-action="setup-draft" data-field="scope" placeholder="campus /16, excludes dorm VLANs" /></label>
             </div>
           </div>
           <div class="setup-fieldset">
             <p class="setup-section-label">Owner account</p>
             <div class="setup-grid">
-              <label class="finding-field finding-field-wide"><span>Your handle</span><input value="${escapeHtml(draft.ownerHandle)}" data-action="setup-draft" data-field="ownerHandle" placeholder="alex.operator" /></label>
+              <label class="finding-field finding-field-wide"><span>Your handle</span><input id="setup-owner-handle" name="ownerHandle" value="${escapeHtml(draft.ownerHandle)}" data-action="setup-draft" data-field="ownerHandle" placeholder="alex.operator" /></label>
             </div>
             <p class="guide-note-empty setup-hint">You'll be the first owner — the human who can provision other operators and AI actors.</p>
           </div>
@@ -3519,6 +3556,10 @@ async function handleClick(event) {
     await startSummitExport();
     return;
   }
+  if (action === 'retry-export') {
+    await startSummitExport(target.dataset.id || '');
+    return;
+  }
   if (action === 'refresh-export-jobs') {
     await refreshExportJobs();
     return;
@@ -3730,6 +3771,9 @@ async function boot() {
   const route = routeFromPath(window.location.pathname);
   state.view = route.view;
   state.activePhase = route.phase;
+  if (route.unmatched && window.location.pathname !== '/') {
+    window.history.replaceState({}, '', phasePath(state.engagementId, state.activePhase));
+  }
   state.token = (() => {
     try {
       return window.localStorage.getItem('waypoint-token') || 'demo-token';

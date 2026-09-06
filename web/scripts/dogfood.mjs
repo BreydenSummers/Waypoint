@@ -14,7 +14,11 @@
  *
  *   # 1. start the app (see AGENTS.md / compose.yml) and note its URL
  *   # 2. bootstrap a demo engagement and grab the owner token + engagement id
- *   #    (POST /api/v1/bootstrap with "demo": true)
+ *   #    from the response — the setup code is printed in the server startup banner:
+ *   #    curl -X POST $BASE/api/v1/bootstrap \
+ *   #      -H 'Content-Type: application/json' -H 'Waypoint-Contract-Version: 1.0.0' \
+ *   #      -d '{"demo":true,"setupCode":"<from the banner>",
+ *   #           "engagement":{"name":"Dogfood"},"owner":{"handle":"dogfood"}}'
  *   # 3. point the harness at it:
  *   DOGFOOD_BASE=http://127.0.0.1:8080 \
  *   DOGFOOD_TOKEN=<owner-token> \
@@ -60,12 +64,58 @@ try { puppeteer = require('puppeteer-core'); } catch { console.error('dogfood: p
 
 const bugs = [];
 const notes = [];
-function bug(severity, area, message, detail) { bugs.push({ severity, area, message, detail: detail || '' }); }
+// One entry per distinct defect: a repeating failure (e.g. the same endpoint
+// failing hundreds of times) collapses into a single finding with a count,
+// so a runaway loop cannot flood the report.
+const bugCounts = new Map();
+function bug(severity, area, message, detail) {
+  const key = `${severity}|${area}|${message}|${detail || ''}`;
+  const seen = bugCounts.get(key);
+  if (seen) { seen.count += 1; return; }
+  const entry = { severity, area, message, detail: detail || '', count: 1 };
+  bugCounts.set(key, entry);
+  bugs.push(entry);
+}
 
 const eng = (path) => `${BASE}/engagements/${ENGAGEMENT}${path}`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const api = (path, init = {}) => fetch(`${BASE}${path}`, { ...init, headers: { Authorization: `Bearer ${TOKEN}`, 'Waypoint-Contract-Version': '1.0.0', ...(init.headers || {}) } });
+
+// A dogfood verdict is only as good as the build it ran against: a stale
+// deployment produces false failures (bugs already fixed) AND false passes
+// (bugs not yet deployed). Compare the served bundle's embedded sourceHash to
+// the hash of the local sources and refuse to run on a mismatch.
+async function verifyDeployedBundle() {
+  const { createHash } = await import('node:crypto');
+  const { readFileSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const { resolve, dirname } = await import('node:path');
+  const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  let expected;
+  try {
+    const app = readFileSync(resolve(webRoot, 'src/App.tsx'), 'utf8');
+    const styles = readFileSync(resolve(webRoot, 'src/styles.css'), 'utf8');
+    const runtime = readFileSync(resolve(webRoot, 'runtime/waypoint-runtime.js'), 'utf8');
+    expected = createHash('sha256').update(`${app}\n${styles}\n${runtime}`).digest('hex');
+  } catch {
+    notes.push('skipped the deployed-bundle staleness check (local web sources not readable)');
+    return;
+  }
+  const res = await fetch(`${BASE}/assets/waypoint.js`);
+  if (!res.ok) { console.error(`dogfood: could not fetch ${BASE}/assets/waypoint.js (${res.status}).`); process.exit(2); }
+  const served = (await res.text()).match(/const sourceHash = "([0-9a-f]{64})"/)?.[1];
+  if (!served) { notes.push('served bundle carries no sourceHash; staleness check skipped'); return; }
+  if (served !== expected) {
+    console.error('dogfood: the target is serving a STALE build — its bundle hash does not match the local web sources.');
+    console.error(`  served:   ${served}`);
+    console.error(`  expected: ${expected}`);
+    console.error('  Rebuild/redeploy the target (or run against the matching checkout) and rerun.');
+    process.exit(2);
+  }
+}
 
 async function main() {
+  await verifyDeployedBundle();
   const exe = resolveChromium();
   if (!exe) { console.error('dogfood: no Chromium binary found. Set CHROMIUM=/path/to/chromium.'); process.exit(2); }
 
@@ -143,6 +193,43 @@ async function main() {
     if (await $count('.masthead') === 0) bug('high', `trail:${ph}`, 'masthead missing');
     if (await $count('.appnav') === 0) bug('high', `trail:${ph}`, 'left nav missing');
     if (await $count('.workspace-panel') === 0) bug('medium', `trail:${ph}`, 'phase workspace panel missing');
+  }
+
+  // -------- Summit export lifecycle --------
+  // The endgame journey: start a persisted export job, watch it complete, and
+  // confirm the verified receipt + bundle + PDF are all real. This exercises
+  // the whole server-side pipeline (snapshot, archive, chromium PDF render,
+  // receipt verification), which no other check touches.
+  await visit('summit-export', `/engagements/${ENGAGEMENT}/summit`, 1500);
+  if (!await click('[data-action="run-export"]')) bug('high', 'summit-export', 'Start export job control not found');
+  else {
+    let job = null;
+    const deadline = Date.now() + 90000;
+    while (Date.now() < deadline) {
+      await sleep(1500);
+      const res = await api('/api/v1/exports?limit=1').catch(() => null);
+      if (!res || !res.ok) { bug('high', 'summit-export', 'exports API error while polling', res ? String(res.status) : 'fetch failed'); break; }
+      job = (await res.json()).items?.[0] || null;
+      if (job && ['completed', 'failed', 'cancelled'].includes(job.state)) break;
+    }
+    if (!job) bug('high', 'summit-export', 'export job never appeared');
+    else if (job.state !== 'completed') bug('high', 'summit-export', `export job ended "${job.state}"`, job.failure ? `${job.failure.code}: ${job.failure.message}` : `stuck at ${job.progress?.stage || '?'} after 90s`);
+    else {
+      if (!job.bundle?.receiptId) bug('medium', 'summit-export', 'completed export has no verified receipt');
+      const bundleRes = await api(`/api/v1/exports/${job.id}/bundle`).catch(() => null);
+      if (!bundleRes || !bundleRes.ok) bug('high', 'summit-export', 'verified bundle download failed', bundleRes ? String(bundleRes.status) : 'fetch failed');
+      await sleep(4500); // one poll interval, so the view catches up
+      if (!await page.evaluate(() => document.body.innerText.toLowerCase().includes('completed'))) bug('medium', 'summit-export', 'UI did not reflect the completed export job');
+      if (!await page.$eval('[data-action="open-verified-pdf"]', (e) => !e.disabled).catch(() => false)) bug('medium', 'summit-export', '"Open verified PDF" stayed disabled after completion');
+    }
+  }
+  // The live report PDF is rendered server-side by chromium on demand — probe
+  // it directly so a broken renderer (missing binary, sandbox refusal) fails loud.
+  const pdfRes = await api(`/engagements/${ENGAGEMENT}/summit/report.pdf`).catch(() => null);
+  if (!pdfRes || !pdfRes.ok) bug('high', 'report-pdf', 'live report PDF failed', pdfRes ? String(pdfRes.status) : 'fetch failed');
+  else {
+    const head = new Uint8Array((await pdfRes.arrayBuffer()).slice(0, 5));
+    if (String.fromCharCode(...head) !== '%PDF-') bug('high', 'report-pdf', 'report.pdf did not return a PDF');
   }
 
   // -------- Report --------
@@ -296,7 +383,7 @@ function report() {
   if (process.env.DOGFOOD_JSON) { console.log(JSON.stringify({ bugs, notes }, null, 2)); }
   else {
     console.log(`\nWaypoint dogfood — ${bugs.length} issue(s) found\n`);
-    for (const b of bugs) console.log(`  [${b.severity.toUpperCase()}] (${b.area}) ${b.message}${b.detail ? `\n        ${b.detail}` : ''}`);
+    for (const b of bugs) console.log(`  [${b.severity.toUpperCase()}] (${b.area}) ${b.message}${b.count > 1 ? ` (×${b.count})` : ''}${b.detail ? `\n        ${b.detail}` : ''}`);
     if (notes.length) { console.log('\n  notes:'); for (const n of notes) console.log(`    - ${n}`); }
     if (!bugs.length) console.log('  no issues found across all views and interactions.');
     console.log('');

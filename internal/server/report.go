@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -277,7 +279,8 @@ func reportHandlerWithRuntime(db *sql.DB, store *evidenceStore, runtime RuntimeS
 		case "pdf":
 			pdf, err := renderReportPDF(ctx, snapshot)
 			if err != nil {
-				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: err.Error()})
+				log.Printf("render report pdf failed for engagement %s: %v", engagementID, err)
+				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "render report pdf failed; see server logs"})
 				return
 			}
 			w.Header().Set("Waypoint-Contract-Version", reportContractVersion)
@@ -741,7 +744,7 @@ func renderReportPDF(ctx context.Context, snapshot reportSnapshot) ([]byte, erro
 	if chromium == "" {
 		chromium = "/usr/bin/chromium"
 	}
-	cmd := exec.CommandContext(ctx, chromium,
+	args := []string{
 		"--headless=new",
 		"--disable-gpu",
 		"--disable-background-networking",
@@ -756,16 +759,49 @@ func renderReportPDF(ctx context.Context, snapshot reportSnapshot) ([]byte, erro
 		"--no-default-browser-check",
 		"--no-pings",
 		"--print-to-pdf-no-header",
-		"--print-to-pdf="+pdfPath,
-		((&url.URL{Scheme: "file", Path: filepath.ToSlash(htmlPath)}).String()),
-	)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("render report pdf: %w: %s", err, strings.TrimSpace(stderr.String()))
+		"--print-to-pdf=" + pdfPath,
 	}
-	return os.ReadFile(pdfPath)
+	// Chromium's sandbox is unavailable in common deployments: it refuses to
+	// start as root, and under Docker's default seccomp profile the unprivileged
+	// user-namespace clone it needs is denied. Render sandboxed where possible;
+	// on the known sandbox-failure signatures retry once without it (the input
+	// is our own template output rendered from a local file, not the open web)
+	// and remember the outcome so later renders skip the doomed first attempt.
+	sandboxless := os.Geteuid() == 0 || chromiumNeedsNoSandbox.Load()
+	run := func(noSandbox bool) ([]byte, error) {
+		runArgs := args
+		if noSandbox {
+			runArgs = append(append([]string{}, args...), "--no-sandbox")
+		}
+		runArgs = append(runArgs, (&url.URL{Scheme: "file", Path: filepath.ToSlash(htmlPath)}).String())
+		cmd := exec.CommandContext(ctx, chromium, runArgs...)
+		cmd.Env = append(os.Environ(), "LC_ALL=C")
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("render report pdf: %w: %s", err, strings.TrimSpace(stderr.String()))
+		}
+		return os.ReadFile(pdfPath)
+	}
+	pdf, err := run(sandboxless)
+	if err != nil && !sandboxless && isChromiumSandboxFailure(err) {
+		chromiumNeedsNoSandbox.Store(true)
+		log.Printf("chromium sandbox unavailable in this environment; rendering PDFs with --no-sandbox: %v", err)
+		pdf, err = run(true)
+	}
+	return pdf, err
+}
+
+// chromiumNeedsNoSandbox latches once a sandboxed launch has failed with a
+// known environment signature, so every later render goes straight to
+// --no-sandbox instead of re-paying a failed chromium spawn.
+var chromiumNeedsNoSandbox atomic.Bool
+
+func isChromiumSandboxFailure(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "Failed to move to new namespace") ||
+		strings.Contains(msg, "Running as root without --no-sandbox") ||
+		strings.Contains(msg, "No usable sandbox")
 }
 
 func commandLine(command, argvJSON string) string {

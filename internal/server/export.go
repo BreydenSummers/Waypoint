@@ -16,7 +16,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"waypoint/bundle"
 	dbutil "waypoint/internal/db"
 )
 
@@ -2224,13 +2224,7 @@ Regenerate the report from the frozen snapshot rather than live queries.
 `
 
 func readCheckedInBundleTool(name string) ([]byte, error) {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return nil, errors.New("resolve bundle tool path failed")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
-	path := filepath.Join(root, "bundle", "tools", name)
-	return os.ReadFile(path)
+	return bundle.Tools.ReadFile("tools/" + name)
 }
 
 func appendExportAuditEvent(ctx context.Context, tx *sql.Tx, actor actorRecord, reqID, eventType, subjectID string, subjectRevision int, originKind, originService string, data map[string]any) error {
