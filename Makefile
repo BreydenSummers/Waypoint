@@ -4,7 +4,29 @@ WEB_DIR := web
 BIN_DIR := bin
 BIN := $(BIN_DIR)/waypoint
 
-.PHONY: lint test build smoke clean release-test dogfood
+.PHONY: lint test build smoke clean release-test dogfood demo demo-reset demo-down
+
+DEMO_COMPOSE := docker compose -p waypoint-demo -f compose.yml -f compose.demo.yml
+
+# Persistent demo instance on http://localhost:8090, auto-provisioned and
+# seeded with the sample campus-AD engagement (owner token:
+# waypoint-demo-owner-token). `demo` rebuilds the image and keeps existing
+# data; `demo-reset` wipes the volumes first so the demo data re-seeds fresh.
+demo:
+	$(DEMO_COMPOSE) up -d --build
+	@for i in $$(seq 1 120); do \
+		if curl -fsS http://127.0.0.1:8090/readyz >/dev/null 2>&1; then break; fi; \
+		sleep 1; \
+	done
+	@curl -fsS http://127.0.0.1:8090/readyz >/dev/null && \
+		echo "demo instance ready: http://localhost:8090 (owner token: waypoint-demo-owner-token)"
+
+demo-reset:
+	$(DEMO_COMPOSE) down -v --remove-orphans
+	$(MAKE) demo
+
+demo-down:
+	$(DEMO_COMPOSE) down --remove-orphans
 
 # Systematically drives every view/control of a RUNNING app with a headless
 # browser and reports UI bugs. Needs a live, seeded instance:

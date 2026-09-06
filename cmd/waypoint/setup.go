@@ -70,6 +70,7 @@ func resolveBootstrapEnv(env func(string) string) (server.BootstrapParams, bool)
 		Scope:          strings.TrimSpace(env("WAYPOINT_BOOTSTRAP_ENGAGEMENT_SCOPE")),
 		OwnerHandle:    strings.TrimSpace(env("WAYPOINT_BOOTSTRAP_OWNER_HANDLE")),
 		OwnerToken:     strings.TrimSpace(env("WAYPOINT_BOOTSTRAP_OWNER_TOKEN")),
+		Demo:           truthyEnv(env("WAYPOINT_BOOTSTRAP_DEMO")),
 	}
 	// The automated path activates only when the full first engagement + owner
 	// is described; a partial set falls through to the interactive wizard.

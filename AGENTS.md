@@ -69,6 +69,10 @@ Deferred to v2+: node/attack-path graph, offensive LLM, guided scan library, net
 - **Adapt the design vocabulary to the security domain** — e.g. the "Journey log" IS the audit
   trail; "Summit" = finalize + export. Words and symbols must make sense to an operator.
 - Match existing code style; keep the woodland styling in the chrome, never in the work surfaces.
+- **Keep the demo instance current.** After landing a user-visible change, run `make demo` so the
+  persistent demo stack at http://localhost:8090 is rebuilt on the new code. It auto-provisions and
+  seeds the sample demo engagement on a fresh database (owner token: `waypoint-demo-owner-token`;
+  `make demo-reset` wipes and re-seeds), so it is always populated when the operator looks at it.
 
 ## Skills available in this repo
 

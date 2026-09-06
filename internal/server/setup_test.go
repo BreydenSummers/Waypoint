@@ -159,6 +159,58 @@ func TestAutoBootstrapIdempotent(t *testing.T) {
 	}
 }
 
+// TestAutoBootstrapDemoSeeds covers the env-driven demo instance: the automated
+// bootstrap with Demo set must come up populated, exactly like the wizard's
+// demo option, so a compose demo stack never boots into an empty dashboard.
+func TestAutoBootstrapDemoSeeds(t *testing.T) {
+	rawDB := openTestDB(t)
+	defer rawDB.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	resetPublicSchema(t, rawDB)
+	if err := dbm.ApplyMigrations(ctx, rawDB); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+
+	token, provisioned, err := AutoBootstrap(ctx, rawDB, BootstrapParams{EngagementName: "Demo", Client: "Acme U", Scope: "campus /16", OwnerHandle: "alex.operator", Demo: true})
+	if err != nil || !provisioned || token == "" {
+		t.Fatalf("AutoBootstrap: token=%q provisioned=%v err=%v", token, provisioned, err)
+	}
+
+	for _, phase := range []string{"recon", "attacks", "findings"} {
+		var n int
+		if err := rawDB.QueryRowContext(ctx, `SELECT count(*) FROM action WHERE phase = $1::action_phase`, phase).Scan(&n); err != nil {
+			t.Fatalf("count %s actions: %v", phase, err)
+		}
+		if n == 0 {
+			t.Errorf("expected seeded %s actions, got none", phase)
+		}
+	}
+	var entities int
+	if err := rawDB.QueryRowContext(ctx, `SELECT count(*) FROM entity`).Scan(&entities); err != nil {
+		t.Fatalf("count entities: %v", err)
+	}
+	if entities == 0 {
+		t.Error("expected seeded entities, got none")
+	}
+
+	// A restart must stay a no-op and must not re-seed.
+	var actionsBefore int
+	if err := rawDB.QueryRowContext(ctx, `SELECT count(*) FROM action`).Scan(&actionsBefore); err != nil {
+		t.Fatalf("count actions: %v", err)
+	}
+	if _, provisioned2, err := AutoBootstrap(ctx, rawDB, BootstrapParams{EngagementName: "Demo", Client: "Acme U", Scope: "campus /16", OwnerHandle: "alex.operator", Demo: true}); err != nil || provisioned2 {
+		t.Fatalf("second AutoBootstrap should be a no-op: provisioned=%v err=%v", provisioned2, err)
+	}
+	var actionsAfter int
+	if err := rawDB.QueryRowContext(ctx, `SELECT count(*) FROM action`).Scan(&actionsAfter); err != nil {
+		t.Fatalf("count actions: %v", err)
+	}
+	if actionsAfter != actionsBefore {
+		t.Fatalf("restart re-seeded: actions %d -> %d", actionsBefore, actionsAfter)
+	}
+}
+
 func TestSetupCodeNormalization(t *testing.T) {
 	if SetupCodeHash("abcd-efgh") != SetupCodeHash("ABCD EFGH") || SetupCodeHash("abcd-efgh") != SetupCodeHash(" AbCdEfGh ") {
 		t.Fatalf("setup code normalization is inconsistent")

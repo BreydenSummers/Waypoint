@@ -112,6 +112,7 @@ defaults):
 | `WAYPOINT_TLS_CERT_FILE` / `_KEY_FILE` / `_CA_FILE` | Serve HTTPS directly | unset |
 | `WAYPOINT_BOOTSTRAP_ENGAGEMENT_NAME` / `_CLIENT` / `_SCOPE` | Auto-provision the first engagement at startup (automated deploys) | unset |
 | `WAYPOINT_BOOTSTRAP_OWNER_HANDLE` / `_OWNER_TOKEN` | First owner's handle (required for auto-provision) and optional token (generated + printed if omitted) | unset |
+| `WAYPOINT_BOOTSTRAP_DEMO` | Seed the auto-provisioned engagement with the sample demo assessment | unset |
 | `WAYPOINT_DISABLE_SETUP_WIZARD` | Disable the web setup wizard (provision via SQL/installer instead) | unset |
 
 Plain HTTP is loopback-only. For a non-loopback listener, configure TLS on the app itself,

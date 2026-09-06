@@ -1,0 +1,23 @@
+# Demo-instance overlay: a persistent, always-seeded instance on port 8090 for
+# eyeballing changes in a populated UI. Run it via `make demo` (rebuild + keep
+# data) or `make demo-reset` (wipe volumes so the demo engagement re-seeds
+# fresh). The bootstrap env below auto-provisions a pristine database with the
+# sample campus-AD engagement, so the instance never boots into the setup
+# wizard.
+#
+# Sign in with the fixed owner token below. It is a local demo credential only —
+# never reuse it on a real instance.
+services:
+  waypoint:
+    ports: !override
+      - "8090:8080"
+    environment:
+      WAYPOINT_ADDR: :8080
+      WAYPOINT_DB_DSN: postgres://waypoint:waypoint@postgres:5432/waypoint?sslmode=disable
+      WAYPOINT_EVIDENCE_DIR: /var/lib/waypoint/evidence
+      WAYPOINT_BOOTSTRAP_ENGAGEMENT_NAME: Campus AD Assessment (Demo)
+      WAYPOINT_BOOTSTRAP_ENGAGEMENT_CLIENT: Example University
+      WAYPOINT_BOOTSTRAP_ENGAGEMENT_SCOPE: 10.4.0.0/16 campus network
+      WAYPOINT_BOOTSTRAP_OWNER_HANDLE: breyden
+      WAYPOINT_BOOTSTRAP_OWNER_TOKEN: waypoint-demo-owner-token
+      WAYPOINT_BOOTSTRAP_DEMO: "1"

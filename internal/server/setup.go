@@ -258,6 +258,11 @@ type BootstrapParams struct {
 	Scope          string
 	OwnerHandle    string
 	OwnerToken     string // optional; a token is generated when empty
+	// Demo seeds the freshly provisioned engagement with the same coherent
+	// sample penetration test the web wizard's demo option produces. It only
+	// applies when this call actually provisions; an already-provisioned
+	// instance is never re-seeded.
+	Demo bool
 }
 
 // AutoBootstrap provisions the first engagement and owner from configuration.
@@ -281,12 +286,21 @@ func AutoBootstrap(ctx context.Context, db *sql.DB, p BootstrapParams) (token st
 	} else if len(token) < 16 {
 		return "", false, badField("/owner/token", "invalid_value", "owner token must be at least 16 characters.")
 	}
-	_, _, alreadyProvisioned, err := insertBootstrap(ctx, db, "bootstrap-env", req, sha256Hex(token))
+	engagementID, record, alreadyProvisioned, err := insertBootstrap(ctx, db, "bootstrap-env", req, sha256Hex(token))
 	if err != nil {
 		return "", false, err
 	}
 	if alreadyProvisioned {
 		return "", false, nil
+	}
+	if p.Demo {
+		// Best-effort, matching the wizard path: a seed failure must not fail
+		// startup — the instance already has a working engagement and owner.
+		seedCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := SeedDemoEngagement(seedCtx, db, engagementID, record.Actor.ID, record.Actor.Handle); err != nil {
+			log.Printf("demo seed failed for engagement %s: %v", engagementID, err)
+		}
 	}
 	return token, true, nil
 }

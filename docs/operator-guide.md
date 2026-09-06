@@ -62,6 +62,7 @@ engagement and owner through the environment — no file to edit, no interactive
 | `WAYPOINT_BOOTSTRAP_ENGAGEMENT_SCOPE` | Scope |
 | `WAYPOINT_BOOTSTRAP_OWNER_HANDLE` | First owner's handle |
 | `WAYPOINT_BOOTSTRAP_OWNER_TOKEN` | Optional owner token; generated and printed once if omitted |
+| `WAYPOINT_BOOTSTRAP_DEMO` | Optional; when truthy, seeds the freshly provisioned engagement with the sample demo assessment (same data as the wizard's demo option) |
 
 When all four required variables are present and the instance is pristine, Waypoint provisions
 the first engagement + owner at startup (idempotent across restarts) and never shows the wizard.
