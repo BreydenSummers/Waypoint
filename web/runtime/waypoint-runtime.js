@@ -66,8 +66,11 @@ const state = {
   drawer: null,
   evidenceCache: {},
   attachFor: null,
-  token: 'demo-token',
+  token: '',
   tokenRejected: false,
+  loginDraft: '',
+  loginStatus: 'idle',
+  loginError: '',
   auditStatus: 'loading',
   actionsStatus: 'loading',
   entitiesStatus: 'loading',
@@ -567,18 +570,51 @@ function setToken(token) {
   scheduleRefresh();
 }
 
-// setTokenDebounced is the per-keystroke path for the masthead token field: the
-// token takes effect immediately, but the full refresh (and its 401 storm on a
-// half-typed token) waits for a typing pause.
-let tokenRefreshTimer = null;
-function setTokenDebounced(token) {
-  state.token = token;
-  try { window.localStorage.setItem('waypoint-token', token); } catch { /* ignore */ }
-  if (tokenRefreshTimer) clearTimeout(tokenRefreshTimer);
-  tokenRefreshTimer = setTimeout(() => {
-    tokenRefreshTimer = null;
-    scheduleRefresh();
-  }, 500);
+// submitLogin validates the pasted token against the journey log (a read every
+// actor role is allowed) before adopting it, so a typo never becomes the stored
+// credential and the gate can say exactly what went wrong.
+async function submitLogin() {
+  if (state.loginStatus === 'checking') return;
+  const candidate = state.loginDraft.trim();
+  if (!candidate) {
+    state.loginError = 'Paste your operator token to sign in.';
+    render();
+    return;
+  }
+  state.loginStatus = 'checking';
+  state.loginError = '';
+  render();
+  try {
+    const response = await fetch('/api/v1/audit-events?limit=1', { headers: authHeaders(candidate, newRequestId()), cache: 'no-store' });
+    if (response.status === 401) {
+      state.loginStatus = 'idle';
+      state.loginError = 'That token was not accepted — check for a missing character and try again.';
+      render();
+      return;
+    }
+    if (!response.ok) throw new Error(await readProblem(response));
+    state.loginStatus = 'idle';
+    state.loginDraft = '';
+    state.tokenRejected = false;
+    state.token = candidate;
+    try { window.localStorage.setItem('waypoint-token', candidate); } catch { /* ignore */ }
+    render();
+    await refreshEverything();
+    initializeSelectionFromData();
+    render();
+  } catch (error) {
+    state.loginStatus = 'idle';
+    state.loginError = error instanceof Error ? error.message : 'Sign-in failed';
+    render();
+  }
+}
+
+// signOut wipes the stored credential and reloads from scratch, so no fetched
+// engagement data lingers in memory on a shared machine.
+function signOut() {
+  state.sseAbort?.abort();
+  try { window.localStorage.removeItem('waypoint-token'); } catch { /* ignore */ }
+  window.location.assign('/');
 }
 
 function navigateToPhase(phase) {
@@ -1133,6 +1169,9 @@ function syncExportPolling() {
 }
 
 async function refreshEverything() {
+  // Behind the sign-in gate there is nothing to fetch; a refresh with no token
+  // would only paint the gate with spurious errors.
+  if (!state.token) return;
   const controller = new AbortController();
   await Promise.allSettled([
     refreshAudit(controller.signal),
@@ -2550,11 +2589,7 @@ function renderTrailMap() {
         <div class="masthead-actions">
 ${renderThemeToggle()}
           <a class="secondary-link" href="${escapeHtml(mapPath(state.engagementId))}" data-action="goto-map">⛰ Map</a>
-          <label class="field-group">
-            <span>Operator token</span>
-            <input type="password" autocomplete="off" value="${escapeHtml(state.token)}" data-action="update-token" placeholder="Bearer token" aria-label="Operator token" />
-            ${state.tokenRejected ? '<span class="token-alert" role="alert">Not signed in — paste your operator token to see this engagement.</span>' : ''}
-          </label>
+          <button type="button" class="secondary-link" data-action="sign-out" aria-label="Sign out">Sign out</button>
           <div class="progress-pill" aria-label="Trail progress">${escapeHtml(trailStatusText)}</div>
           <div class="metrics" aria-label="Engagement progress">
             <div class="metric"><span class="metric-label">Traveled</span><strong>${traveled} waypoints</strong></div>
@@ -3156,6 +3191,42 @@ function renderReportView() {
     </main>`;
 }
 
+// renderLogin is the sign-in gate shown whenever no working operator token is
+// present. It reuses the setup wizard's shell so the pre-app surfaces feel like
+// one family, and it never renders the trail behind it — an unauthenticated
+// view of the app is indistinguishable from an empty engagement, which is
+// exactly the confusion this screen exists to prevent.
+function renderLogin() {
+  const busy = state.loginStatus === 'checking';
+  const notice = state.loginError
+    || (state.token && state.tokenRejected ? 'Your saved token was rejected — it may have been revoked. Paste a current operator token.' : '');
+  return `
+    <main class="setup-shell">
+      <div class="setup-backdrop" aria-hidden="true">
+        <span class="setup-star" style="top:20%;left:14%"></span>
+        <span class="setup-star" style="top:30%;left:78%"></span>
+        <span class="setup-star" style="top:64%;left:26%"></span>
+        <span class="setup-star" style="top:74%;left:84%"></span>
+      </div>
+      <section class="setup-card" aria-label="Sign in">
+        <div class="setup-badge" aria-hidden="true">🏮</div>
+        <p class="setup-kicker">Waypoint · sign in</p>
+        <h1>Welcome back</h1>
+        <p class="setup-lede">Paste your operator token to rejoin the expedition. Tokens are issued when your account is provisioned — the server stores only a digest, so it cannot show you a lost one.</p>
+        ${notice ? `<div class="live-banner" role="alert"><strong>Sign-in note</strong> ${escapeHtml(notice)}</div>` : ''}
+        <form class="setup-form" data-action="login-form">
+          <label class="finding-field finding-field-wide">
+            <span>Operator token</span>
+            <input type="password" value="${escapeHtml(state.loginDraft)}" data-action="login-token" placeholder="Bearer token" autocomplete="off" spellcheck="false" aria-label="Operator token" ${busy ? 'disabled' : ''} />
+          </label>
+          <div class="setup-actions">
+            <button type="submit" class="primary-button" data-action="login-submit" ${busy ? 'disabled' : ''}>${busy ? 'Checking…' : 'Sign in →'}</button>
+          </div>
+        </form>
+      </section>
+    </main>`;
+}
+
 function renderSetupWizard() {
   const draft = state.setupDraft;
   const busy = state.setupStatus === 'saving';
@@ -3340,6 +3411,16 @@ function render() {
     restoreFocus(focused);
     return;
   }
+  if (!state.token || state.tokenRejected) {
+    // The sign-in gate: with no working token there is nothing meaningful to
+    // show, and rendering the app anyway (all fog, quiet 401s) reads as "no
+    // data" rather than "not signed in". Gate hard so nobody is confused.
+    document.title = 'Waypoint — sign in';
+    state.sseAbort?.abort();
+    root.innerHTML = renderLogin();
+    restoreFocus(focused);
+    return;
+  }
   const titleByView = { report: 'Waypoint — report snapshot', map: 'Waypoint — map', devices: 'Waypoint — assets', captures: 'Waypoint — captures', board: 'Waypoint — base camp board' };
   document.title = titleByView[state.view] || `Waypoint — ${phaseNames[state.activePhase]}`;
   const viewRenderers = { report: renderReportView, map: renderTerritoryMap, devices: renderDeviceAtlas, captures: renderCapturesView, board: renderBaseCampBoard };
@@ -3366,6 +3447,8 @@ async function handleSubmit(event) {
     await resolveClaim();
   } else if (action === 'setup-form') {
     await submitSetup();
+  } else if (action === 'login-form') {
+    await submitLogin();
   }
 }
 
@@ -3412,7 +3495,11 @@ async function handleClick(event) {
     setTheme(state.theme === 'dark' ? 'light' : 'dark');
     return;
   }
-  if (action === 'update-token') return;
+  if (action === 'login-token') return;
+  if (action === 'sign-out') {
+    signOut();
+    return;
+  }
   if (action === 'setup-draft') return;
   if (action === 'setup-submit') return;
   if (action === 'setup-enter') {
@@ -3693,8 +3780,10 @@ function handleInput(event) {
   const target = event.target.closest('[data-action]');
   if (!target) return;
   const action = target.dataset.action;
-  if (action === 'update-token') {
-    setTokenDebounced(target.value);
+  if (action === 'login-token') {
+    // Track the draft without re-rendering; the gate re-renders only on
+    // submit/validation, so typing stays undisturbed.
+    state.loginDraft = target.value;
     return;
   }
   if (action === 'guide-search') {
@@ -3762,7 +3851,6 @@ function handleInput(event) {
 function handleChange(event) {
   const target = event.target.closest('[data-action]');
   if (!target) return;
-  if (target.dataset.action === 'update-token') setToken(target.value);
   if (target.dataset.action === 'toggle-teardown') {
     state.teardownArmed = target.checked;
     render();
@@ -3820,9 +3908,9 @@ async function boot() {
   }
   state.token = (() => {
     try {
-      return window.localStorage.getItem('waypoint-token') || 'demo-token';
+      return window.localStorage.getItem('waypoint-token') || '';
     } catch {
-      return 'demo-token';
+      return '';
     }
   })();
   document.documentElement.dataset.theme = state.theme;
@@ -3847,9 +3935,11 @@ async function boot() {
   }
 
   render();
-  await refreshEverything();
-  initializeSelectionFromData();
-  render();
+  if (state.token) {
+    await refreshEverything();
+    initializeSelectionFromData();
+    render();
+  }
 }
 
 async function loadSetupState() {

@@ -1126,26 +1126,6 @@ html[data-theme='dark'] .field-group select,
 html[data-theme='dark'] .field-group input {
   background: rgba(0, 0, 0, 0.12);
 }
-
-/* Sign-in nudge under the operator token field: it must read as a message, not
-   a field label, so it undoes the uppercase field-group span treatment. */
-.field-group .token-alert {
-  font-size: 12px;
-  letter-spacing: normal;
-  text-transform: none;
-  font-weight: 600;
-  color: var(--dark-cocoa);
-  padding: 6px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(186, 117, 23, 0.28);
-  background: rgba(186, 117, 23, 0.14);
-}
-
-html[data-theme='dark'] .field-group .token-alert {
-  color: var(--artifact-parchment);
-  background: rgba(186, 117, 23, 0.2);
-}
-
 .attack-summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
