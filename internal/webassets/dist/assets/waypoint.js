@@ -1,4 +1,4 @@
-const sourceHash = "e1fe0f02443b9880296ab077c1ee49a893fc4b3651125917dc0d36afd0ac79e7";
+const sourceHash = "9890735df166355708facc9eb0de6c68b5dd82864446c66fd3afba05dc8a8ea4";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -2046,10 +2046,7 @@ function renderDeviceAtlas() {
       <header class="masthead">
         <div class="masthead-copy"><p class="eyebrow">Waypoint · attack surface</p><h1>Assets</h1><p class="subtitle">Every machine and identity we've discovered — ranked by tier, marked by how deep we are on it.</p></div>
         <div class="masthead-actions">
-          <div class="theme-switcher" role="group" aria-label="Theme selection">
-            <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
-            <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
-          </div>
+${renderThemeToggle()}
         </div>
       </header>
       <div class="akpis">
@@ -2151,7 +2148,7 @@ function renderCapturesView() {
       ${renderNav('captures')}
       <header class="masthead">
         <div class="masthead-copy"><p class="eyebrow">Waypoint · evidence</p><h1>Captures</h1><p class="subtitle">Every command run in the engagement, attributed and hashed. Open any capture for its full output.</p></div>
-        <div class="masthead-actions"><div class="theme-switcher" role="group" aria-label="Theme selection"><button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button><button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button></div></div>
+        <div class="masthead-actions">${renderThemeToggle()}</div>
       </header>
       <div class="akpis">
         <div class="akpi" style="--kc:${MPAL.harvest}"><div class="akpi-l">Captures</div><div class="akpi-v">${total}</div><div class="akpi-s">commands recorded</div></div>
@@ -2371,10 +2368,7 @@ function renderBaseCampBoard() {
       <header class="masthead">
         <div class="masthead-copy"><p class="eyebrow">Waypoint · base camp board</p><h1>Base camp</h1><p class="subtitle">Hosts progress by risk; who's working on what streams in from recent captures.</p></div>
         <div class="masthead-actions">
-          <div class="theme-switcher" role="group" aria-label="Theme selection">
-            <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
-            <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
-          </div>
+${renderThemeToggle()}
           <div class="metrics" aria-label="Board summary">
             <div class="metric"><span class="metric-label">Assets</span><strong>${rows.length.toLocaleString()}</strong></div>
             <div class="metric"><span class="metric-label">Active</span><strong>${workers.length}</strong></div>
@@ -2385,6 +2379,14 @@ function renderBaseCampBoard() {
       ${strip}
       <div class="board-cols">${cols}${reportedCol}</div>
     </main>`;
+}
+
+function renderThemeToggle() {
+  const next = state.theme === 'dark' ? 'light' : 'dark';
+  const icon = state.theme === 'dark'
+    ? '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="4.6" fill="currentColor"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="2.4" x2="12" y2="5.2"/><line x1="12" y1="18.8" x2="12" y2="21.6"/><line x1="2.4" y1="12" x2="5.2" y2="12"/><line x1="18.8" y1="12" x2="21.6" y2="12"/><line x1="5.2" y1="5.2" x2="7.2" y2="7.2"/><line x1="16.8" y1="16.8" x2="18.8" y2="18.8"/><line x1="5.2" y1="18.8" x2="7.2" y2="16.8"/><line x1="16.8" y1="7.2" x2="18.8" y2="5.2"/></g></svg>'
+    : '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20.2 14.5A8.6 8.6 0 0 1 9.5 3.8 8.6 8.6 0 1 0 20.2 14.5Z" fill="currentColor"/></svg>';
+  return `<button type="button" class="theme-toggle" data-action="toggle-theme" aria-label="Switch to ${next} theme" title="Switch to ${next} theme">${icon}</button>`;
 }
 
 function renderTerritoryMap() {
@@ -2421,48 +2423,35 @@ function renderTerritoryMap() {
   const lensOn = state.mapLens === 'operators';
   const trails = lensOn ? mBuildTrails(positions) : [];
   const trailSVG = lensOn ? mTrailSVG(trails, positions) : '';
-  const lensControl = `<div class="territory-modeseg" role="group" aria-label="Trail lens"><button type="button" data-action="map-lens" data-lens="off" class="${!lensOn ? 'on' : ''}">Off</button><button type="button" data-action="map-lens" data-lens="operators" class="${lensOn ? 'on' : ''}">Operators</button></div>`;
+  const lensControl = `<div class="territory-modeseg territory-lens" role="group" aria-label="Trail lens"><button type="button" data-action="map-lens" data-lens="off" class="${!lensOn ? 'on' : ''}">Off</button><button type="button" data-action="map-lens" data-lens="operators" class="${lensOn ? 'on' : ''}">Operators</button></div>`;
   const actorLegend = (lensOn && trails.length) ? `<div class="territory-actors"><span class="territory-legend-title">Whose trail</span>${trails.map((t) => `<button type="button" class="territory-achip${state.mapHighlightActor === t.handle ? ' on' : ''}" data-action="map-actor" data-actor="${escapeHtml(t.handle)}"><i style="background:${t.color}"></i>${escapeHtml(t.handle)}${t.kind === 'ai_agent' ? '<b class="ai">AI</b>' : ''}</button>`).join('')}</div>` : '';
 
   return `
     <main class="app-shell territory-shell">
       ${renderNav('map')}
-      <header class="masthead">
-        <div class="masthead-copy">
-          <p class="eyebrow">Waypoint · territory map</p>
-          <h1>The estate</h1>
-          <p class="subtitle">Subnets are campsites — sized by hosts, coloured by their worst finding, stacked in trust tiers from the endpoints at the base up to the core at the summit.</p>
+      <section class="territory-canvas" aria-label="Map">
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Map of ${segments.length} segments">
+          <rect class="territory-terrain" x="-3000" y="-3000" width="${W + 6000}" height="${H + 6000}"/>
+          ${mMountainRange(150)}
+          ${treesSVG}
+          ${trailSVG}
+          ${nodeSVG.join('')}
+          ${tierTicks}
+        </svg>
+        <div class="territory-hud">
+          <h1>Map</h1>
+          <p>Subnets are campsites — sized by hosts, coloured by their worst finding, stacked in trust tiers up to the core.</p>
+          <p class="territory-hud-stats">${segments.length} segment${segments.length === 1 ? '' : 's'} · ${totalHosts.toLocaleString()} asset${totalHosts === 1 ? '' : 's'} · ${totalFindings} finding${totalFindings === 1 ? '' : 's'}</p>
         </div>
-        <div class="masthead-actions">
-          <div class="theme-switcher" role="group" aria-label="Theme selection">
-            <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
-            <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
-          </div>
-          ${lensControl}
-          <a class="secondary-link" href="${escapeHtml(phasePath(state.engagementId, 'attacks'))}" data-action="goto-trail">← Trail</a>
-          <div class="metrics" aria-label="Estate summary">
-            <div class="metric"><span class="metric-label">Segments</span><strong>${segments.length}</strong></div>
-            <div class="metric"><span class="metric-label">Assets</span><strong>${totalHosts.toLocaleString()}</strong></div>
-            <div class="metric"><span class="metric-label">Findings</span><strong>${totalFindings}</strong></div>
-          </div>
-        </div>
-      </header>
-      <div class="territory-layout">
-        <section class="territory-canvas" aria-label="Estate map">
-          <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Territory map of ${segments.length} segments">
-            <rect class="territory-terrain" width="${W}" height="${H}"/>
-            ${mMountainRange(150)}
-            ${treesSVG}
-            ${trailSVG}
-            ${nodeSVG.join('')}
-            ${tierTicks}
-          </svg>
+        <div class="territory-topbar">
           <div class="territory-legend"><span class="territory-legend-title">Worst finding</span>${legend}</div>
-          ${actorLegend}
-          ${emptyState}
-        </section>
-        <aside class="territory-side" aria-label="Segment detail">${sideHTML}</aside>
-      </div>
+          ${renderThemeToggle()}
+        </div>
+        ${actorLegend}
+        ${lensControl}
+        ${emptyState}
+      </section>
+      <aside class="territory-side" aria-label="Segment detail">${sideHTML}</aside>
     </main>`;
 }
 
@@ -2536,11 +2525,8 @@ function renderTrailMap() {
           <p class="subtitle">A calm trail map for the audit spine, with live data in the workspaces and the guide keeping pace.</p>
         </div>
         <div class="masthead-actions">
-          <div class="theme-switcher" role="group" aria-label="Theme selection">
-            <button type="button" class="${state.theme === 'light' ? 'is-active' : ''}" data-action="set-theme" data-theme="light" aria-pressed="${state.theme === 'light'}">Light</button>
-            <button type="button" class="${state.theme === 'dark' ? 'is-active' : ''}" data-action="set-theme" data-theme="dark" aria-pressed="${state.theme === 'dark'}">Dark</button>
-          </div>
-          <a class="secondary-link" href="${escapeHtml(mapPath(state.engagementId))}" data-action="goto-map">⛰ Territory map</a>
+${renderThemeToggle()}
+          <a class="secondary-link" href="${escapeHtml(mapPath(state.engagementId))}" data-action="goto-map">⛰ Map</a>
           <label class="field-group">
             <span>Operator token</span>
             <input type="password" autocomplete="off" value="${escapeHtml(state.token)}" data-action="update-token" placeholder="Bearer token" aria-label="Operator token" />
@@ -3297,7 +3283,7 @@ function render() {
     root.innerHTML = renderSetupWizard();
     return;
   }
-  const titleByView = { report: 'Waypoint — report snapshot', map: 'Waypoint — territory map', devices: 'Waypoint — assets', captures: 'Waypoint — captures', board: 'Waypoint — base camp board' };
+  const titleByView = { report: 'Waypoint — report snapshot', map: 'Waypoint — map', devices: 'Waypoint — assets', captures: 'Waypoint — captures', board: 'Waypoint — base camp board' };
   document.title = titleByView[state.view] || `Waypoint — ${phaseNames[state.activePhase]}`;
   const viewRenderers = { report: renderReportView, map: renderTerritoryMap, devices: renderDeviceAtlas, captures: renderCapturesView, board: renderBaseCampBoard };
   root.innerHTML = (viewRenderers[state.view] || renderTrailMap)() + renderDrawer();
@@ -3364,8 +3350,8 @@ async function handleClick(event) {
   const target = event.target.closest('[data-action]');
   if (!target) return;
   const action = target.dataset.action;
-  if (action === 'set-theme') {
-    setTheme(target.dataset.theme || 'light');
+  if (action === 'toggle-theme') {
+    setTheme(state.theme === 'dark' ? 'light' : 'dark');
     return;
   }
   if (action === 'update-token') return;

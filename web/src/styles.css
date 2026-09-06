@@ -185,36 +185,31 @@ h1 {
   white-space: nowrap;
 }
 
-.theme-switcher {
+.theme-toggle {
   display: inline-flex;
-  gap: 4px;
-  padding: 4px;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
   border-radius: 999px;
   background: var(--chrome-surface);
   border: 1px solid var(--chrome-border);
   box-shadow: 0 12px 28px var(--chrome-shadow);
+  color: var(--chrome-strong);
+  cursor: pointer;
+  backdrop-filter: blur(6px);
 }
+.theme-toggle:hover { border-color: var(--harvest); }
+.theme-toggle svg { display: block; }
 
-.theme-switcher button,
+.theme-toggle,
 .primary-button,
 .secondary-link,
 .route-link,
 .waypoint-hitbox {
   transition: background-color 160ms ease, color 160ms ease, border-color 160ms ease, transform 160ms ease,
     box-shadow 160ms ease;
-}
-
-.theme-switcher button {
-  border-radius: 999px;
-  padding: 8px 12px;
-  color: var(--chrome-muted);
-  background: transparent;
-  cursor: pointer;
-}
-
-.theme-switcher button.is-active {
-  background: var(--saddle);
-  color: var(--artifact-parchment);
 }
 
 .metrics {
@@ -2236,24 +2231,35 @@ a:focus-visible,
   }
 }
 
-/* ============================ Territory Map ============================ */
-.territory-shell { max-width: 1320px; }
-.territory-layout {
+/* ============================ Map ============================ */
+/* The map is the one full-bleed view: it fills the viewport beside the fixed
+   left nav, with the HUD, legend, lens, and trail chips floating over the
+   terrain and a fixed-width detail rail on the right (per the layout study). */
+.territory-shell {
+  max-width: none;
+  width: auto;
+  margin: 0;
+  padding: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 18px;
-  margin-top: 8px;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  height: 100vh;
+  height: 100dvh;
 }
 .territory-canvas {
   position: relative;
-  background: var(--artifact-parchment);
-  border: 1px solid var(--artifact-border);
-  border-radius: 18px;
+  background: var(--artifact-map);
   overflow: hidden;
-  box-shadow: 0 20px 44px -32px var(--chrome-shadow);
-  min-height: 420px;
+  min-height: 0;
 }
-.territory-canvas svg { display: block; width: 100%; height: auto; }
+.territory-canvas svg { display: block; width: 100%; height: 100%; }
+/* The HUD floats on the terrain, which stays parchment in both themes, so its
+   ink uses the theme-stable artifact palette rather than the flipping chrome. */
+.territory-hud { position: absolute; top: 16px; left: 20px; max-width: 52ch; pointer-events: none; color: var(--deep-bark); }
+.territory-hud h1 { margin: 0; font-size: 20px; letter-spacing: -0.01em; color: var(--deep-bark); }
+.territory-hud p { margin: 2px 0 0; font-size: 12px; color: var(--stone-dark); }
+.territory-hud-stats { font-weight: 600; color: var(--dark-cocoa); }
+.territory-topbar { position: absolute; top: 16px; right: 18px; display: flex; gap: 10px; align-items: flex-start; }
+.territory-lens { position: absolute; bottom: 16px; right: 18px; backdrop-filter: blur(6px); }
 .territory-terrain { fill: var(--artifact-map); }
 .territory-camp { cursor: pointer; }
 .territory-camp:hover { filter: brightness(1.05); }
@@ -2262,7 +2268,6 @@ a:focus-visible,
 .territory-tick { font-size: 11px; font-weight: 600; fill: var(--stone-dark); font-family: Inter, sans-serif; text-transform: uppercase; letter-spacing: 0.05em; }
 .territory-tick-sub { font-size: 10px; fill: var(--stone-dark); font-family: Inter, sans-serif; opacity: 0.8; }
 .territory-legend {
-  position: absolute; top: 14px; right: 14px;
   display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
   background: var(--chrome-surface); border: 1px solid var(--chrome-border);
   border-radius: 11px; padding: 8px 12px; backdrop-filter: blur(6px);
@@ -2271,19 +2276,18 @@ a:focus-visible,
 .territory-li { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--chrome-strong); }
 .territory-li i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .territory-side {
-  align-self: start;
   background: var(--workspace-surface);
-  border: 1px solid var(--workspace-border);
-  border-radius: 16px;
+  border-left: 1px solid var(--chrome-border);
   padding: 18px 16px;
-  box-shadow: 0 12px 30px -26px var(--chrome-shadow);
+  overflow-y: auto;
+  min-height: 0;
 }
 .territory-side h3 { margin: 0 0 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--chrome-muted); }
 .territory-side h3 + h3 { margin-top: 18px; }
 .territory-nm { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 600; margin: 0; }
 .territory-mt { color: var(--chrome-muted); font-size: 12px; margin: 2px 0 4px; }
 .territory-zone { display: inline-block; font-weight: 600; color: var(--saddle); background: color-mix(in srgb, var(--harvest) 16%, transparent); border-radius: 6px; padding: 1px 7px; letter-spacing: 0.02em; }
-.territory-hostlist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; max-height: 46vh; overflow-y: auto; }
+.territory-hostlist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
 .territory-hostlist li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 4px 6px; border-radius: 8px; }
 .territory-hostlist li:hover { background: var(--page-bg-2); }
 .territory-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
@@ -2302,12 +2306,14 @@ a:focus-visible,
 @keyframes territory-rise { 0% { opacity: 0; transform: translate(0, 0) scale(0.45); } 14% { opacity: var(--o, 0.42); } 100% { opacity: 0; transform: translate(var(--dx, 3px), -30px) scale(1.8); } }
 @media (prefers-reduced-motion: reduce) { .territory-flame, .territory-puff { animation: none !important; } }
 @media (max-width: 980px) {
-  .territory-layout { grid-template-columns: 1fr; }
+  .territory-shell { grid-template-columns: 1fr; height: auto; }
+  .territory-canvas { height: 62vh; }
+  .territory-side { border-left: 0; border-top: 1px solid var(--chrome-border); }
 }
 
 .territory-modeseg { display: inline-flex; background: var(--workspace-surface); border: 1px solid var(--chrome-border); border-radius: 10px; padding: 3px; gap: 2px; }
 .territory-modeseg button { font: inherit; font-size: 12.5px; cursor: pointer; border: 0; background: none; color: var(--chrome-muted); padding: 5px 12px; border-radius: 7px; font-weight: 600; }
-.territory-modeseg button.on { background: var(--artifact-parchment); color: var(--page-text); box-shadow: 0 1px 3px -1px var(--chrome-shadow); }
+.territory-modeseg button.on { background: var(--artifact-parchment); color: var(--deep-bark); box-shadow: 0 1px 3px -1px var(--chrome-shadow); }
 .territory-actors { position: absolute; bottom: 14px; left: 14px; display: flex; flex-direction: column; gap: 3px; background: var(--chrome-surface); border: 1px solid var(--chrome-border); border-radius: 12px; padding: 9px 11px; backdrop-filter: blur(6px); max-width: 240px; }
 .territory-achip { display: flex; align-items: center; gap: 8px; font: inherit; font-size: 12.5px; cursor: pointer; background: none; border: 0; color: var(--chrome-strong); padding: 3px 5px; border-radius: 7px; text-align: left; }
 .territory-achip i { width: 13px; height: 13px; border-radius: 3px; flex: 0 0 auto; box-shadow: 0 0 0 1px var(--chrome-border); }

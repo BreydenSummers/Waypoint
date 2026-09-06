@@ -366,10 +366,12 @@ async function main() {
   // -------- Theme toggle sanity --------
   ctx = 'theme';
   await visit('theme:devices-dark', `/engagements/${ENGAGEMENT}/devices`);
-  await click('[data-action="set-theme"][data-theme="dark"]');
+  const themeBefore = await page.evaluate(() => document.documentElement.dataset.theme);
+  await click('[data-action="toggle-theme"]');
   await sleep(300);
   const themed = await page.evaluate(() => document.documentElement.dataset.theme);
-  if (themed !== 'dark') bug('low', 'theme', 'dark theme did not apply', String(themed));
+  if (themed === themeBefore) bug('low', 'theme', 'theme toggle did not switch the theme', `stayed ${String(themed)}`);
+  if (themed !== 'dark') await click('[data-action="toggle-theme"]').then(() => sleep(300)); // the assets check below expects dark
   if (await $count('#asset-rows tr.arow') === 0) bug('medium', 'theme', 'assets table broke after theme switch');
 
   faviconNote();
