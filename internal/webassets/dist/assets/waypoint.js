@@ -1,4 +1,4 @@
-const sourceHash = "9890735df166355708facc9eb0de6c68b5dd82864446c66fd3afba05dc8a8ea4";
+const sourceHash = "b93368d5a7234cea474146f22be0b7dbe609f524d87f61f71a8ae7adc1ed3588";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -71,6 +71,7 @@ const state = {
   evidenceCache: {},
   attachFor: null,
   token: 'demo-token',
+  tokenRejected: false,
   auditStatus: 'loading',
   actionsStatus: 'loading',
   entitiesStatus: 'loading',
@@ -354,8 +355,17 @@ async function readProblem(response) {
   }
 }
 
+// noteAuthResult keeps the masthead sign-in notice honest: any authorized call
+// that comes back 401 flips it on, and any authorized call that succeeds flips
+// it off, so it always reflects the token currently in the field.
+function noteAuthResult(response) {
+  if (response.status === 401) state.tokenRejected = true;
+  else if (response.ok) state.tokenRejected = false;
+}
+
 async function apiJson(path, token, signal) {
   const response = await fetch(path, { headers: authHeaders(token, newRequestId()), cache: 'no-store', signal });
+  noteAuthResult(response);
   if (!response.ok) throw new Error(await readProblem(response));
   return await response.json();
 }
@@ -363,6 +373,7 @@ async function apiJson(path, token, signal) {
 async function apiJsonPost(path, token, body, signal) {
   const headers = { ...authHeaders(token, newRequestId()), 'Content-Type': 'application/json' };
   const response = await fetch(path, { method: 'POST', headers, cache: 'no-store', body: body === undefined ? undefined : JSON.stringify(body), signal });
+  noteAuthResult(response);
   if (!response.ok) throw new Error(await readProblem(response));
   return await response.json();
 }
@@ -373,6 +384,7 @@ async function apiText(path, token, signal) {
     cache: 'no-store',
     signal,
   });
+  noteAuthResult(response);
   if (!response.ok) throw new Error(await readProblem(response));
   return await response.text();
 }
@@ -557,6 +569,20 @@ function setToken(token) {
   state.token = token;
   try { window.localStorage.setItem('waypoint-token', token); } catch { /* ignore */ }
   scheduleRefresh();
+}
+
+// setTokenDebounced is the per-keystroke path for the masthead token field: the
+// token takes effect immediately, but the full refresh (and its 401 storm on a
+// half-typed token) waits for a typing pause.
+let tokenRefreshTimer = null;
+function setTokenDebounced(token) {
+  state.token = token;
+  try { window.localStorage.setItem('waypoint-token', token); } catch { /* ignore */ }
+  if (tokenRefreshTimer) clearTimeout(tokenRefreshTimer);
+  tokenRefreshTimer = setTimeout(() => {
+    tokenRefreshTimer = null;
+    scheduleRefresh();
+  }, 500);
 }
 
 function navigateToPhase(phase) {
@@ -1146,6 +1172,7 @@ function startStream() {
           signal: controller.signal,
           cache: 'no-store',
         });
+        noteAuthResult(response);
         if (!response.ok) throw new Error(await readProblem(response));
         state.auditStatus = 'ready';
         state.auditError = '';
@@ -2530,6 +2557,7 @@ ${renderThemeToggle()}
           <label class="field-group">
             <span>Operator token</span>
             <input type="password" autocomplete="off" value="${escapeHtml(state.token)}" data-action="update-token" placeholder="Bearer token" aria-label="Operator token" />
+            ${state.tokenRejected ? '<span class="token-alert" role="alert">Not signed in — paste your operator token to see this engagement.</span>' : ''}
           </label>
           <div class="progress-pill" aria-label="Trail progress">${escapeHtml(trailStatusText)}</div>
           <div class="metrics" aria-label="Engagement progress">
@@ -3274,19 +3302,53 @@ function enterAfterSetup() {
   void refreshEverything();
 }
 
+// captureFocus/restoreFocus keep the caret alive across a full innerHTML swap.
+// Every render replaces the DOM wholesale, which would otherwise blur whatever
+// field the operator is typing in (the token field re-renders on every refresh),
+// leaving the app impossible to type into. Fields are re-identified by their
+// data-action (+ data-field) since the nodes themselves are new.
+function captureFocus() {
+  const active = document.activeElement;
+  if (!active || !root.contains(active)) return null;
+  if (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA') return null;
+  const action = active.dataset.action;
+  if (!action) return null;
+  let start = null;
+  let end = null;
+  try {
+    start = active.selectionStart;
+    end = active.selectionEnd;
+  } catch { /* not all input types expose a selection */ }
+  return { action, field: active.dataset.field || '', start, end };
+}
+
+function restoreFocus(saved) {
+  if (!saved) return;
+  const selector = `[data-action="${saved.action}"]` + (saved.field ? `[data-field="${saved.field}"]` : '');
+  const el = root.querySelector(selector);
+  if (!el) return;
+  el.focus();
+  if (saved.start !== null && saved.end !== null) {
+    try { el.setSelectionRange(saved.start, saved.end); } catch { /* ignore */ }
+  }
+}
+
 function render() {
   state.renderCount += 1;
+  const focused = captureFocus();
   document.documentElement.dataset.theme = state.theme;
   document.documentElement.dataset.view = state.view;
   if (state.view === 'setup') {
     document.title = 'Waypoint — first-time setup';
     root.innerHTML = renderSetupWizard();
+    restoreFocus(focused);
     return;
   }
   const titleByView = { report: 'Waypoint — report snapshot', map: 'Waypoint — map', devices: 'Waypoint — assets', captures: 'Waypoint — captures', board: 'Waypoint — base camp board' };
   document.title = titleByView[state.view] || `Waypoint — ${phaseNames[state.activePhase]}`;
   const viewRenderers = { report: renderReportView, map: renderTerritoryMap, devices: renderDeviceAtlas, captures: renderCapturesView, board: renderBaseCampBoard };
   root.innerHTML = (viewRenderers[state.view] || renderTrailMap)() + renderDrawer();
+  restoreFocus(focused);
   if (state.drawer && state.drawer.kind === 'capture') ensureCaptureEvidence(state.drawer.id);
   syncExportPolling();
 }
@@ -3636,7 +3698,7 @@ function handleInput(event) {
   if (!target) return;
   const action = target.dataset.action;
   if (action === 'update-token') {
-    setToken(target.value);
+    setTokenDebounced(target.value);
     return;
   }
   if (action === 'guide-search') {
