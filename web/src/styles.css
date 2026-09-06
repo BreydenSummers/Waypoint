@@ -2287,8 +2287,12 @@ a:focus-visible,
 .territory-mt { color: var(--chrome-muted); font-size: 12px; margin: 2px 0 4px; }
 .territory-zone { display: inline-block; font-weight: 600; color: var(--saddle); background: color-mix(in srgb, var(--harvest) 16%, transparent); border-radius: 6px; padding: 1px 7px; letter-spacing: 0.02em; }
 .territory-hostlist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
-.territory-hostlist li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 4px 6px; border-radius: 8px; }
-.territory-hostlist li:hover { background: var(--page-bg-2); }
+.territory-hostlist li { display: block; }
+.territory-hostrow { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12.5px; padding: 4px 6px; border-radius: 8px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.territory-hostrow:hover { background: var(--page-bg-2); }
+.territory-hostrow:focus-visible { outline: 2px solid var(--accent, #854f0b); outline-offset: 1px; }
+.territory-hgo { flex: 0 0 auto; margin-left: 6px; color: var(--chrome-muted); opacity: 0; transition: opacity .12s ease; }
+.territory-hostrow:hover .territory-hgo, .territory-hostrow:focus-visible .territory-hgo { opacity: 1; }
 .territory-dot { width: 8px; height: 8px; border-radius: 2px; flex: 0 0 auto; }
 .territory-hn { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .territory-hip { flex: 0 0 auto; margin-left: auto; padding-left: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--chrome-muted); white-space: nowrap; }
