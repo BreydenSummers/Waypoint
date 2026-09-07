@@ -45,6 +45,13 @@ const positions = [
   [586, 64],
 ];
 
+// How many rows/cards a list view paints before a "Show more" control appears.
+// Tables and camp host-lists window their data this way so a segment with
+// hundreds of hosts stays responsive instead of dumping every row at once.
+const PAGE_SIZE = 150;
+const MAP_HOST_PAGE = 60;
+const BOARD_PAGE = 8;
+
 const state = {
   theme: 'light',
   engagementId: defaultEngagementId,
@@ -56,14 +63,23 @@ const state = {
   mapHighlightActor: '',
   atlasSev: new Set(),
   atlasQuery: '',
-  boardExpanded: new Set(),
+  boardShown: {},
+  boardQuery: '',
+  boardSort: 'sev',
   assetKind: 'hosts',
   assetQuery: '',
   assetAccess: new Set(),
   assetTier: new Set(),
+  assetSort: { key: 'tier', dir: 'asc' },
+  assetLimit: PAGE_SIZE,
   capQuery: '',
   capActor: new Set(),
   capType: new Set(),
+  capSort: { key: 'when', dir: 'desc' },
+  capLimit: PAGE_SIZE,
+  mapHostQuery: '',
+  mapHostSort: { key: 'sev', dir: 'asc' },
+  mapHostLimit: MAP_HOST_PAGE,
   drawer: null,
   evidenceCache: {},
   attachFor: null,
@@ -1983,6 +1999,7 @@ function mHostRows() {
       subnet: mSubnet(ip) || mSegmentKey(e).label,
       sev: sev[e.id] || 'info',
       seen: e.lastSeen ? formatTime(e.lastSeen) : '',
+      seenRaw: e.lastSeen || '',
     };
   });
 }
@@ -2099,6 +2116,61 @@ function mCapturesFor(e) {
     return tv && targets.has(tv);
   });
 }
+/* ---- Sortable columns (shared by the Assets and Captures tables) ----
+   Each view declares a column config { key, label, get, dir, tie }. get()
+   pulls the sort value (number or string); dir is the default direction when
+   a user first clicks that column; tie() breaks equal values. Clicking a
+   header toggles its direction; clicking a different one adopts its default. */
+function mCmp(a, b) {
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
+}
+function mSortRows(rows, cols, sort) {
+  const col = cols.find((c) => c.key === sort.key) || cols[0];
+  const sign = sort.dir === 'desc' ? -1 : 1;
+  return rows
+    .map((r, i) => [r, i])
+    .sort(([a, ai], [b, bi]) => {
+      const d = mCmp(col.get(a), col.get(b));
+      if (d) return d * sign;
+      const t = col.tie ? mCmp(col.tie(a), col.tie(b)) : 0;
+      return t || (ai - bi);
+    })
+    .map(([r]) => r);
+}
+function mColDir(cols, key) { const c = cols.find((x) => x.key === key); return (c && c.dir) || 'asc'; }
+function mApplySort(sort, key, defaultDir) {
+  if (sort.key === key) sort.dir = sort.dir === 'asc' ? 'desc' : 'asc';
+  else { sort.key = key; sort.dir = defaultDir || 'asc'; }
+}
+function mTh(col, sort, action) {
+  const on = sort.key === col.key;
+  const aria = on ? (sort.dir === 'desc' ? 'descending' : 'ascending') : 'none';
+  const glyph = on ? (sort.dir === 'desc' ? '↓' : '↑') : '↕';
+  const width = col.width ? ` style="width:${col.width}"` : '';
+  return `<th class="asort${on ? ' on' : ''}"${width} data-action="${action}" data-key="${col.key}" role="columnheader" aria-sort="${aria}" tabindex="0" title="Sort by ${escapeHtml(col.label)}">${escapeHtml(col.label)}<span class="asort-ind${on ? ' on' : ''}" aria-hidden="true">${glyph}</span></th>`;
+}
+// A "Showing X of Y · Show more" footer used by both windowed tables.
+function mListFoot(shown, filtered, total, noun, moreAction) {
+  const totalNote = filtered !== total ? ` <span class="muted">(${total} total)</span>` : '';
+  const more = shown < filtered
+    ? `<button type="button" class="ashowmore" data-action="${moreAction}">Show ${Math.min(PAGE_SIZE, filtered - shown)} more</button>`
+    : `<span class="muted">${filtered ? 'All shown' : 'No matches'}</span>`;
+  return `<span>Showing <b>${shown}</b> of <b>${filtered}</b> ${noun}${totalNote}</span>${more}`;
+}
+
+function mAssetCols(isHost) {
+  return [
+    { key: 'name', label: isHost ? 'Host' : 'Principal', get: (r) => r.name, dir: 'asc', tie: (r) => r.ip },
+    { key: 'access', label: 'Access', get: (r) => r.accessRank, dir: 'desc', tie: (r) => r.name },
+    { key: 'os', label: isHost ? 'OS / platform' : 'Type', get: (r) => r.svc.os, dir: 'asc', tie: (r) => r.name },
+    { key: 'svc', label: isHost ? 'Services' : 'SID', get: (r) => (isHost ? r.svc.services.length : ((r.entity.identifiers && r.entity.identifiers[0] && r.entity.identifiers[0].value) || '')), dir: isHost ? 'desc' : 'asc', tie: (r) => r.name },
+    { key: 'tier', label: 'Tier', get: (r) => r.tier, dir: 'asc', tie: (r) => -r.accessRank },
+    { key: 'seg', label: 'Segment', get: (r) => r.seg, dir: 'asc', tie: (r) => r.name },
+    { key: 'findings', label: 'Findings', get: (r) => MSEV_RANK[r.sev], dir: 'asc', tie: (r) => r.name },
+  ];
+}
+
 function mAssetRows() {
   const sev = mSevByEntity();
   return (state.entities || []).map((e) => {
@@ -2114,14 +2186,14 @@ function mAssetRows() {
 function mAssetDataset() { const isHost = state.assetKind !== 'identities'; return mAssetRows().filter((r) => r.isHost === isHost); }
 function mFilteredAssets() {
   const q = state.assetQuery.trim().toLowerCase();
-  let rows = mAssetDataset().filter((r) => {
+  const isHost = state.assetKind !== 'identities';
+  const rows = mAssetDataset().filter((r) => {
     if (state.assetAccess.size && !state.assetAccess.has(r.access)) return false;
     if (state.assetTier.size && !state.assetTier.has(String(r.tier))) return false;
-    if (q && !(`${r.name} ${r.ip} ${r.kind} ${r.seg} ${r.svc.os} ${r.svc.services.join(' ')}`.toLowerCase().includes(q))) return false;
+    if (q && !(`${r.name} ${r.ip} ${r.kind} ${r.seg} ${r.svc.os} ${r.access} ${r.svc.services.join(' ')}`.toLowerCase().includes(q))) return false;
     return true;
   });
-  rows.sort((a, b) => a.tier - b.tier || b.accessRank - a.accessRank || a.name.localeCompare(b.name));
-  return rows;
+  return mSortRows(rows, mAssetCols(isHost), state.assetSort);
 }
 function mAccPips(level) {
   const n = ACC_RANK[level]; let s = '';
@@ -2132,7 +2204,7 @@ function mExpoTags(expo) { return expo.length ? `<span class="aexpo">${expo.map(
 function mTierCell(r) { const t = ATIER[r.tier]; return `<div class="atiercell"><span class="atier"><span class="atbadge t${r.tier}">${t.short}</span><span class="atier-label t${r.tier}">${t.label}</span></span>${mExpoTags(r.expo)}</div>`; }
 function mAssetRowsHTML(rows) {
   const isHost = state.assetKind !== 'identities';
-  return rows.slice(0, 300).map((r) => {
+  return rows.slice(0, state.assetLimit).map((r) => {
     const acc = r.access;
     const svc = isHost
       ? (r.svc.services.length ? `<span class="asvc">${r.svc.services.slice(0, 4).map((s) => `<span class="aport">${escapeHtml(s)}</span>`).join('')}${r.svc.services.length > 4 ? `<span class="aport">+${r.svc.services.length - 4}</span>` : ''}</span>` : '<span class="muted">—</span>')
@@ -2188,22 +2260,26 @@ ${renderThemeToggle()}
       ${isHost ? `<div class="afacets"><div class="afgroup"><span class="afcap">Access</span>${accFacets}</div><div class="afgroup"><span class="afcap">Tier</span>${tierFacets}</div></div>` : ''}
       <div class="atable">
         <div class="atscroll"><table>
-          <thead><tr><th>${isHost ? 'Host' : 'Principal'}</th><th>Access</th><th>${isHost ? 'OS / platform' : 'Type'}</th><th>${isHost ? 'Services' : 'SID'}</th><th>Tier</th><th>Segment</th><th>Findings</th></tr></thead>
+          <thead><tr>${mAssetCols(isHost).map((c) => mTh(c, state.assetSort, 'asset-sort')).join('')}</tr></thead>
           <tbody id="asset-rows">${mAssetRowsHTML(rows) || `<tr><td colspan="7" class="board-empty">No ${isHost ? 'hosts' : 'identities'} match.</td></tr>`}</tbody>
         </table></div>
-        <div class="atfoot"><span id="asset-foot">Showing <b>${Math.min(rows.length, 300)}</b> of <b>${(isHost ? hosts : idents).length}</b> ${isHost ? 'hosts' : 'identities'}</span><span class="muted">Sorted by tier, then access depth</span></div>
+        <div class="atfoot" id="asset-footwrap">${mAssetFootHTML(rows)}</div>
       </div>
     </main>`;
 }
 
+function mAssetFootHTML(rows) {
+  const isHost = state.assetKind !== 'identities';
+  const total = mAssetDataset().length;
+  const shown = Math.min(rows.length, state.assetLimit);
+  return mListFoot(shown, rows.length, total, isHost ? 'hosts' : 'identities', 'asset-more');
+}
 function drawAssetRows() {
   const rows = mFilteredAssets();
   const b = document.getElementById('asset-rows');
   if (b) b.innerHTML = mAssetRowsHTML(rows) || `<tr><td colspan="7" class="board-empty">No matches.</td></tr>`;
-  const isHost = state.assetKind !== 'identities';
-  const base = mAssetRows().filter((r) => r.isHost === isHost).length;
-  const f = document.getElementById('asset-foot');
-  if (f) f.innerHTML = `Showing <b>${Math.min(rows.length, 300)}</b> of <b>${base}</b> ${isHost ? 'hosts' : 'identities'}`;
+  const f = document.getElementById('asset-footwrap');
+  if (f) f.innerHTML = mAssetFootHTML(rows);
 }
 
 /* ============================ Captures ============================ */
@@ -2232,30 +2308,43 @@ function mActorChip(actor) {
 }
 function mCapById(id) { return (state.actions || []).find((a) => a.id === id) || null; }
 function mCapActors() { const s = new Set(); (state.actions || []).forEach((a) => { const h = a.actor && (a.actor.handle || a.actor.id); if (h) s.add(h); }); return [...s]; }
+const CAP_COLS = [
+  { key: 'status', label: 'Status', width: '120px', get: (ac) => (mCapStatus(ac) === 'ok' ? 1 : 0), dir: 'asc', tie: (ac) => mCapStart(ac) },
+  { key: 'command', label: 'Command', get: (ac) => String((ac.capture && ac.capture.command) || ''), dir: 'asc' },
+  { key: 'target', label: 'Target', get: (ac) => String((ac.capture && ac.capture.target && ac.capture.target.value) || ''), dir: 'asc' },
+  { key: 'actor', label: 'Actor', get: (ac) => String((ac.actor && (ac.actor.handle || ac.actor.id)) || ''), dir: 'asc' },
+  { key: 'type', label: 'Type', get: (ac) => CAP_TYPES.indexOf(mCapType(ac)), dir: 'asc' },
+  { key: 'when', label: 'When', get: (ac) => mCapStart(ac), dir: 'desc' },
+];
 function mFilteredCaptures() {
   const q = state.capQuery.trim().toLowerCase();
-  return (state.actions || []).filter((ac) => {
+  const list = (state.actions || []).filter((ac) => {
     const h = (ac.actor && (ac.actor.handle || ac.actor.id)) || '';
     if (state.capActor.size && !state.capActor.has(h)) return false;
     if (state.capType.size && !state.capType.has(mCapType(ac))) return false;
-    if (q && !(`${(ac.capture && ac.capture.command) || ''} ${(ac.capture && ac.capture.target && ac.capture.target.value) || ''} ${h}`.toLowerCase().includes(q))) return false;
+    if (q && !(`${(ac.capture && ac.capture.command) || ''} ${(ac.capture && ac.capture.target && ac.capture.target.value) || ''} ${h} ${mCapType(ac)}`.toLowerCase().includes(q))) return false;
     return true;
-  }).sort((a, b) => { const ta = mCapStart(a); const tb = mCapStart(b); return tb < ta ? -1 : tb > ta ? 1 : 0; });
+  });
+  return mSortRows(list, CAP_COLS, state.capSort);
 }
 function mCaptureRowsHTML(list) {
-  return list.slice(0, 300).map((ac) => {
+  return list.slice(0, state.capLimit).map((ac) => {
     const st = mCapStatus(ac); const ty = mCapType(ac); const c = ac.capture || {};
     const tgt = (c.target && c.target.value) || '—';
     const when = mCapStart(ac) ? formatTime(mCapStart(ac)) : '';
     return `<tr class="crow" data-action="open-capture" data-id="${ac.id}"><td><span class="cst ${st}"><i></i>${st === 'ok' ? 'Success' : 'Failed'}</span></td><td><div class="ccmd mono">${escapeHtml(c.command || '—')}</div></td><td><div class="mono" style="font-size:12px">${escapeHtml(tgt)}</div></td><td>${mActorChip(ac.actor)}</td><td><span class="ctag ${ty}">${CAP_TYPE_LABEL[ty]}</span></td><td class="muted">${escapeHtml(when)}</td></tr>`;
   }).join('');
 }
+function mCaptureFootHTML(list) {
+  const shown = Math.min(list.length, state.capLimit);
+  return mListFoot(shown, list.length, (state.actions || []).length, 'captures', 'cap-more');
+}
 function drawCaptureRows() {
   const list = mFilteredCaptures();
   const b = document.getElementById('cap-rows');
   if (b) b.innerHTML = mCaptureRowsHTML(list) || '<tr><td colspan="6" class="board-empty">No captures match.</td></tr>';
-  const f = document.getElementById('cap-foot');
-  if (f) f.innerHTML = `Showing <b>${Math.min(list.length, 300)}</b> of <b>${(state.actions || []).length}</b> captures`;
+  const f = document.getElementById('cap-footwrap');
+  if (f) f.innerHTML = mCaptureFootHTML(list);
 }
 function renderCapturesView() {
   const total = (state.actions || []).length;
@@ -2281,8 +2370,8 @@ function renderCapturesView() {
       </div>
       <div class="atoolbar"><label class="asearch" style="flex:1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5" stroke-linecap="round"/></svg><input data-action="cap-search" placeholder="Search command, target, actor…" value="${escapeHtml(state.capQuery)}" aria-label="Search captures"/></label></div>
       <div class="afacets"><div class="afgroup"><span class="afcap">Actor</span>${actorFacets}</div><div class="afgroup"><span class="afcap">Type</span>${typeFacets}</div></div>
-      <div class="atable"><div class="atscroll"><table><thead><tr><th style="width:120px">Status</th><th>Command</th><th>Target</th><th>Actor</th><th>Type</th><th>When</th></tr></thead><tbody id="cap-rows">${mCaptureRowsHTML(list) || '<tr><td colspan="6" class="board-empty">No captures match.</td></tr>'}</tbody></table></div>
-      <div class="atfoot"><span id="cap-foot">Showing <b>${Math.min(list.length, 300)}</b> of <b>${total}</b> captures</span><span class="muted">Newest first · evidence is hashed and immutable</span></div></div>
+      <div class="atable"><div class="atscroll"><table><thead><tr>${CAP_COLS.map((c) => mTh(c, state.capSort, 'cap-sort')).join('')}</tr></thead><tbody id="cap-rows">${mCaptureRowsHTML(list) || '<tr><td colspan="6" class="board-empty">No captures match.</td></tr>'}</tbody></table></div>
+      <div class="atfoot" id="cap-footwrap">${mCaptureFootHTML(list)}</div></div>
     </main>`;
 }
 
@@ -2468,23 +2557,56 @@ function mRecentByActor() {
   });
   return Object.values(byActor).sort((x, y) => (x.t < y.t ? 1 : x.t > y.t ? -1 : 0));
 }
-function renderBaseCampBoard() {
-  const rows = mHostRows();
+const BOARD_MORE = 24;
+function mBoardRows() {
+  const q = state.boardQuery.trim().toLowerCase();
+  let rows = mHostRows();
+  if (q) rows = rows.filter((r) => `${r.name} ${r.ip} ${r.role} ${r.subnet} ${r.kind}`.toLowerCase().includes(q));
+  if (state.boardSort === 'recent') rows = rows.slice().sort((a, b) => mCmp(b.seenRaw, a.seenRaw) || mCmp(a.name, b.name));
+  else rows = rows.slice().sort((a, b) => mCmp(a.name, b.name));
+  return rows;
+}
+function mBoardColsHTML() {
+  const rows = mBoardRows();
   const buckets = { info: [], low: [], medium: [], high: [], critical: [] };
   rows.forEach((r) => { (buckets[r.sev] || buckets.info).push(r); });
-  const workers = mRecentByActor();
-  const strip = workers.length ? `<div class="board-strip"><span class="board-strip-title">Active now · from recent captures</span><div class="board-workers">${workers.slice(0, 6).map((w) => `<div class="board-worker${w.kind === 'ai_agent' ? ' ai' : ''}"><span class="board-av" style="background:${w.kind === 'ai_agent' ? MSEV_COLOR.high : MPAL.saddle}">${escapeHtml(w.handle.slice(0, 2).toUpperCase())}</span><div class="board-wb"><div class="board-wn">${escapeHtml(w.handle)}${w.kind === 'ai_agent' ? '<b class="ai">AI</b>' : ''}</div><div class="board-wf">${w.command ? `<span class="tg">${escapeHtml(w.command)}</span>${w.target ? ` → ${escapeHtml(w.target)}` : ''}` : 'idle'}</div></div></div>`).join('')}</div></div>` : '';
   const cardHTML = (r) => `<div class="board-card"><div class="board-card-top"><span class="board-id mono">${escapeHtml(r.name)}</span><span class="sev-tag"><i style="background:${MSEV_COLOR[r.sev]}"></i>${MSEV_LABEL[r.sev]}</span></div><div class="board-ip mono muted">${escapeHtml(r.ip || r.subnet)}</div>${r.role ? `<div class="board-chips"><span class="board-chip">${escapeHtml(r.role)}</span><span class="board-chip">${escapeHtml(r.kind)}</span></div>` : ''}</div>`;
   const cols = BOARD_COLS.map((c) => {
     const list = buckets[c.key] || [];
-    const expanded = state.boardExpanded.has(c.key);
-    const shown = expanded ? list : list.slice(0, 6);
+    const shownN = state.boardShown[c.key] || BOARD_PAGE;
+    const shown = list.slice(0, shownN);
     const more = list.length - shown.length;
-    return `<div class="board-col"><div class="board-col-head"><span class="board-dot" style="background:${MSEV_COLOR[c.key]}"></span><span class="board-col-name">${c.label}</span><span class="board-count num">${list.length}</span></div><div class="board-cards">${shown.map(cardHTML).join('') || '<div class="board-empty">—</div>'}</div>${more > 0 ? `<div class="board-more" data-action="board-more" data-col="${c.key}">↓ ${more} more</div>` : (expanded && list.length > 6 ? `<div class="board-more" data-action="board-more" data-col="${c.key}">↑ collapse</div>` : '')}</div>`;
+    const ctrl = more > 0
+      ? `<button type="button" class="board-more" data-action="board-more" data-col="${c.key}">↓ Show ${Math.min(BOARD_MORE, more)} more <span class="muted">(${more})</span></button>`
+      : (list.length > BOARD_PAGE ? `<button type="button" class="board-more" data-action="board-more" data-col="${c.key}" data-collapse="1">↑ Collapse</button>` : '');
+    return `<div class="board-col"><div class="board-col-head"><span class="board-dot" style="background:${MSEV_COLOR[c.key]}"></span><span class="board-col-name">${c.label}</span><span class="board-count num">${list.length}</span></div><div class="board-cards">${shown.map(cardHTML).join('') || '<div class="board-empty">—</div>'}</div>${ctrl}</div>`;
   }).join('');
   const findings = (state.findings || []).slice().sort((a, b) => MSEV_RANK[String(a.severity || 'info').toLowerCase()] - MSEV_RANK[String(b.severity || 'info').toLowerCase()]);
   const findingCards = findings.map((f) => { const s = String(f.severity || 'info').toLowerCase(); return `<div class="board-card"><div class="board-card-top"><span class="board-id mono">FND</span><span class="sev-tag"><i style="background:${MSEV_COLOR[s]}"></i>${MSEV_LABEL[s]}</span></div><h5 class="board-fh">${escapeHtml(f.title || 'Finding')}</h5><div class="board-ip muted">${escapeHtml(f.status || 'open')} · ${(f.affectedEntityIds || []).length} host${(f.affectedEntityIds || []).length === 1 ? '' : 's'}</div></div>`; }).join('') || '<div class="board-empty">No findings yet</div>';
   const reportedCol = `<div class="board-col"><div class="board-col-head"><span class="board-dot" style="background:${MPAL.forest}"></span><span class="board-col-name">Reported</span><span class="board-count num">${findings.length}</span></div><div class="board-cards">${findingCards}</div></div>`;
+  return cols + reportedCol;
+}
+function mBoardMatchNote() {
+  const q = state.boardQuery.trim();
+  return q ? `${mBoardRows().length} of ${mHostRows().length} match` : '';
+}
+function drawBoardCols() {
+  const c = document.getElementById('board-cols');
+  if (c) c.innerHTML = mBoardColsHTML();
+  const n = document.getElementById('board-matchnote');
+  if (n) n.textContent = mBoardMatchNote();
+}
+function renderBaseCampBoard() {
+  const rows = mHostRows();
+  const workers = mRecentByActor();
+  const findings = (state.findings || []);
+  const strip = workers.length ? `<div class="board-strip"><span class="board-strip-title">Active now · from recent captures</span><div class="board-workers">${workers.slice(0, 6).map((w) => `<div class="board-worker${w.kind === 'ai_agent' ? ' ai' : ''}"><span class="board-av" style="background:${w.kind === 'ai_agent' ? MSEV_COLOR.high : MPAL.saddle}">${escapeHtml(w.handle.slice(0, 2).toUpperCase())}</span><div class="board-wb"><div class="board-wn">${escapeHtml(w.handle)}${w.kind === 'ai_agent' ? '<b class="ai">AI</b>' : ''}</div><div class="board-wf">${w.command ? `<span class="tg">${escapeHtml(w.command)}</span>${w.target ? ` → ${escapeHtml(w.target)}` : ''}` : 'idle'}</div></div></div>`).join('')}</div></div>` : '';
+  const sortBtn = (key, label) => `<button type="button" class="${state.boardSort === key ? 'on' : ''}" data-action="board-sort" data-key="${key}" aria-pressed="${state.boardSort === key}">${label}</button>`;
+  const toolbar = `<div class="atoolbar board-toolbar">
+      <label class="asearch" style="flex:1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5" stroke-linecap="round"/></svg><input data-action="board-search" placeholder="Search hosts by name, IP, role…" value="${escapeHtml(state.boardQuery)}" aria-label="Search board hosts"/></label>
+      <div class="aseg board-sortseg" role="group" aria-label="Sort cards">${sortBtn('name', 'Name')}${sortBtn('recent', 'Recent')}</div>
+      <span class="board-matchnote muted" id="board-matchnote">${mBoardMatchNote()}</span>
+    </div>`;
   return `
     <main class="app-shell board-shell">
       ${renderNav('board')}
@@ -2500,7 +2622,8 @@ ${renderThemeToggle()}
         </div>
       </header>
       ${strip}
-      <div class="board-cols">${cols}${reportedCol}</div>
+      ${toolbar}
+      <div class="board-cols" id="board-cols">${mBoardColsHTML()}</div>
     </main>`;
 }
 
@@ -2510,6 +2633,43 @@ function renderThemeToggle() {
     ? '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="12" cy="12" r="4.6" fill="currentColor"/><g stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="2.4" x2="12" y2="5.2"/><line x1="12" y1="18.8" x2="12" y2="21.6"/><line x1="2.4" y1="12" x2="5.2" y2="12"/><line x1="18.8" y1="12" x2="21.6" y2="12"/><line x1="5.2" y1="5.2" x2="7.2" y2="7.2"/><line x1="16.8" y1="16.8" x2="18.8" y2="18.8"/><line x1="5.2" y1="18.8" x2="7.2" y2="16.8"/><line x1="16.8" y1="7.2" x2="18.8" y2="5.2"/></g></svg>'
     : '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20.2 14.5A8.6 8.6 0 0 1 9.5 3.8 8.6 8.6 0 1 0 20.2 14.5Z" fill="currentColor"/></svg>';
   return `<button type="button" class="theme-toggle" data-action="toggle-theme" aria-label="Switch to ${next} theme" title="Switch to ${next} theme">${icon}</button>`;
+}
+
+// The currently inspected camp. A camp can hold hundreds of hosts, so the side
+// panel filters, sorts and windows them rather than dumping the whole list.
+function mMapSelected() {
+  const segments = mBuildSegments();
+  return segments.find((s) => s.cidr === state.mapSelectedSegment) || segments[0] || null;
+}
+function mCampHostRows(sel) {
+  const sevMap = mSevByEntity();
+  const q = state.mapHostQuery.trim().toLowerCase();
+  let hosts = sel.hosts.map((h) => ({ h, name: mEntityName(h), ip: mEntityIP(h) || '', sev: sevMap[h.id] || 'info' }));
+  if (q) hosts = hosts.filter((x) => `${x.name} ${x.ip}`.toLowerCase().includes(q));
+  const sign = state.mapHostSort.dir === 'desc' ? -1 : 1;
+  if (state.mapHostSort.key === 'name') hosts.sort((a, b) => sign * mCmp(a.name, b.name));
+  else hosts.sort((a, b) => sign * (MSEV_RANK[a.sev] - MSEV_RANK[b.sev]) || mCmp(a.name, b.name));
+  return hosts;
+}
+function mCampHostsBuilt(sel) {
+  const hosts = mCampHostRows(sel);
+  const shown = hosts.slice(0, state.mapHostLimit);
+  const rows = shown.map((x) => `<li><button type="button" class="territory-hostrow" data-action="open-asset" data-id="${escapeHtml(x.h.id)}" aria-label="Open ${escapeHtml(x.name)}"><span class="territory-dot" style="background:${MSEV_COLOR[x.sev]}"></span><span class="territory-hn">${escapeHtml(x.name)}</span>${x.ip ? `<span class="territory-hip">${escapeHtml(x.ip)}</span>` : ''}<span class="territory-hgo" aria-hidden="true">→</span></button></li>`).join('') || '<li class="territory-more">No hosts match.</li>';
+  return { rows, filtered: hosts.length, total: sel.hosts.length, shown: shown.length };
+}
+function mMapHostFootHTML(built) {
+  const note = built.filtered !== built.total ? ` <span class="muted">(${built.total} in camp)</span>` : '';
+  const more = built.shown < built.filtered ? `<button type="button" class="ashowmore" data-action="map-host-more">Show ${Math.min(MAP_HOST_PAGE, built.filtered - built.shown)} more</button>` : '';
+  return `<span><b>${built.shown}</b> of <b>${built.filtered}</b>${note}</span>${more}`;
+}
+function drawMapHosts() {
+  const sel = mMapSelected();
+  const list = document.getElementById('map-hostlist');
+  if (!sel || !list) return;
+  const built = mCampHostsBuilt(sel);
+  list.innerHTML = built.rows;
+  const foot = document.getElementById('map-hostfoot');
+  if (foot) foot.innerHTML = mMapHostFootHTML(built);
 }
 
 function renderTerritoryMap() {
@@ -2540,7 +2700,15 @@ function renderTerritoryMap() {
 
   const groupNoun = MGROUP_NOUN[state.mapGrouping] || 'Group';
   const sel = segments.find((s) => s.cidr === state.mapSelectedSegment) || segments[0] || null;
-  const sideHTML = sel ? `<h3>${escapeHtml(groupNoun)}</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt"><span class="territory-zone">${escapeHtml(MTIER_LABEL[sel.tier])}</span> · ${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><button type="button" class="territory-hostrow" data-action="open-asset" data-id="${escapeHtml(h.id)}" aria-label="Open ${escapeHtml(mEntityName(h))}"><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml(mEntityName(h))}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}<span class="territory-hgo" aria-hidden="true">→</span></button></li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : `<h3>${escapeHtml(groupNoun)}</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>`;
+  const hostCtl = sel ? (() => {
+    const built = mCampHostsBuilt(sel);
+    const sortBtn = (key, label) => `<button type="button" data-action="map-host-sort" data-key="${key}" class="${state.mapHostSort.key === key ? 'on' : ''}" aria-pressed="${state.mapHostSort.key === key}">${label}</button>`;
+    return `<div class="territory-hhead"><h3>Hosts <span class="territory-hcount">${sel.n}</span></h3><div class="territory-modeseg territory-hsort" role="group" aria-label="Sort hosts">${sortBtn('sev', 'Risk')}${sortBtn('name', 'Name')}</div></div>
+      <label class="territory-hsearch"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5" stroke-linecap="round"/></svg><input data-action="map-host-search" placeholder="Filter hosts…" value="${escapeHtml(state.mapHostQuery)}" aria-label="Filter hosts in this camp"/></label>
+      <ul class="territory-hostlist" id="map-hostlist">${built.rows}</ul>
+      <div class="territory-hfoot" id="map-hostfoot">${mMapHostFootHTML(built)}</div>`;
+  })() : '';
+  const sideHTML = sel ? `<h3>${escapeHtml(groupNoun)}</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt"><span class="territory-zone">${escapeHtml(MTIER_LABEL[sel.tier])}</span> · ${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div>${hostCtl}` : `<h3>${escapeHtml(groupNoun)}</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>`;
 
   const emptyState = segments.length ? '' : `<div class="territory-empty"><strong>No mapped hosts yet</strong><p>${escapeHtml(MGROUP_EMPTY[state.mapGrouping] || MGROUP_EMPTY.role)} Capture some recon to populate the map.</p></div>`;
 
@@ -3591,7 +3759,8 @@ async function handleClick(event) {
     return;
   }
   if (action === 'map-select') {
-    state.mapSelectedSegment = target.dataset.seg || '';
+    const seg = target.dataset.seg || '';
+    if (seg !== state.mapSelectedSegment) { state.mapSelectedSegment = seg; state.mapHostQuery = ''; state.mapHostLimit = MAP_HOST_PAGE; }
     render();
     return;
   }
@@ -3600,6 +3769,8 @@ async function handleClick(event) {
     if (g !== state.mapGrouping) {
       state.mapGrouping = g;
       state.mapSelectedSegment = '';
+      state.mapHostQuery = '';
+      state.mapHostLimit = MAP_HOST_PAGE;
     }
     render();
     return;
@@ -3627,23 +3798,31 @@ async function handleClick(event) {
     else if (nav === 'report') { closeDrawer(true); navigateToReport(); }
     return;
   }
-  if (action === 'asset-kind') { state.assetKind = target.dataset.kind; state.assetAccess.clear(); state.assetTier.clear(); render(); return; }
-  if (action === 'asset-access') { const v = target.dataset.val; if (state.assetAccess.has(v)) state.assetAccess.delete(v); else state.assetAccess.add(v); render(); return; }
-  if (action === 'asset-tier') { const v = target.dataset.val; if (state.assetTier.has(v)) state.assetTier.delete(v); else state.assetTier.add(v); render(); return; }
+  if (action === 'asset-kind') { state.assetKind = target.dataset.kind; state.assetAccess.clear(); state.assetTier.clear(); state.assetLimit = PAGE_SIZE; render(); return; }
+  if (action === 'asset-access') { const v = target.dataset.val; if (state.assetAccess.has(v)) state.assetAccess.delete(v); else state.assetAccess.add(v); state.assetLimit = PAGE_SIZE; render(); return; }
+  if (action === 'asset-tier') { const v = target.dataset.val; if (state.assetTier.has(v)) state.assetTier.delete(v); else state.assetTier.add(v); state.assetLimit = PAGE_SIZE; render(); return; }
+  if (action === 'asset-sort') { mApplySort(state.assetSort, target.dataset.key, mColDir(mAssetCols(state.assetKind !== 'identities'), target.dataset.key)); state.assetLimit = PAGE_SIZE; render(); return; }
+  if (action === 'asset-more') { state.assetLimit += PAGE_SIZE; drawAssetRows(); return; }
   if (action === 'open-asset') { openAssetDossier(target.dataset.id); return; }
   if (action === 'open-capture') { openCaptureDrawer(target.dataset.id, target.dataset.from || null); return; }
   if (action === 'close-drawer') { closeDrawer(); return; }
-  if (action === 'cap-actor') { const v = target.dataset.val; if (state.capActor.has(v)) state.capActor.delete(v); else state.capActor.add(v); render(); return; }
-  if (action === 'cap-type') { const v = target.dataset.val; if (state.capType.has(v)) state.capType.delete(v); else state.capType.add(v); render(); return; }
+  if (action === 'cap-actor') { const v = target.dataset.val; if (state.capActor.has(v)) state.capActor.delete(v); else state.capActor.add(v); state.capLimit = PAGE_SIZE; render(); return; }
+  if (action === 'cap-type') { const v = target.dataset.val; if (state.capType.has(v)) state.capType.delete(v); else state.capType.add(v); state.capLimit = PAGE_SIZE; render(); return; }
+  if (action === 'cap-sort') { mApplySort(state.capSort, target.dataset.key, mColDir(CAP_COLS, target.dataset.key)); state.capLimit = PAGE_SIZE; render(); return; }
+  if (action === 'cap-more') { state.capLimit += PAGE_SIZE; drawCaptureRows(); return; }
   if (action === 'finding-attach-toggle') { const id = target.dataset.finding; state.attachFor = state.attachFor === id ? null : id; render(); return; }
   if (action === 'finding-attach') { await attachCaptureToFinding(target.dataset.finding, target.dataset.cap, Number(target.dataset.rev)); return; }
   if (action === 'set-tier') { await setEntityTier(target.dataset.id, target.dataset.tier, Number(target.dataset.rev)); return; }
   if (action === 'board-more') {
     const c = target.dataset.col;
-    if (state.boardExpanded.has(c)) state.boardExpanded.delete(c); else state.boardExpanded.add(c);
-    render();
+    if (target.dataset.collapse) state.boardShown[c] = BOARD_PAGE;
+    else state.boardShown[c] = (state.boardShown[c] || BOARD_PAGE) + BOARD_MORE;
+    drawBoardCols();
     return;
   }
+  if (action === 'board-sort') { state.boardSort = target.dataset.key || 'name'; state.boardShown = {}; render(); return; }
+  if (action === 'map-host-sort') { mApplySort(state.mapHostSort, target.dataset.key, 'asc'); state.mapHostLimit = MAP_HOST_PAGE; render(); return; }
+  if (action === 'map-host-more') { state.mapHostLimit += MAP_HOST_PAGE; drawMapHosts(); return; }
   if (action === 'refresh-entities') {
     await refreshEntities();
     return;
@@ -3655,6 +3834,8 @@ async function handleClick(event) {
   if (action === 'guide-search') return;
   if (action === 'asset-search') return;
   if (action === 'cap-search') return;
+  if (action === 'board-search') return;
+  if (action === 'map-host-search') return;
   if (action === 'entity-search') return;
   if (action === 'actor-query') return;
   if (action === 'provision-draft') return;
@@ -3850,6 +4031,16 @@ async function handleClick(event) {
   }
 }
 
+// Sortable table headers are <th role="columnheader" tabindex="0">, not native
+// buttons, so Enter/Space must be wired to the same sort action as a click.
+function handleKeydown(event) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const target = event.target.closest('th.asort[data-action]');
+  if (!target) return;
+  event.preventDefault();
+  handleClick(event);
+}
+
 function handleInput(event) {
   const target = event.target.closest('[data-action]');
   if (!target) return;
@@ -3866,12 +4057,26 @@ function handleInput(event) {
   }
   if (action === 'asset-search') {
     state.assetQuery = target.value;
+    state.assetLimit = PAGE_SIZE;
     drawAssetRows();
     return;
   }
   if (action === 'cap-search') {
     state.capQuery = target.value;
+    state.capLimit = PAGE_SIZE;
     drawCaptureRows();
+    return;
+  }
+  if (action === 'board-search') {
+    state.boardQuery = target.value;
+    state.boardShown = {};
+    drawBoardCols();
+    return;
+  }
+  if (action === 'map-host-search') {
+    state.mapHostQuery = target.value;
+    state.mapHostLimit = MAP_HOST_PAGE;
+    drawMapHosts();
     return;
   }
   if (action === 'entity-search') {
@@ -3996,6 +4201,7 @@ async function boot() {
   // per-origin connection cap and the next navigation stalls.
   window.addEventListener('pagehide', () => { state.sseAbort?.abort(); });
   root.addEventListener('click', handleClick);
+  root.addEventListener('keydown', handleKeydown);
   root.addEventListener('submit', handleSubmit);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);

@@ -2286,6 +2286,16 @@ a:focus-visible,
 .territory-nm { font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 600; margin: 0; }
 .territory-mt { color: var(--chrome-muted); font-size: 12px; margin: 2px 0 4px; }
 .territory-zone { display: inline-block; font-weight: 600; color: var(--saddle); background: color-mix(in srgb, var(--harvest) 16%, transparent); border-radius: 6px; padding: 1px 7px; letter-spacing: 0.02em; }
+/* Camp host inspector: a camp can hold hundreds of hosts, so the panel gets a
+   filter, a Risk/Name sort, and a windowed "Show more" list. */
+.territory-hhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 18px; }
+.territory-hhead h3 { margin: 0; }
+.territory-hcount { font-weight: 700; color: var(--chrome-muted); font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+.territory-hsort { padding: 2px; }
+.territory-hsort button { font-size: 11.5px; padding: 3px 10px; }
+.territory-hsearch { display: flex; align-items: center; gap: 7px; background: var(--page-bg); border: 1px solid var(--chrome-border); border-radius: 9px; padding: 6px 10px; color: var(--chrome-muted); margin: 8px 0 4px; }
+.territory-hsearch input { border: 0; background: none; font: inherit; font-size: 12.5px; color: var(--page-text); width: 100%; outline: none; }
+.territory-hfoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--chrome-muted); padding: 8px 2px 2px; }
 .territory-hostlist { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
 .territory-hostlist li { display: block; }
 .territory-hostrow { display: flex; align-items: center; gap: 8px; width: 100%; font-size: 12.5px; padding: 4px 6px; border-radius: 8px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; }
@@ -2395,8 +2405,10 @@ a:focus-visible,
 .board-ip { font-size: 11.5px; }
 .board-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
 .board-chip { font-size: 10.5px; color: var(--chrome-muted); background: var(--page-bg); border: 1px solid var(--card-border); border-radius: 6px; padding: 1px 7px; }
-.board-more { text-align: center; font-size: 12px; color: var(--chrome-muted); padding: 8px; font-weight: 600; cursor: pointer; }
-.board-more:hover { color: var(--harvest); }
+.board-more { display: block; width: 100%; text-align: center; font: inherit; font-size: 12px; color: var(--chrome-muted); background: none; border: 0; padding: 8px; margin-top: 2px; font-weight: 600; cursor: pointer; border-radius: 8px; }
+.board-more:hover { color: var(--harvest); background: var(--page-bg); }
+.board-more:focus-visible { outline: 2px solid var(--harvest); outline-offset: -2px; }
+.board-more .muted { font-weight: 500; }
 .board-empty { color: var(--chrome-muted); font-size: 12px; padding: 8px; text-align: center; }
 
 @media (max-width: 720px) {
@@ -2440,7 +2452,21 @@ html[data-theme='dark'] { --term-bg: #120d0a; }
 .atable tbody tr.arow, .atable tbody tr.crow { cursor: pointer; }
 .atable tbody tr.arow:hover, .atable tbody tr.crow:hover { background: var(--page-bg-2); }
 .atable tbody tr:last-child td { border-bottom: 0; }
-.atfoot { padding: 10px 15px; display: flex; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--chrome-muted); border-top: 1px solid var(--card-border); }
+.atfoot { padding: 10px 15px; display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: var(--chrome-muted); border-top: 1px solid var(--card-border); }
+/* Sortable column headers: keyboard-focusable, with an arrow on the active
+   sort and a faint hint glyph on the rest. */
+.atable thead th.asort { cursor: pointer; user-select: none; }
+.atable thead th.asort:hover { color: var(--harvest); background: color-mix(in srgb, var(--harvest) 9%, var(--card-head)); }
+.atable thead th.asort:focus-visible { outline: 2px solid var(--harvest); outline-offset: -2px; }
+.atable thead th.asort.on { color: var(--page-text); }
+.asort-ind { display: inline-block; margin-left: 5px; font-size: 10px; opacity: 0.32; }
+.asort-ind.on { opacity: 1; color: var(--harvest); }
+.ashowmore { font: inherit; font-size: 12px; font-weight: 600; color: var(--harvest); background: none; border: 1px solid var(--card-border); border-radius: 8px; padding: 4px 12px; cursor: pointer; white-space: nowrap; }
+.ashowmore:hover { background: color-mix(in srgb, var(--harvest) 12%, transparent); border-color: var(--harvest); }
+.ashowmore:focus-visible { outline: 2px solid var(--harvest); outline-offset: 1px; }
+.board-toolbar { margin: 12px 0 2px; }
+.board-sortseg { flex: 0 0 auto; }
+.board-matchnote { font-size: 12px; }
 .aname { font-weight: 700; }
 .asub { font-size: 11px; color: var(--chrome-muted); font-weight: 500; }
 .acell { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }

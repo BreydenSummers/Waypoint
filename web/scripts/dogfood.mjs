@@ -334,11 +334,20 @@ async function main() {
     }
     await click('[data-action="map-lens"][data-lens="off"]');
   }
-  // selecting a camp updates the side panel
-  const seg = await page.evaluate(() => { const cs = [...document.querySelectorAll('.territory-camp')]; const t = cs[cs.length - 1]; if (t) { t.dispatchEvent(new MouseEvent('click', { bubbles: true })); return t.dataset.seg; } return null; });
+  // selecting a camp updates the side panel. Compare against the camp's visible
+  // label, not its data-seg key: under role/zone grouping the key is a slug
+  // (e.g. "rprint") while the label is human text ("Printers / IoT / OT").
+  const picked = await page.evaluate(() => {
+    const cs = [...document.querySelectorAll('.territory-camp')];
+    const t = cs[cs.length - 1];
+    if (!t) return null;
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const label = t.querySelector('.territory-camp-label');
+    return { seg: t.dataset.seg, label: label ? label.textContent.trim() : '' };
+  });
   await sleep(400);
   const sideAfter = await page.$eval('.territory-side .territory-nm', (e) => e.textContent).catch(() => null);
-  if (seg && sideAfter && !sideAfter.includes(seg) && !seg.includes(sideAfter)) bug('medium', 'map', 'camp select did not update the side panel', `clicked=${seg} side=${sideAfter}`);
+  if (picked && picked.label && sideAfter && !sideAfter.includes(picked.label) && !picked.label.includes(sideAfter)) bug('medium', 'map', 'camp select did not update the side panel', `clicked=${picked.seg} label=${picked.label} side=${sideAfter}`);
   if (await $count('.territory-camp.is-sel') === 0) bug('low', 'map', 'selected camp not highlighted');
 
   // -------- Base Camp Board --------
