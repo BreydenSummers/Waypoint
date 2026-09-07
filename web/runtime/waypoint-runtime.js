@@ -2641,21 +2641,34 @@ function mMapSelected() {
   const segments = mBuildSegments();
   return segments.find((s) => s.cidr === state.mapSelectedSegment) || segments[0] || null;
 }
-function mCampHostRows(sel) {
-  const sevMap = mSevByEntity();
-  const q = state.mapHostQuery.trim().toLowerCase();
-  let hosts = sel.hosts.map((h) => ({ h, name: mEntityName(h), ip: mEntityIP(h) || '', sev: sevMap[h.id] || 'info' }));
-  if (q) hosts = hosts.filter((x) => `${x.name} ${x.ip}`.toLowerCase().includes(q));
-  const sign = state.mapHostSort.dir === 'desc' ? -1 : 1;
-  if (state.mapHostSort.key === 'name') hosts.sort((a, b) => sign * mCmp(a.name, b.name));
-  else hosts.sort((a, b) => sign * (MSEV_RANK[a.sev] - MSEV_RANK[b.sev]) || mCmp(a.name, b.name));
-  return hosts;
+// The camp inspector is a compact, sortable table of the camp's hosts, drawing
+// the same per-asset facts (OS, access, findings) the Assets view computes.
+const MAP_ACC_SHORT = { none: 'None', user: 'User', admin: 'Admin', system: 'SYSTEM' };
+const MAP_SEV_SHORT = { critical: 'Crit', high: 'High', medium: 'Med', low: 'Low', info: '—' };
+function mMapHostCols() {
+  return [
+    { key: 'name', label: 'Host', get: (r) => r.name, dir: 'asc', tie: (r) => r.ip },
+    { key: 'os', label: 'OS', get: (r) => r.svc.os, dir: 'asc', tie: (r) => r.name },
+    { key: 'access', label: 'Access', get: (r) => r.accessRank, dir: 'desc', tie: (r) => r.name },
+    { key: 'sev', label: 'Risk', get: (r) => MSEV_RANK[r.sev], dir: 'asc', tie: (r) => r.name },
+  ];
 }
-function mCampHostsBuilt(sel) {
-  const hosts = mCampHostRows(sel);
-  const shown = hosts.slice(0, state.mapHostLimit);
-  const rows = shown.map((x) => `<li><button type="button" class="territory-hostrow" data-action="open-asset" data-id="${escapeHtml(x.h.id)}" aria-label="Open ${escapeHtml(x.name)}"><span class="territory-dot" style="background:${MSEV_COLOR[x.sev]}"></span><span class="territory-hn">${escapeHtml(x.name)}</span>${x.ip ? `<span class="territory-hip">${escapeHtml(x.ip)}</span>` : ''}<span class="territory-hgo" aria-hidden="true">→</span></button></li>`).join('') || '<li class="territory-more">No hosts match.</li>';
-  return { rows, filtered: hosts.length, total: sel.hosts.length, shown: shown.length };
+function mCampHostRows(sel) {
+  const byId = {};
+  mAssetRows().forEach((r) => { byId[r.id] = r; });
+  const q = state.mapHostQuery.trim().toLowerCase();
+  let rows = sel.hosts.map((h) => byId[h.id]).filter(Boolean);
+  if (q) rows = rows.filter((r) => `${r.name} ${r.ip} ${r.svc.os} ${r.access}`.toLowerCase().includes(q));
+  return mSortRows(rows, mMapHostCols(), state.mapHostSort);
+}
+function mCampHostBody(sel) {
+  const rows = mCampHostRows(sel);
+  const shown = rows.slice(0, state.mapHostLimit);
+  const body = shown.map((r) => {
+    const sev = r.sev !== 'info' ? `<span class="thost-sev" style="color:${MSEV_COLOR[r.sev]}" title="${MSEV_LABEL[r.sev]}"><i style="background:${MSEV_COLOR[r.sev]}"></i>${MAP_SEV_SHORT[r.sev]}</span>` : '<span class="muted">—</span>';
+    return `<tr class="thostrow" data-action="open-asset" data-id="${escapeHtml(r.id)}" tabindex="0" aria-label="Open ${escapeHtml(r.name)}"><td><div class="thost-n">${escapeHtml(r.name)}</div><div class="thost-ip mono">${escapeHtml(r.ip || '—')}</div></td><td class="muted thost-os" title="${escapeHtml(r.svc.os)}">${escapeHtml(r.svc.os)}</td><td><span class="thost-acc" style="color:${ACC_COLOR[r.access]}">${MAP_ACC_SHORT[r.access] || r.access}</span></td><td>${sev}</td></tr>`;
+  }).join('') || '<tr><td colspan="4" class="thost-empty">No hosts match.</td></tr>';
+  return { body, filtered: rows.length, total: sel.hosts.length, shown: shown.length };
 }
 function mMapHostFootHTML(built) {
   const note = built.filtered !== built.total ? ` <span class="muted">(${built.total} in camp)</span>` : '';
@@ -2666,8 +2679,8 @@ function drawMapHosts() {
   const sel = mMapSelected();
   const list = document.getElementById('map-hostlist');
   if (!sel || !list) return;
-  const built = mCampHostsBuilt(sel);
-  list.innerHTML = built.rows;
+  const built = mCampHostBody(sel);
+  list.innerHTML = built.body;
   const foot = document.getElementById('map-hostfoot');
   if (foot) foot.innerHTML = mMapHostFootHTML(built);
 }
@@ -2701,11 +2714,11 @@ function renderTerritoryMap() {
   const groupNoun = MGROUP_NOUN[state.mapGrouping] || 'Group';
   const sel = segments.find((s) => s.cidr === state.mapSelectedSegment) || segments[0] || null;
   const hostCtl = sel ? (() => {
-    const built = mCampHostsBuilt(sel);
-    const sortBtn = (key, label) => `<button type="button" data-action="map-host-sort" data-key="${key}" class="${state.mapHostSort.key === key ? 'on' : ''}" aria-pressed="${state.mapHostSort.key === key}">${label}</button>`;
-    return `<div class="territory-hhead"><h3>Hosts <span class="territory-hcount">${sel.n}</span></h3><div class="territory-modeseg territory-hsort" role="group" aria-label="Sort hosts">${sortBtn('sev', 'Risk')}${sortBtn('name', 'Name')}</div></div>
+    const built = mCampHostBody(sel);
+    const head = mMapHostCols().map((c) => mTh(c, state.mapHostSort, 'map-host-sort')).join('');
+    return `<div class="territory-hhead"><h3>Hosts <span class="territory-hcount">${sel.n}</span></h3></div>
       <label class="territory-hsearch"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5" stroke-linecap="round"/></svg><input data-action="map-host-search" placeholder="Filter hosts…" value="${escapeHtml(state.mapHostQuery)}" aria-label="Filter hosts in this camp"/></label>
-      <ul class="territory-hostlist" id="map-hostlist">${built.rows}</ul>
+      <div class="thost-table"><table><thead><tr>${head}</tr></thead><tbody id="map-hostlist">${built.body}</tbody></table></div>
       <div class="territory-hfoot" id="map-hostfoot">${mMapHostFootHTML(built)}</div>`;
   })() : '';
   const sideHTML = sel ? `<h3>${escapeHtml(groupNoun)}</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt"><span class="territory-zone">${escapeHtml(MTIER_LABEL[sel.tier])}</span> · ${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div>${hostCtl}` : `<h3>${escapeHtml(groupNoun)}</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>`;
@@ -3821,7 +3834,7 @@ async function handleClick(event) {
     return;
   }
   if (action === 'board-sort') { state.boardSort = target.dataset.key || 'name'; state.boardShown = {}; render(); return; }
-  if (action === 'map-host-sort') { mApplySort(state.mapHostSort, target.dataset.key, 'asc'); state.mapHostLimit = MAP_HOST_PAGE; render(); return; }
+  if (action === 'map-host-sort') { mApplySort(state.mapHostSort, target.dataset.key, mColDir(mMapHostCols(), target.dataset.key)); state.mapHostLimit = MAP_HOST_PAGE; render(); return; }
   if (action === 'map-host-more') { state.mapHostLimit += MAP_HOST_PAGE; drawMapHosts(); return; }
   if (action === 'refresh-entities') {
     await refreshEntities();
@@ -4035,7 +4048,7 @@ async function handleClick(event) {
 // buttons, so Enter/Space must be wired to the same sort action as a click.
 function handleKeydown(event) {
   if (event.key !== 'Enter' && event.key !== ' ') return;
-  const target = event.target.closest('th.asort[data-action]');
+  const target = event.target.closest('th.asort[data-action], tr.thostrow[data-action]');
   if (!target) return;
   event.preventDefault();
   handleClick(event);
