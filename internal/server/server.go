@@ -108,7 +108,7 @@ func handler(db *sql.DB, runtime RuntimeState) http.Handler {
 	mux.HandleFunc("/bootstrap", bootstrapHandler(db, runtime))
 	report := reportHandlerWithRuntime(db, store, runtime)
 	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if reportJSONRoute.MatchString(r.URL.Path) || reportPDFRoute.MatchString(r.URL.Path) {
+		if reportRouteMatch(r.URL.Path) {
 			report.ServeHTTP(w, r)
 			return
 		}

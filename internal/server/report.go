@@ -3,7 +3,10 @@ package server
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,15 +33,25 @@ const (
 )
 
 var (
-	reportJSONRoute = regexp.MustCompile(`^/api/v1/engagements/([^/]+)/summit/report(?:\.json)?$`)
-	reportPDFRoute  = regexp.MustCompile(`^/(?:api/v1/)?engagements/([^/]+)/summit/report\.pdf$`)
+	reportJSONRoute        = regexp.MustCompile(`^/api/v1/engagements/([^/]+)/summit/report(?:\.json)?$`)
+	reportPDFRoute         = regexp.MustCompile(`^/(?:api/v1/)?engagements/([^/]+)/summit/report\.pdf$`)
+	reportFindingsPDFRoute = regexp.MustCompile(`^/(?:api/v1/)?engagements/([^/]+)/summit/findings\.pdf$`)
+	reportFindingsCSVRoute = regexp.MustCompile(`^/(?:api/v1/)?engagements/([^/]+)/summit/findings\.csv$`)
 )
+
+// reportRouteMatch reports whether the path is any report artifact route, so the
+// top-level mux can hand it to the report handler instead of the SPA.
+func reportRouteMatch(path string) bool {
+	return reportJSONRoute.MatchString(path) || reportPDFRoute.MatchString(path) ||
+		reportFindingsPDFRoute.MatchString(path) || reportFindingsCSVRoute.MatchString(path)
+}
 
 type reportSnapshot struct {
 	ContractVersion  string               `json:"contractVersion,omitempty"`
 	Version          string               `json:"version"`
 	Title            string               `json:"title"`
 	Engagement       string               `json:"engagement"`
+	Client           string               `json:"client,omitempty"`
 	Cutoff           string               `json:"cutoff"`
 	Scope            []string             `json:"scope"`
 	Methodology      []string             `json:"methodology"`
@@ -226,6 +239,7 @@ func reportHandlerWithRuntime(db *sql.DB, store *evidenceStore, runtime RuntimeS
 
 		path := r.URL.Path
 		format := ""
+		mode := reportModeFull
 		engagementID := ""
 		if m := reportJSONRoute.FindStringSubmatch(path); m != nil {
 			engagementID = m[1]
@@ -233,6 +247,14 @@ func reportHandlerWithRuntime(db *sql.DB, store *evidenceStore, runtime RuntimeS
 		} else if m := reportPDFRoute.FindStringSubmatch(path); m != nil {
 			engagementID = m[1]
 			format = "pdf"
+		} else if m := reportFindingsPDFRoute.FindStringSubmatch(path); m != nil {
+			engagementID = m[1]
+			format = "pdf"
+			mode = reportModeFindings
+		} else if m := reportFindingsCSVRoute.FindStringSubmatch(path); m != nil {
+			engagementID = m[1]
+			format = "csv"
+			mode = reportModeFindings
 		} else {
 			return
 		}
@@ -279,17 +301,33 @@ func reportHandlerWithRuntime(db *sql.DB, store *evidenceStore, runtime RuntimeS
 			w.Header().Set("Waypoint-Contract-Version", reportContractVersion)
 			writeJSON(w, http.StatusOK, snapshot)
 		case "pdf":
-			pdf, err := renderReportPDF(ctx, snapshot)
+			pdf, err := renderReportPDFMode(ctx, snapshot, mode)
 			if err != nil {
 				log.Printf("render report pdf failed for engagement %s: %v", engagementID, err)
 				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "render report pdf failed; see server logs"})
 				return
 			}
+			filename := "report.pdf"
+			if mode == reportModeFindings {
+				filename = "findings.pdf"
+			}
 			w.Header().Set("Waypoint-Contract-Version", reportContractVersion)
 			w.Header().Set("Content-Type", "application/pdf")
-			w.Header().Set("Content-Disposition", "inline; filename=report.pdf")
+			w.Header().Set("Content-Disposition", "inline; filename="+filename)
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write(pdf)
+		case "csv":
+			data, err := renderFindingsCSV(snapshot)
+			if err != nil {
+				log.Printf("render findings csv failed for engagement %s: %v", engagementID, err)
+				writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "render findings csv failed; see server logs"})
+				return
+			}
+			w.Header().Set("Waypoint-Contract-Version", reportContractVersion)
+			w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+			w.Header().Set("Content-Disposition", "attachment; filename=findings.csv")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(data)
 		}
 	}
 }
@@ -382,6 +420,7 @@ func assembleReportSnapshot(ctx context.Context, engagement reportEngagementRow,
 		Version:          reportSnapshotVersion,
 		Title:            "Frozen report snapshot",
 		Engagement:       engagement.Name,
+		Client:           strings.TrimSpace(engagement.Client),
 		Cutoff:           cutoff.Format(time.RFC3339),
 		Scope:            splitScope(engagement.Scope),
 		Methodology:      reportMethodology(),
@@ -725,16 +764,137 @@ func safeEvidencePath(root, storageKey string) (string, error) {
 	return filepath.Join(root, filepath.FromSlash(clean)), nil
 }
 
+// reportMode selects which sections of the branded report are rendered.
+type reportMode string
+
+const (
+	reportModeFull     reportMode = "full"     // cover, exec summary, findings, methodology, evidence, attribution, gaps
+	reportModeFindings reportMode = "findings" // cover, exec summary, findings + remediation only — client-facing
+)
+
+// reportView is the render model handed to the template. It wraps the frozen
+// snapshot with presentation-only data (the brand mark, severity tallies, the
+// content hash printed in the footer) so the template stays declarative and the
+// same snapshot drives both the full and findings-only documents.
+type reportView struct {
+	Snapshot      reportSnapshot
+	FindingsOnly  bool
+	Mark          template.HTML
+	GeneratedAt   string
+	ContentHash   string
+	TotalFindings int
+	EvidenceCount int
+	Severities    []reportSeverityTally
+}
+
+type reportSeverityTally struct {
+	Label string
+	Slug  string
+	Count int
+}
+
+// reportMark is the Waypoint brand mark: a compass/waypoint star on a bark
+// disc, in the expedition palette. Inline SVG so it renders identically in the
+// app and in the offline chromium PDF pass (no external asset to fetch).
+const reportMark = `<svg class="wp-mark" viewBox="0 0 64 64" role="img" aria-label="Waypoint">
+  <circle cx="32" cy="32" r="30" fill="#3B2617"/>
+  <circle cx="32" cy="32" r="30" fill="none" stroke="#EF9F27" stroke-width="2.5"/>
+  <path d="M32 7 L37.5 26.5 L57 32 L37.5 37.5 L32 57 L26.5 37.5 L7 32 L26.5 26.5 Z" fill="#EF9F27"/>
+  <path d="M32 18 L35 29 L46 32 L35 35 L32 46 L29 35 L18 32 L29 29 Z" fill="#FAC775"/>
+  <circle cx="32" cy="32" r="3.4" fill="#FAEEDA"/>
+</svg>`
+
+func newReportView(snapshot reportSnapshot, mode reportMode) reportView {
+	order := []struct{ label, slug string }{
+		{"Critical", "critical"}, {"High", "high"}, {"Medium", "medium"}, {"Low", "low"}, {"Info", "info"},
+	}
+	counts := map[string]int{}
+	for _, f := range snapshot.Findings {
+		counts[strings.ToLower(strings.TrimSpace(f.Severity))]++
+	}
+	tallies := make([]reportSeverityTally, 0, len(order))
+	for _, o := range order {
+		tallies = append(tallies, reportSeverityTally{Label: o.label, Slug: o.slug, Count: counts[o.slug]})
+	}
+	// The content hash pins the printed document to the exact snapshot bytes, so
+	// a reader can tell two PDFs apart and match one to its frozen source.
+	digest := sha256.Sum256(reportSnapshotDigestBytes(snapshot))
+	return reportView{
+		Snapshot:      snapshot,
+		FindingsOnly:  mode == reportModeFindings,
+		Mark:          template.HTML(reportMark),
+		GeneratedAt:   time.Now().UTC().Format("2006-01-02 15:04 MST"),
+		ContentHash:   hex.EncodeToString(digest[:])[:12],
+		TotalFindings: len(snapshot.Findings),
+		EvidenceCount: len(snapshot.Evidence),
+		Severities:    tallies,
+	}
+}
+
+// reportSnapshotDigestBytes hashes the stable fields of the snapshot for the
+// footer stamp. It deliberately ignores presentation timestamps so the same
+// engagement state always prints the same hash.
+func reportSnapshotDigestBytes(snapshot reportSnapshot) []byte {
+	stable := snapshot
+	raw, err := json.Marshal(stable)
+	if err != nil {
+		return []byte(snapshot.Engagement + snapshot.Cutoff)
+	}
+	return raw
+}
+
 func renderReportHTML(snapshot reportSnapshot) (string, error) {
+	return renderReportHTMLMode(snapshot, reportModeFull)
+}
+
+func renderReportHTMLMode(snapshot reportSnapshot, mode reportMode) (string, error) {
 	var buf bytes.Buffer
-	if err := reportTemplate.Execute(&buf, snapshot); err != nil {
+	if err := reportTemplate.Execute(&buf, newReportView(snapshot, mode)); err != nil {
 		return "", err
 	}
 	return buf.String(), nil
 }
 
+// renderFindingsCSV emits the promoted findings as a flat spreadsheet: one row
+// per finding, columns that import cleanly into a tracker. Evidence references
+// are resolved to their action labels so the CSV stands alone.
+func renderFindingsCSV(snapshot reportSnapshot) ([]byte, error) {
+	var buf bytes.Buffer
+	w := csv.NewWriter(&buf)
+	header := []string{"id", "title", "severity", "status", "affected_assets", "evidence", "promoted_by", "promoted_at", "revision", "remediation"}
+	if err := w.Write(header); err != nil {
+		return nil, err
+	}
+	for _, f := range snapshot.Findings {
+		row := []string{
+			f.ID,
+			f.Title,
+			f.Severity,
+			f.Status,
+			strings.Join(f.AffectedEntityIDs, "; "),
+			strings.Join(f.Evidence, "; "),
+			f.PromotedBy,
+			f.PromotedAt,
+			strconv.Itoa(f.Revision),
+			f.Remediation,
+		}
+		if err := w.Write(row); err != nil {
+			return nil, err
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func renderReportPDF(ctx context.Context, snapshot reportSnapshot) ([]byte, error) {
-	html, err := renderReportHTML(snapshot)
+	return renderReportPDFMode(ctx, snapshot, reportModeFull)
+}
+
+func renderReportPDFMode(ctx context.Context, snapshot reportSnapshot, mode reportMode) ([]byte, error) {
+	html, err := renderReportHTMLMode(snapshot, mode)
 	if err != nil {
 		return nil, err
 	}
@@ -768,6 +928,12 @@ func renderReportPDF(ctx context.Context, snapshot reportSnapshot) ([]byte, erro
 		"--no-first-run",
 		"--no-default-browser-check",
 		"--no-pings",
+		// Suppress Chromium's default date/URL/page-number header and footer.
+		// --no-pdf-header-footer is the flag that works in current Chromium
+		// (152+); --print-to-pdf-no-header is the older spelling, kept for
+		// older binaries. Without this the print engine bakes an ugly
+		// "file:///tmp/... 1/2" footer into every page.
+		"--no-pdf-header-footer",
 		"--print-to-pdf-no-header",
 		"--print-to-pdf=" + pdfPath,
 	}
@@ -1093,6 +1259,7 @@ func captureGapSourceActionID(item outOfBandClaimItem) string {
 
 var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap{
 	"join":                     strings.Join,
+	"lower":                    strings.ToLower,
 	"captureGapLabel":          captureGapLabel,
 	"captureGapSourceActionID": captureGapSourceActionID,
 	"auditActorDisplay":        auditActorDisplay,
@@ -1102,154 +1269,245 @@ var reportTemplate = template.Must(template.New("report").Funcs(template.FuncMap
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{.Title}}</title>
+  <title>{{if .FindingsOnly}}Findings — {{end}}{{.Snapshot.Engagement}} · Waypoint</title>
   <style>
     :root {
       color-scheme: light;
-      --deep-bark: #3B2617;
-      --bark: #4A2F1B;
-      --saddle: #6B4423;
-      --trail: #8B5E34;
-      --harvest: #BA7517;
-      --lantern: #EF9F27;
-      --wheat: #FAC775;
-      --parchment: #FAEEDA;
-      --map-cream: #E8DCC3;
-      --contour: #D4C4A0;
-      --dark-cocoa: #633806;
-      --cocoa: #854F0B;
-      --stone: #B4A78C;
+      --deep-bark: #3B2617; --bark: #4A2F1B; --saddle: #6B4423; --trail: #8B5E34;
+      --harvest: #BA7517; --lantern: #EF9F27; --wheat: #FAC775; --parchment: #FAEEDA;
+      --map-cream: #E8DCC3; --contour: #D4C4A0; --dark-cocoa: #633806; --cocoa: #854F0B;
+      --stone: #B4A78C; --ink: #2A1B10;
+      --sev-critical: #B4231A; --sev-high: #C65A11; --sev-medium: #BA7517;
+      --sev-low: #4E7D18; --sev-info: #6B4423;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 32px; background: #f4eee0; color: var(--deep-bark); font: 14px/1.5 system-ui, sans-serif; }
-    main { max-width: 980px; margin: 0 auto; }
-    .hero, .section, .card { border: 1px solid var(--contour); border-radius: 16px; background: var(--parchment); box-shadow: 0 10px 28px rgba(59, 38, 23, 0.08); }
-    .hero { padding: 20px; margin-bottom: 16px; }
-    .eyebrow { margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.12em; font-size: 12px; color: var(--cocoa); }
-    h1, h2, h3, p, ul { margin: 0; }
-    h1 { font-size: 30px; line-height: 1.1; color: var(--dark-cocoa); }
-    .subtitle { margin-top: 8px; color: var(--cocoa); }
-    .meta { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; }
-    .pill { padding: 6px 10px; border-radius: 999px; background: rgba(186, 117, 23, 0.12); color: var(--dark-cocoa); }
-    .section { padding: 18px; margin-top: 14px; break-inside: avoid; }
-    .section h2 { font-size: 18px; margin-bottom: 10px; color: var(--dark-cocoa); }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-    .card { padding: 14px; background: rgba(255,255,255,0.35); break-inside: avoid; }
-    .card h3 { font-size: 15px; margin-bottom: 8px; color: var(--dark-cocoa); }
-    .badge { display: inline-block; margin-bottom: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--saddle); }
-    strong { color: var(--dark-cocoa); }
-    pre { margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; font: inherit; color: var(--cocoa); }
-    ul { padding-left: 18px; }
-    li + li { margin-top: 4px; }
-    .monospace { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    @page { size: A4; margin: 14mm; }
+    html, body { margin: 0; }
+    body { background: #fff; color: var(--ink); font: 11pt/1.55 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    h1, h2, h3, h4, p, ul, ol { margin: 0; }
+    .wp-mark { display: block; }
+    .sans { font-family: "Helvetica Neue", Arial, system-ui, sans-serif; }
+
+    /* Cover */
+    .cover { min-height: 247mm; display: flex; flex-direction: column; break-after: page; }
+    .cover-band { background: var(--deep-bark); color: var(--parchment); border-radius: 14px; padding: 30px 34px; display: flex; align-items: center; gap: 20px; }
+    .cover-band svg { width: 68px; height: 68px; flex: 0 0 auto; }
+    .cover-wordmark { font-family: "Helvetica Neue", Arial, sans-serif; }
+    .cover-wordmark .name { font-size: 30px; font-weight: 700; letter-spacing: 0.16em; }
+    .cover-wordmark .kicker { font-size: 11px; letter-spacing: 0.34em; text-transform: uppercase; color: var(--wheat); margin-top: 4px; }
+    .cover-body { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 10mm 4mm; }
+    .cover-body .doctype { font-family: "Helvetica Neue", Arial, sans-serif; text-transform: uppercase; letter-spacing: 0.28em; font-size: 11px; color: var(--cocoa); }
+    .cover-body h1 { font-size: 34pt; line-height: 1.08; color: var(--deep-bark); margin: 12px 0 4px; max-width: 15em; }
+    .cover-body .client { font-size: 15pt; color: var(--saddle); }
+    .cover-facts { margin-top: 26px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 22px; max-width: 150mm; }
+    .cover-facts .fact { border-top: 1.4pt solid var(--harvest); padding-top: 7px; }
+    .cover-facts .fact .k { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.14em; color: var(--cocoa); }
+    .cover-facts .fact .v { font-size: 11pt; color: var(--deep-bark); margin-top: 2px; }
+    .cover-sevbar { margin-top: 30px; display: flex; gap: 10px; flex-wrap: wrap; }
+    .sevchip { font-family: "Helvetica Neue", Arial, sans-serif; display: inline-flex; align-items: baseline; gap: 7px; border-radius: 999px; padding: 6px 14px; font-size: 9.5pt; color: #fff; }
+    .sevchip .n { font-weight: 700; font-size: 12pt; }
+    .sevchip.zero { background: var(--map-cream) !important; color: var(--stone); }
+    .sev-critical { background: var(--sev-critical); } .sev-high { background: var(--sev-high); }
+    .sev-medium { background: var(--sev-medium); } .sev-low { background: var(--sev-low); } .sev-info { background: var(--sev-info); }
+    .cover-foot { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; color: var(--stone); border-top: 0.6pt solid var(--contour); padding-top: 8px; }
+    .cover-foot strong { color: var(--cocoa); }
+
+    /* Document body */
+    .doc { padding-top: 2mm; }
+    section.block { break-inside: auto; margin-bottom: 16px; }
+    .sechead { display: flex; align-items: center; gap: 10px; border-bottom: 1.4pt solid var(--harvest); padding-bottom: 6px; margin-bottom: 12px; break-after: avoid; }
+    .sechead h2 { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 15pt; color: var(--deep-bark); letter-spacing: 0.01em; }
+    .sechead .sn { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9pt; color: var(--cocoa); margin-left: auto; letter-spacing: 0.1em; text-transform: uppercase; }
+    p.lead { color: var(--bark); margin-bottom: 10px; }
+    ul.trail { list-style: none; padding: 0; }
+    ul.trail li { position: relative; padding-left: 20px; margin-bottom: 6px; }
+    ul.trail li::before { content: ""; position: absolute; left: 4px; top: 0.55em; width: 6px; height: 6px; border-radius: 50%; background: var(--harvest); }
+
+    /* Executive summary tiles */
+    .tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
+    .tile { border: 0.8pt solid var(--contour); border-radius: 10px; padding: 12px 10px; text-align: center; break-inside: avoid; }
+    .tile .n { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 21pt; font-weight: 700; line-height: 1; color: var(--deep-bark); }
+    .tile .l { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.1em; color: var(--cocoa); margin-top: 6px; }
+    .tile.t-total { background: var(--deep-bark); border-color: var(--deep-bark); }
+    .tile.t-total .n { color: var(--wheat); } .tile.t-total .l { color: var(--wheat); }
+    .tile.t-critical .n { color: var(--sev-critical); } .tile.t-high .n { color: var(--sev-high); }
+    .tile.t-medium .n { color: var(--sev-medium); } .tile.t-low .n { color: var(--sev-low); } .tile.t-info .n { color: var(--sev-info); }
+
+    /* Findings */
+    .finding { border: 0.8pt solid var(--contour); border-left: 5px solid var(--saddle); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; break-inside: avoid; }
+    .finding.f-critical { border-left-color: var(--sev-critical); } .finding.f-high { border-left-color: var(--sev-high); }
+    .finding.f-medium { border-left-color: var(--sev-medium); } .finding.f-low { border-left-color: var(--sev-low); } .finding.f-info { border-left-color: var(--sev-info); }
+    .finding .fhead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .finding .fbadge { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.5pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #fff; border-radius: 5px; padding: 3px 8px; }
+    .finding .fno { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; color: var(--stone); margin-left: auto; }
+    .finding h3 { font-size: 13.5pt; color: var(--deep-bark); line-height: 1.2; }
+    .finding .fmeta { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8.5pt; color: var(--cocoa); margin: 6px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+    .finding .frow { margin-top: 7px; }
+    .finding .frow .k { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.08em; color: var(--saddle); display: block; margin-bottom: 1px; }
+    .finding .frow .v { color: var(--ink); }
+    .empty { color: var(--stone); font-style: italic; }
+
+    /* Evidence appendix */
+    .evidence { border: 0.8pt solid var(--contour); border-radius: 10px; padding: 13px 15px; margin-bottom: 11px; break-inside: avoid; }
+    .evidence .ehead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+    .evidence .elabel { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--parchment); background: var(--saddle); border-radius: 5px; padding: 2px 8px; }
+    .evidence .ecmd { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 9pt; color: var(--deep-bark); word-break: break-all; }
+    .evidence dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 20px; margin: 0; }
+    .evidence dl > div { display: flex; gap: 6px; font-size: 9pt; }
+    .evidence dt { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.06em; color: var(--cocoa); flex: 0 0 34%; padding-top: 1px; }
+    .evidence dd { margin: 0; color: var(--ink); word-break: break-word; }
+    .evidence pre { margin: 9px 0 0; white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 8pt; line-height: 1.4; color: var(--bark); background: var(--parchment); border: 0.6pt solid var(--contour); border-radius: 7px; padding: 8px 10px; }
+    .evidence pre.empty-pre { display: none; }
+    .evidence .enote { font-size: 8.5pt; color: var(--cocoa); margin-top: 7px; font-style: italic; }
+
+    /* Attribution */
+    .attrib { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .attrib .acard { border: 0.8pt solid var(--contour); border-radius: 9px; padding: 11px 13px; break-inside: avoid; }
+    .attrib .acard h4 { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.08em; color: var(--saddle); margin-bottom: 6px; }
+    .attrib .acard ul { list-style: none; padding: 0; }
+    .attrib .acard li { font-size: 9.5pt; padding: 2px 0; border-bottom: 0.5pt dotted var(--contour); }
+    .attrib .acard li:last-child { border-bottom: none; }
+
+    ul.gaps { list-style: none; padding: 0; }
+    ul.gaps li { border-left: 3px solid var(--harvest); padding: 4px 0 4px 12px; margin-bottom: 7px; font-size: 9.5pt; }
+
+    .docfoot { margin-top: 22px; padding-top: 10px; border-top: 1.4pt solid var(--harvest); display: flex; align-items: center; gap: 8px; break-inside: avoid;
+      font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; color: var(--saddle); }
+    .docfoot svg { width: 15px; height: 15px; flex: 0 0 auto; }
+    .docfoot strong { color: var(--cocoa); letter-spacing: 0.08em; }
+
+    @page { size: A4; margin: 16mm 15mm; }
   </style>
 </head>
 <body>
-  <main>
-    <section class="hero">
-      <p class="eyebrow">Waypoint · frozen report snapshot</p>
-      <h1>{{.Title}}</h1>
-      <p class="subtitle">Version {{.Version}} · {{.Engagement}} · Cutoff {{.Cutoff}}</p>
-      <div class="meta">
-        <span class="pill">Hash verified, not signed</span>
-        <span class="pill">Offline renderer</span>
-        <span class="pill">Snapshot frozen before print</span>
+  <section class="cover">
+    <div class="cover-band">
+      {{.Mark}}
+      <div class="cover-wordmark">
+        <div class="name">WAYPOINT</div>
+        <div class="kicker">Security Assessment</div>
+      </div>
+    </div>
+    <div class="cover-body">
+      <div class="doctype">{{if .FindingsOnly}}Findings Summary{{else}}Engagement Report{{end}}</div>
+      <h1>{{.Snapshot.Engagement}}</h1>
+      {{if .Snapshot.Client}}<div class="client">Prepared for {{.Snapshot.Client}}</div>{{end}}
+
+      <div class="cover-facts">
+        <div class="fact"><div class="k">Findings</div><div class="v">{{.TotalFindings}} promoted</div></div>
+        <div class="fact"><div class="k">Evidence cutoff</div><div class="v">{{.Snapshot.Cutoff}}</div></div>
+        <div class="fact"><div class="k">Generated</div><div class="v">{{.GeneratedAt}}</div></div>
+        {{if .Snapshot.Scope}}<div class="fact" style="grid-column: 1 / -1;"><div class="k">Scope</div><div class="v">{{join .Snapshot.Scope " · "}}</div></div>{{end}}
+      </div>
+
+      <div class="cover-sevbar">
+        {{range .Severities}}<span class="sevchip sev-{{.Slug}}{{if eq .Count 0}} zero{{end}}"><span class="n">{{.Count}}</span>{{.Label}}</span>{{end}}
+      </div>
+    </div>
+    <div class="cover-foot">
+      <strong>Confidential.</strong> Prepared by Waypoint from a frozen engagement snapshot. Content hash #{{.ContentHash}} · Snapshot {{.Snapshot.Version}} · Distribution limited to the client and authorized parties.
+    </div>
+  </section>
+
+  <main class="doc">
+    <section class="block">
+      <div class="sechead"><h2>Executive summary</h2><span class="sn">01</span></div>
+      <p class="lead">This assessment promoted {{.TotalFindings}} confirmed finding{{if ne .TotalFindings 1}}s{{end}} against {{.Snapshot.Engagement}}, each backed by preserved capture evidence with full command, host, and actor attribution. Severity distribution:</p>
+      <div class="tiles">
+        <div class="tile t-total"><div class="n">{{.TotalFindings}}</div><div class="l">Total</div></div>
+        {{range .Severities}}<div class="tile t-{{.Slug}}"><div class="n">{{.Count}}</div><div class="l">{{.Label}}</div></div>{{end}}
       </div>
     </section>
 
-    <section class="section">
-      <h2>Scope</h2>
-      <ul>{{range .Scope}}<li>{{.}}</li>{{else}}<li>None recorded.</li>{{end}}</ul>
+    <section class="block">
+      <div class="sechead"><h2>Findings</h2><span class="sn">02</span></div>
+      {{range $i, $f := .Snapshot.Findings}}
+      <article class="finding f-{{lower $f.Severity}}">
+        <div class="fhead">
+          <span class="fbadge sev-{{lower $f.Severity}}">{{$f.Severity}}</span>
+          <span class="fno">Finding {{$f.ID}}</span>
+        </div>
+        <h3>{{$f.Title}}</h3>
+        <div class="fmeta">
+          {{if $f.Status}}<span>Status: {{$f.Status}}</span>{{end}}
+          {{if $f.PromotedBy}}<span>Promoted by {{$f.PromotedBy}}</span>{{end}}
+          {{if $f.PromotedAt}}<span>{{$f.PromotedAt}}</span>{{end}}
+          <span>Revision {{$f.Revision}}</span>
+        </div>
+        {{if $f.AffectedEntityIDs}}<div class="frow"><span class="k">Affected assets</span><span class="v">{{join $f.AffectedEntityIDs ", "}}</span></div>{{end}}
+        {{if $f.Evidence}}<div class="frow"><span class="k">Evidence</span><span class="v">{{join $f.Evidence ", "}}</span></div>{{end}}
+        <div class="frow"><span class="k">Remediation</span><span class="v">{{if $f.Remediation}}{{$f.Remediation}}{{else}}<span class="empty">No remediation recorded.</span>{{end}}</span></div>
+      </article>
+      {{else}}<p class="empty">No findings were promoted in this engagement.</p>{{end}}
     </section>
 
-    <section class="section">
-      <h2>Methodology</h2>
-      <ul>{{range .Methodology}}<li>{{.}}</li>{{else}}<li>None recorded.</li>{{end}}</ul>
+    {{if not .FindingsOnly}}
+    <section class="block">
+      <div class="sechead"><h2>Methodology</h2><span class="sn">03</span></div>
+      <ul class="trail">{{range .Snapshot.Methodology}}<li>{{.}}</li>{{else}}<li class="empty">None recorded.</li>{{end}}</ul>
     </section>
 
-    {{if or .Runtime.Egress.Mode .Runtime.Egress.Status .Runtime.Egress.Address .Runtime.Egress.ObservedAt .Runtime.Egress.Interface .Runtime.Egress.InterfaceAddress .Runtime.Egress.ResolverEndpoint .Runtime.Egress.Notes}}
-    <section class="section">
-      <h2>Runtime</h2>
-      <ul>
-        <li><strong>Egress:</strong> {{if .Runtime.Egress.Address}}{{.Runtime.Egress.Mode}} · {{.Runtime.Egress.Status}} · {{.Runtime.Egress.Address}}{{else}}{{.Runtime.Egress.Mode}} · {{.Runtime.Egress.Status}}{{end}}</li>
-        {{if .Runtime.Egress.ObservedAt}}<li><strong>Observed at:</strong> {{.Runtime.Egress.ObservedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}</li>{{end}}
-        {{if .Runtime.Egress.Interface}}<li><strong>Interface:</strong> {{.Runtime.Egress.Interface}}{{if .Runtime.Egress.InterfaceAddress}} · {{.Runtime.Egress.InterfaceAddress}}{{end}}</li>{{end}}
-        {{if .Runtime.Egress.ResolverEndpoint}}<li><strong>Resolver:</strong> {{.Runtime.Egress.ResolverEndpoint}}</li>{{end}}
-        {{range .Runtime.Egress.Notes}}<li>{{.}}</li>{{end}}
+    {{if or .Snapshot.Runtime.Egress.Mode .Snapshot.Runtime.Egress.Status .Snapshot.Runtime.Egress.Address .Snapshot.Runtime.Egress.ObservedAt .Snapshot.Runtime.Egress.Interface .Snapshot.Runtime.Egress.InterfaceAddress .Snapshot.Runtime.Egress.ResolverEndpoint .Snapshot.Runtime.Egress.Notes}}
+    <section class="block">
+      <div class="sechead"><h2>Runtime posture</h2></div>
+      <ul class="trail">
+        <li><strong>Egress:</strong> {{if .Snapshot.Runtime.Egress.Address}}{{.Snapshot.Runtime.Egress.Mode}} · {{.Snapshot.Runtime.Egress.Status}} · {{.Snapshot.Runtime.Egress.Address}}{{else}}{{.Snapshot.Runtime.Egress.Mode}} · {{.Snapshot.Runtime.Egress.Status}}{{end}}</li>
+        {{if .Snapshot.Runtime.Egress.ObservedAt}}<li><strong>Observed at:</strong> {{.Snapshot.Runtime.Egress.ObservedAt.UTC.Format "2006-01-02T15:04:05Z07:00"}}</li>{{end}}
+        {{if .Snapshot.Runtime.Egress.Interface}}<li><strong>Interface:</strong> {{.Snapshot.Runtime.Egress.Interface}}{{if .Snapshot.Runtime.Egress.InterfaceAddress}} · {{.Snapshot.Runtime.Egress.InterfaceAddress}}{{end}}</li>{{end}}
+        {{if .Snapshot.Runtime.Egress.ResolverEndpoint}}<li><strong>Resolver:</strong> {{.Snapshot.Runtime.Egress.ResolverEndpoint}}</li>{{end}}
+        {{range .Snapshot.Runtime.Egress.Notes}}<li>{{.}}</li>{{end}}
       </ul>
     </section>
     {{end}}
 
-    <section class="section">
-      <h2>Findings</h2>
-      <div class="grid">
-        {{range .Findings}}
-        <article class="card">
-          <p class="badge">{{.Severity}}</p>
-          <h3>{{.Title}}</h3>
-          <p><strong>Status:</strong> {{.Status}}</p>
-          <p><strong>Evidence:</strong> {{join .Evidence ", "}}</p>
-          <p><strong>Affected entities:</strong> {{join .AffectedEntityIDs ", "}}</p>
-          <p><strong>Revision:</strong> {{.Revision}}</p>
-          <p><strong>Promoted by:</strong> {{.PromotedBy}}</p>
-          <p><strong>Promoted at:</strong> {{.PromotedAt}}</p>
-          <p><strong>Remediation:</strong> {{.Remediation}}</p>
-        </article>
-        {{else}}<article class="card"><p>No findings recorded.</p></article>{{end}}
-      </div>
+    <section class="block">
+      <div class="sechead"><h2>Evidence appendix</h2><span class="sn">04</span></div>
+      <p class="lead">{{.EvidenceCount}} capture{{if ne .EvidenceCount 1}}s{{end}} preserved as text, in chronological order. Each is attributed to its actor, host, and public egress.</p>
+      {{range .Snapshot.Evidence}}
+      <article class="evidence">
+        <div class="ehead"><span class="elabel">{{.Label}}</span><span class="ecmd">{{.Command}}</span></div>
+        <dl>
+          <div><dt>Source agent</dt><dd>{{.SourceAgent}}</dd></div>
+          <div><dt>Capture</dt><dd>{{if .CaptureID}}{{.CaptureID}}{{else}}not recorded{{end}}{{if .CaptureFingerprint}} · {{.CaptureFingerprint}}{{end}}</dd></div>
+          <div><dt>Target</dt><dd>{{.Target}}</dd></div>
+          <div><dt>Actor</dt><dd>{{.Actor}}</dd></div>
+          <div><dt>Exec host</dt><dd>{{.Host}}</dd></div>
+          <div><dt>Egress</dt><dd>{{.Egress}}</dd></div>
+          <div><dt>Started</dt><dd>{{if .StartedAt}}{{.StartedAt}}{{else}}not recorded{{end}}</dd></div>
+          <div><dt>Duration</dt><dd>{{if .Duration}}{{.Duration}}{{else}}not recorded{{end}}</dd></div>
+          <div><dt>Exit</dt><dd>{{if .ExitCode}}{{.ExitCode}}{{else}}not recorded{{end}}{{if .ExecutionStatus}} · {{.ExecutionStatus}}{{end}}{{if .ExecutionSignal}} · signal {{.ExecutionSignal}}{{end}}{{if .ExecutionFailure}} · failure {{.ExecutionFailure}}{{end}}</dd></div>
+          <div><dt>Pivot chain</dt><dd>{{if .PivotChain}}{{pivotChainSummary .PivotChain}}{{else}}none recorded{{end}}</dd></div>
+          <div><dt>Initiated by</dt><dd>{{.InitiatedBy}}</dd></div>
+          <div><dt>Parse status</dt><dd>{{.ParseStatus}}</dd></div>
+          <div><dt>Stdout</dt><dd>{{.Stdout.ByteLength}} B · {{if .Stdout.SHA256}}{{.Stdout.SHA256}}{{else}}—{{end}}</dd></div>
+          <div><dt>Stderr</dt><dd>{{.Stderr.ByteLength}} B · {{if .Stderr.SHA256}}{{.Stderr.SHA256}}{{else}}—{{end}}</dd></div>
+          <div><dt>Attribution</dt><dd>{{.Attribution}}</dd></div>
+        </dl>
+        <pre{{if not .RawStdout}} class="empty-pre"{{end}}>{{.RawStdout}}</pre>
+        <pre{{if not .RawStderr}} class="empty-pre"{{end}}>{{.RawStderr}}</pre>
+        {{if .Note}}<p class="enote">{{.Note}}</p>{{end}}
+      </article>
+      {{else}}<p class="empty">No evidence recorded.</p>{{end}}
     </section>
 
-    <section class="section">
-      <h2>Evidence</h2>
-      <div class="grid">
-        {{range .Evidence}}
-        <article class="card">
-          <p class="badge">{{.Label}}</p>
-          <p><strong>Command:</strong> {{.Command}}</p>
-          <p><strong>Source agent:</strong> {{.SourceAgent}}</p>
-          <p><strong>Capture:</strong> {{if .CaptureID}}{{.CaptureID}}{{else}}not recorded{{end}}{{if .CaptureFingerprint}} · {{.CaptureFingerprint}}{{end}}</p>
-          <p><strong>Target:</strong> {{.Target}}</p>
-          <p><strong>Actor:</strong> {{.Actor}}</p>
-          <p><strong>Exec host:</strong> {{.Host}}</p>
-          <p><strong>Egress:</strong> {{.Egress}}</p>
-          <p><strong>Egress mode:</strong> {{if .EgressMode}}{{.EgressMode}}{{else}}not recorded{{end}}</p>
-          <p><strong>Egress status:</strong> {{if .EgressStatus}}{{.EgressStatus}}{{else}}not recorded{{end}}</p>
-          <p><strong>Observed at:</strong> {{if .EgressObservedAt}}{{.EgressObservedAt}}{{else}}not recorded{{end}}</p>
-          <p><strong>Started:</strong> {{if .StartedAt}}{{.StartedAt}}{{else}}not recorded{{end}}</p>
-          <p><strong>Ended:</strong> {{if .EndedAt}}{{.EndedAt}}{{else}}not recorded{{end}}</p>
-          <p><strong>Duration:</strong> {{if .Duration}}{{.Duration}}{{else}}not recorded{{end}}</p>
-          <p><strong>Exit code:</strong> {{if .ExitCode}}{{.ExitCode}}{{else}}not recorded{{end}}</p>
-          <p><strong>Execution:</strong> {{if .ExecutionStatus}}{{.ExecutionStatus}}{{else}}not recorded{{end}}{{if .ExecutionSignal}} · signal {{.ExecutionSignal}}{{end}}{{if .ExecutionFailure}} · failure {{.ExecutionFailure}}{{end}}</p>
-          <p><strong>Pivot chain:</strong> {{if .PivotChain}}{{pivotChainSummary .PivotChain}}{{else}}none recorded{{end}}</p>
-          <p><strong>Initiated by:</strong> {{.InitiatedBy}}</p>
-          <p><strong>Parse status:</strong> {{.ParseStatus}}</p>
-          <p><strong>Stdout:</strong> {{.Stdout.Kind}} · {{.Stdout.MediaType}} · {{.Stdout.ByteLength}} · {{.Stdout.SHA256}}</p>
-          <p><strong>Stderr:</strong> {{.Stderr.Kind}} · {{.Stderr.MediaType}} · {{.Stderr.ByteLength}} · {{.Stderr.SHA256}}</p>
-          <p><strong>Attribution:</strong> {{.Attribution}}</p>
-          <pre>{{.RawStdout}}</pre>
-          <pre>{{.RawStderr}}</pre>
-        </article>
-        {{else}}<article class="card"><p>No evidence recorded.</p></article>{{end}}
-      </div>
-    </section>
-
-    <section class="section">
-      <h2>Attribution</h2>
-      <div class="grid">
-        {{range .Attribution}}
-        <article class="card">
-          <h3>{{.Title}}</h3>
-          <ul>{{range .Items}}<li>{{.}}</li>{{else}}<li>None recorded.</li>{{end}}</ul>
-        </article>
+    <section class="block">
+      <div class="sechead"><h2>Attribution</h2><span class="sn">05</span></div>
+      <div class="attrib">
+        {{range .Snapshot.Attribution}}
+        <div class="acard">
+          <h4>{{.Title}}</h4>
+          <ul>{{range .Items}}<li>{{.}}</li>{{else}}<li class="empty">None recorded.</li>{{end}}</ul>
+        </div>
         {{end}}
       </div>
     </section>
 
-    <section class="section">
-      <h2>Known capture gaps</h2>
-      <ul>{{range .KnownCaptureGaps}}<li><strong>{{captureGapLabel .}}</strong>{{if .Status}} · {{.Status}}{{end}}{{if captureGapSourceActionID .}} · source {{captureGapSourceActionID .}}{{end}}{{if .ObservedBy.Handle}} · observed by {{auditActorDisplay .ObservedBy}}{{end}}{{if .ResolvedBy}} · resolved by {{auditActorDisplay .ResolvedBy}}{{end}}{{if .Reason}} — {{.Reason}}{{end}}{{if .Notes}} · notes: {{.Notes}}{{end}}</li>{{else}}<li>None recorded.</li>{{end}}</ul>
+    <section class="block">
+      <div class="sechead"><h2>Known capture gaps</h2><span class="sn">06</span></div>
+      <ul class="gaps">{{range .Snapshot.KnownCaptureGaps}}<li><strong>{{captureGapLabel .}}</strong>{{if .Status}} · {{.Status}}{{end}}{{if captureGapSourceActionID .}} · source {{captureGapSourceActionID .}}{{end}}{{if .ObservedBy.Handle}} · observed by {{auditActorDisplay .ObservedBy}}{{end}}{{if .ResolvedBy}} · resolved by {{auditActorDisplay .ResolvedBy}}{{end}}{{if .Reason}} — {{.Reason}}{{end}}{{if .Notes}} · notes: {{.Notes}}{{end}}</li>{{else}}<li class="empty">None recorded.</li>{{end}}</ul>
     </section>
+    {{end}}
+
+    <div class="docfoot">{{.Mark}}<span><strong>WAYPOINT</strong> · Confidential · {{.Snapshot.Engagement}} · Content hash #{{.ContentHash}} · Snapshot {{.Snapshot.Version}} · Generated {{.GeneratedAt}}</span></div>
   </main>
 </body>
 </html>`))

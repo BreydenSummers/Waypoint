@@ -266,6 +266,14 @@ function reportPdfPath(engagementId) {
   return `${reportPath(engagementId)}.pdf`;
 }
 
+function reportFindingsPdfPath(engagementId) {
+  return `/engagements/${engagementId}/summit/findings.pdf`;
+}
+
+function reportFindingsCsvPath(engagementId) {
+  return `/engagements/${engagementId}/summit/findings.csv`;
+}
+
 function exportsPath() {
   return '/api/v1/exports';
 }
@@ -288,6 +296,49 @@ function exportReportPdfPath(jobId) {
 
 function exportBundlePath(jobId) {
   return `/api/v1/exports/${jobId}/bundle`;
+}
+
+// WP_MARK is the Waypoint brand mark — a compass/waypoint star on a bark disc,
+// in the expedition palette. Kept in sync with reportMark in report.go so the
+// app and the PDF wear the same logo.
+const WP_MARK = '<svg class="wp-mark" viewBox="0 0 64 64" role="img" aria-label="Waypoint"><circle cx="32" cy="32" r="30" fill="#3B2617"/><circle cx="32" cy="32" r="30" fill="none" stroke="#EF9F27" stroke-width="2.5"/><path d="M32 7 L37.5 26.5 L57 32 L37.5 37.5 L32 57 L26.5 37.5 L7 32 L26.5 26.5 Z" fill="#EF9F27"/><path d="M32 18 L35 29 L46 32 L35 35 L32 46 L29 35 L18 32 L29 29 Z" fill="#FAC775"/><circle cx="32" cy="32" r="3.4" fill="#FAEEDA"/></svg>';
+
+// downloadBlob turns a fetched Blob into a browser download (an object URL on a
+// transient anchor). Used for the CSV and evidence-bundle exports where a new
+// tab is the wrong affordance — the caller wants a file on disk.
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// fetchAndOpenPdf opens a blank tab synchronously (so the click is not swallowed
+// by the popup blocker), then points it at the fetched PDF blob. Shared by the
+// full-report and findings-only PDF buttons.
+async function fetchAndOpenPdf(path) {
+  const previewWindow = window.open('', '_blank');
+  if (!previewWindow) {
+    state.reportError = 'Unable to open the PDF preview (popup blocked)';
+    render();
+    return;
+  }
+  try {
+    state.reportError = '';
+    const response = await fetch(path, { headers: authHeaders(state.token, newRequestId()), cache: 'no-store' });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const previewUrl = URL.createObjectURL(await response.blob());
+    previewWindow.location.href = previewUrl;
+    previewWindow.addEventListener('load', () => URL.revokeObjectURL(previewUrl), { once: true });
+  } catch (error) {
+    previewWindow.close();
+    state.reportError = error instanceof Error ? error.message : 'Unable to open the PDF preview';
+    render();
+  }
 }
 
 function teardownAuthorizationsPath() {
@@ -1970,7 +2021,7 @@ const NAV_ITEMS = [
 ];
 function renderNav(active) {
   const items = NAV_ITEMS.map((it) => `<a class="appnav-item${active === it.key ? ' is-active' : ''}" href="#" data-action="goto-view" data-nav="${it.key}" aria-current="${active === it.key ? 'page' : 'false'}" aria-label="${it.label}"><span class="appnav-ico"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">${it.icon}</svg></span><span class="appnav-label">${it.label}</span></a>`).join('');
-  return `<nav class="appnav" aria-label="Views"><span class="appnav-brand" aria-hidden="true"></span>${items}</nav>`;
+  return `<nav class="appnav" aria-label="Views"><span class="appnav-brand" aria-hidden="true">${WP_MARK}</span>${items}</nav>`;
 }
 
 /* ============================ Device Atlas ============================ */
@@ -3393,14 +3444,22 @@ function renderReportView() {
     <main class="app-shell report-shell" aria-label="Frozen report snapshot">
       ${renderNav('report')}
       <section class="report-hero artifact">
-        <div>
-          <p class="eyebrow">Waypoint · frozen report snapshot</p>
-          <h1>${escapeHtml(snapshot?.title || 'Loading report snapshot')}</h1>
-          <p class="subtitle">${snapshot ? `Version ${escapeHtml(snapshot.version)} · ${escapeHtml(snapshot.engagement)} · Cutoff ${escapeHtml(snapshot.cutoff)}` : 'The report is fetched from the authoritative API.'}</p>
+        <div class="report-hero-head">
+          <span class="report-mark" aria-hidden="true">${WP_MARK}</span>
+          <div>
+            <p class="eyebrow">Waypoint · frozen report snapshot</p>
+            <h1>${escapeHtml(snapshot?.engagement || snapshot?.title || 'Loading report snapshot')}</h1>
+            <p class="subtitle">${snapshot ? `Version ${escapeHtml(snapshot.version)} · ${escapeHtml(snapshot.engagement)} · Cutoff ${escapeHtml(snapshot.cutoff)}` : 'The report is fetched from the authoritative API.'}</p>
+          </div>
         </div>
         <div class="report-toolbar">
           <button type="button" class="secondary-link" data-action="back-to-summit">Back to Summit</button>
-          <button type="button" class="primary-button" data-action="open-pdf">Open PDF artifact</button>
+          <div class="report-downloads" role="group" aria-label="Report exports">
+            <button type="button" class="primary-button" data-action="open-pdf" ${snapshot ? '' : 'disabled'}>Full report (PDF)</button>
+            <button type="button" class="download-button" data-action="open-findings-pdf" ${snapshot ? '' : 'disabled'}>Findings (PDF)</button>
+            <button type="button" class="download-button" data-action="download-findings-csv" ${snapshot ? '' : 'disabled'}>Findings (CSV)</button>
+            <button type="button" class="download-button" data-action="download-bundle">Evidence bundle</button>
+          </div>
         </div>
       </section>
       ${state.reportStatus === 'loading' ? '<div class="live-banner review"><strong>Loading</strong> Authoritative report snapshot in the pack…</div>' : ''}
@@ -4012,28 +4071,48 @@ async function handleClick(event) {
     return;
   }
   if (action === 'open-pdf') {
-    // No 'noopener' here: window.open returns null when it is requested, and we
-    // need the handle to point the tab at the blob URL once the fetch lands.
-    const previewWindow = window.open('', '_blank');
-    if (!previewWindow) {
-      state.reportError = 'Unable to open the PDF preview';
-      render();
-      return;
-    }
-
+    await fetchAndOpenPdf(reportPdfPath(state.engagementId));
+    return;
+  }
+  if (action === 'open-findings-pdf') {
+    await fetchAndOpenPdf(reportFindingsPdfPath(state.engagementId));
+    return;
+  }
+  if (action === 'download-findings-csv') {
     try {
       state.reportError = '';
-      const response = await fetch(reportPdfPath(state.engagementId), { headers: authHeaders(state.token, newRequestId()), cache: 'no-store' });
+      const response = await fetch(reportFindingsCsvPath(state.engagementId), { headers: authHeaders(state.token, newRequestId()), cache: 'no-store' });
       if (!response.ok) throw new Error(await readProblem(response));
-      const pdfBlob = await response.blob();
-      const previewUrl = URL.createObjectURL(pdfBlob);
-      previewWindow.location.href = previewUrl;
-      previewWindow.addEventListener('load', () => URL.revokeObjectURL(previewUrl), { once: true });
+      downloadBlob(await response.blob(), 'findings.csv');
     } catch (error) {
-      previewWindow.close();
-      state.reportError = error instanceof Error ? error.message : 'Unable to open the PDF preview';
+      state.reportError = error instanceof Error ? error.message : 'Unable to download findings CSV';
       render();
     }
+    return;
+  }
+  if (action === 'download-bundle') {
+    // Surface the existing full engagement bundle: if a completed export has one,
+    // download it straight away; otherwise send the operator to Summit where the
+    // bundle is built (an async, preflighted job) rather than silently doing
+    // nothing.
+    const ready = (state.exportJobs || []).find((job) => job && job.bundle && job.bundle.archivePath && (job.state === 'completed' || job.state === 'verified'));
+    if (ready) {
+      try {
+        state.reportError = '';
+        const response = await fetch(exportBundlePath(ready.id), { headers: authHeaders(state.token, newRequestId()), cache: 'no-store' });
+        if (!response.ok) throw new Error(await readProblem(response));
+        downloadBlob(await response.blob(), ready.bundle.archivePath || 'waypoint-bundle.tar.zst');
+      } catch (error) {
+        state.reportError = error instanceof Error ? error.message : 'Unable to download the evidence bundle';
+        render();
+      }
+      return;
+    }
+    state.view = 'trail';
+    state.activePhase = 'summit';
+    pushPath(phasePath(state.engagementId, 'summit'));
+    state.summitStep = 'No frozen bundle yet — preflight and freeze one here to package all capture evidence.';
+    render();
     return;
   }
   if (action === 'go-prev') {
