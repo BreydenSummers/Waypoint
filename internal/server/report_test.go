@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -364,6 +366,18 @@ func TestLoadFrozenReportSnapshotFromBundle(t *testing.T) {
 		t.Fatalf("render loaded snapshot: %v", err)
 	} else if strings.Contains(html, "<script>alert") || !strings.Contains(html, "&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt;") {
 		t.Fatalf("loaded snapshot html not escaped: %s", html)
+	}
+}
+
+func TestLoadFrozenReportSnapshotFromBundleMissingFile(t *testing.T) {
+	t.Setenv("WAYPOINT_EXPORT_DIR", t.TempDir())
+
+	_, err := loadFrozenReportSnapshotFromBundle("11111111-1111-4111-8111-111111111111", "bundle")
+	if err == nil {
+		t.Fatal("expected an error for a missing snapshot file")
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("missing snapshot must surface fs.ErrNotExist so the report falls back to a live build, got: %v", err)
 	}
 }
 

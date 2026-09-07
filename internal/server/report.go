@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
@@ -268,6 +269,7 @@ func reportHandlerWithRuntime(db *sql.DB, store *evidenceStore, runtime RuntimeS
 				http.NotFound(w, r)
 				return
 			}
+			log.Printf("build frozen report failed for engagement %s: %v", engagementID, err)
 			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "build frozen report failed"})
 			return
 		}
@@ -615,6 +617,14 @@ func loadFrozenReportSnapshot(ctx context.Context, db queryer, engagementID stri
 	}
 	snapshot, err := loadFrozenReportSnapshotFromBundle(jobID, bundlePath)
 	if err != nil {
+		// A verified receipt can outlive its bundle files (exports default to a
+		// tmp dir, so a container restart wipes them while the receipt row in
+		// postgres survives). A missing snapshot must not brick the report:
+		// fall back to building it live from the database.
+		if errors.Is(err, fs.ErrNotExist) {
+			log.Printf("frozen report snapshot for engagement %s (export job %s) is missing on disk; rebuilding the report live: %v", engagementID, jobID, err)
+			return reportSnapshot{}, false, nil
+		}
 		return reportSnapshot{}, false, err
 	}
 	return snapshot, true, nil
