@@ -27,7 +27,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates chromium chromium-sandbox \
  && rm -rf /var/lib/apt/lists/*
 RUN useradd --system --uid 10001 --create-home --home-dir /home/waypoint waypoint \
- && mkdir -p /var/lib/waypoint/evidence \
+ && mkdir -p /var/lib/waypoint/evidence /var/lib/waypoint/exports \
  && chown -R waypoint:waypoint /var/lib/waypoint
 WORKDIR /app
 COPY --from=build /out/waypoint /usr/local/bin/waypoint

@@ -26,10 +26,12 @@ services:
       WAYPOINT_ADDR: :8080
       WAYPOINT_DB_DSN: postgres://waypoint:waypoint@postgres:5432/waypoint?sslmode=disable
       WAYPOINT_EVIDENCE_DIR: /var/lib/waypoint/evidence
+      WAYPOINT_EXPORT_DIR: /var/lib/waypoint/exports
     ports:
       - "8080:8080"
     volumes:
       - waypoint-evidence:/var/lib/waypoint/evidence
+      - waypoint-exports:/var/lib/waypoint/exports
     healthcheck:
       test:
         - CMD-SHELL
@@ -52,3 +54,4 @@ services:
 volumes:
   waypoint-postgres:
   waypoint-evidence:
+  waypoint-exports:
