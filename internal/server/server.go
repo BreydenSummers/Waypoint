@@ -18,6 +18,11 @@ import (
 type RuntimeState struct {
 	Egress egresspolicy.State `json:"egress"`
 	Setup  SetupState         `json:"setup"`
+	// EngagementID is the authenticated caller's engagement. It is populated
+	// only in /runtime responses when a valid bearer token accompanies the
+	// request; the web app adopts it so engagement-scoped routes (report,
+	// phase paths) work without the id in the URL.
+	EngagementID string `json:"engagementId,omitempty"`
 	// SetupCodeHash is the SHA-256 of the one-time first-run setup code printed
 	// in the startup banner. It arms the bootstrap gate and is never serialized.
 	SetupCodeHash string `json:"-"`
@@ -211,6 +216,13 @@ func runtimeHandler(db *sql.DB, runtime RuntimeState) http.HandlerFunc {
 		out.Setup = SetupState{
 			Required:     setupRequired(r.Context(), db),
 			CodeRequired: runtime.SetupCodeHash != "",
+		}
+		if db != nil {
+			if token, err := bearerToken(r.Header.Get("Authorization")); err == nil {
+				if actor, err := lookupActor(r.Context(), db, token); err == nil {
+					out.EngagementID = actor.EngagementID
+				}
+			}
 		}
 		writeJSON(w, http.StatusOK, out)
 	}

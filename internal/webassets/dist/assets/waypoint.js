@@ -1,4 +1,4 @@
-const sourceHash = "a6c26657b943d2e2c2bcd5081c83200a63c50f51531a343c0a8184d099163bfc";
+const sourceHash = "942d7742f416e65cba7e9699ca08676641e38333fe11b833ae644d08aa68e9f6";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -620,6 +620,7 @@ async function submitLogin() {
     state.token = candidate;
     try { window.localStorage.setItem('waypoint-token', candidate); } catch { /* ignore */ }
     render();
+    await loadSetupState();
     await refreshEverything();
     initializeSelectionFromData();
     render();
@@ -649,6 +650,9 @@ function navigateToReport() {
   state.view = 'report';
   pushPath(reportPath(state.engagementId));
   render();
+  // The global refresh only reloads the report when the view is already open,
+  // so entering the view must kick off its own fetch or it sits on "Loading".
+  if (state.reportStatus !== 'ready' && state.reportStatus !== 'loading') void refreshReport();
 }
 
 function navigateToMap() {
@@ -1545,7 +1549,9 @@ async function openVerifiedArtifact(kind) {
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
     if (kind === 'pdf') {
-      const previewWindow = window.open('', '_blank', 'noopener');
+      // No 'noopener': window.open returns null when it is requested, and the
+      // handle is needed to point the tab at the blob URL.
+      const previewWindow = window.open('', '_blank');
       if (!previewWindow) throw new Error('Unable to open the verified PDF preview');
       previewWindow.location.href = url;
       previewWindow.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
@@ -4010,7 +4016,9 @@ async function handleClick(event) {
     return;
   }
   if (action === 'open-pdf') {
-    const previewWindow = window.open('', '_blank', 'noopener');
+    // No 'noopener' here: window.open returns null when it is requested, and we
+    // need the handle to point the tab at the blob URL once the fetch lands.
+    const previewWindow = window.open('', '_blank');
     if (!previewWindow) {
       state.reportError = 'Unable to open the PDF preview';
       render();
@@ -4166,6 +4174,7 @@ function handlePopState() {
   state.view = route.view;
   state.activePhase = route.phase;
   render();
+  if (route.view === 'report' && state.reportStatus !== 'ready' && state.reportStatus !== 'loading') void refreshReport();
 }
 
 function initializeSelectionFromData() {
@@ -4241,11 +4250,26 @@ async function boot() {
 
 async function loadSetupState() {
   try {
-    const response = await fetch('/api/v1/runtime', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    const headers = { Accept: 'application/json' };
+    if (state.token) headers.Authorization = `Bearer ${state.token}`;
+    const response = await fetch('/api/v1/runtime', { headers, cache: 'no-store' });
     if (!response.ok) return;
     const runtime = await response.json();
     state.setupRequired = Boolean(runtime?.setup?.required);
     state.setupCodeRequired = Boolean(runtime?.setup?.codeRequired);
+    // The engagement id only reaches the client through the URL, so a visit to
+    // "/" (or a bookmark from before a reset) leaves engagement-scoped routes
+    // (the report and phase paths) pointing at the placeholder or a stale id.
+    // Tokens are engagement-scoped: adopt the id the API reports for ours and
+    // correct the address bar in place.
+    const engagementId = typeof runtime?.engagementId === 'string' ? runtime.engagementId : '';
+    if (engagementId && engagementId !== state.engagementId) {
+      state.engagementId = engagementId;
+      const path = window.location.pathname;
+      if (path.startsWith('/engagements/')) {
+        window.history.replaceState({}, '', path.replace(/^\/engagements\/[^/]+/, `/engagements/${engagementId}`));
+      }
+    }
   } catch {
     // A runtime probe failure should not block the normal app path.
   }

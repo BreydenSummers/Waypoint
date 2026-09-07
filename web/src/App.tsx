@@ -935,7 +935,7 @@ export function App() {
   const initialEngagementId = getInitialEngagementId();
 
   const [theme, setTheme] = useState<ThemeMode>(initialTheme);
-  const [engagementId] = useState(initialEngagementId);
+  const [engagementId, setEngagementId] = useState(initialEngagementId);
   const [view, setView] = useState<RouteView>(initialRoute.view);
   const [activePhase, setActivePhase] = useState<PhaseId>(initialRoute.phase);
   const activeId = activePhase;
@@ -1135,7 +1135,9 @@ export function App() {
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch('/api/v1/runtime', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        if (token) headers.Authorization = `Bearer ${token}`;
+        const response = await fetch('/api/v1/runtime', { headers, cache: 'no-store' });
         if (!response.ok) return;
         const runtime = await response.json();
         if (cancelled) return;
@@ -1144,6 +1146,19 @@ export function App() {
         if (setup.required) {
           setView('setup');
           if (window.location.pathname !== '/setup') pushPath('/setup');
+          return;
+        }
+        // The engagement id only reaches the client through the URL, so a visit
+        // to "/" (or a bookmark from before a reset) leaves engagement-scoped
+        // routes pointing at the wrong id. The token is engagement-scoped, so
+        // adopt the id the API reports for it and correct the address bar.
+        const authoritativeId = typeof runtime?.engagementId === 'string' ? runtime.engagementId : '';
+        if (authoritativeId && authoritativeId !== engagementId) {
+          setEngagementId(authoritativeId);
+          const path = window.location.pathname;
+          if (path.startsWith('/engagements/')) {
+            window.history.replaceState(null, '', path.replace(/^\/engagements\/[^/]+/, `/engagements/${authoritativeId}`));
+          }
         }
       } catch {
         // A runtime probe failure should not block the normal app path.
@@ -1152,7 +1167,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -1449,7 +1464,7 @@ export function App() {
     if (view !== 'report') return;
     if (reportStatus === 'ready' || reportStatus === 'loading') return;
     void refreshReport();
-  }, [view]);
+  }, [view, engagementId]);
 
   useEffect(() => {
     if (!selectedEvidenceId || !selectedEvidenceRef) return;
@@ -1577,7 +1592,7 @@ export function App() {
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       if (kind === 'pdf') {
-        const previewWindow = window.open('', '_blank', 'noopener');
+        const previewWindow = window.open('', '_blank');
         if (!previewWindow) throw new Error('Unable to open the verified PDF preview');
         previewWindow.location.href = url;
         previewWindow.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
@@ -1827,6 +1842,7 @@ export function App() {
         codeRequired={setupState?.codeRequired ?? true}
         onEnter={(result) => {
           setToken(result.token);
+          setEngagementId(result.engagementId);
           setSetupState({ required: false, codeRequired: false });
           setView('trail');
           setActivePhase('recon');
@@ -1850,7 +1866,7 @@ export function App() {
               Back to Summit
             </button>
             <button type="button" className="primary-button" onClick={async () => {
-              const previewWindow = window.open('', '_blank', 'noopener');
+              const previewWindow = window.open('', '_blank');
               if (!previewWindow) {
                 setReportError('Unable to open the PDF preview');
                 return;
