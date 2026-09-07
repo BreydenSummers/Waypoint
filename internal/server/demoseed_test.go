@@ -84,8 +84,23 @@ func TestDemoSeedPopulatesEngagement(t *testing.T) {
 	}
 	assertCount(t, ctx, rawDB, "SELECT count(*) FROM finding WHERE engagement_id = $1", engagementID, 3)
 	assertCount(t, ctx, rawDB, "SELECT count(*) FROM audit_event WHERE engagement_id = $1 AND type = 'alert.notable'", engagementID, 2)
-	assertCount(t, ctx, rawDB, "SELECT count(*) FROM result WHERE engagement_id = $1", engagementID, 9)
-	assertCount(t, ctx, rawDB, "SELECT count(*) FROM observation WHERE engagement_id = $1", engagementID, 11)
+	// The narrative plus the estate recon sweep and per-subnet service scans; use
+	// lower bounds so estate tweaks don't make these brittle.
+	assertAtLeast(t, ctx, rawDB, "SELECT count(*) FROM result WHERE engagement_id = $1", engagementID, 15)
+	assertAtLeast(t, ctx, rawDB, "SELECT count(*) FROM observation WHERE engagement_id = $1", engagementID, 80)
+
+	// The core guarantee: nothing about a host appears without a scan behind it,
+	// so every discovered host entity must carry at least one observation.
+	var orphanHosts int
+	if err := rawDB.QueryRowContext(ctx, `
+		SELECT count(*) FROM entity e
+		WHERE e.engagement_id = $1 AND e.kind = 'host'
+		  AND NOT EXISTS (SELECT 1 FROM observation o WHERE o.entity_id = e.id)`, engagementID).Scan(&orphanHosts); err != nil {
+		t.Fatalf("query orphan hosts: %v", err)
+	}
+	if orphanHosts != 0 {
+		t.Errorf("found %d host entities with no backing scan observation", orphanHosts)
+	}
 
 	// AI-initiated actions must carry a decision context; manual ones must not.
 	var aiWithoutContext int
@@ -118,5 +133,16 @@ func assertCount(t *testing.T, ctx context.Context, db *sql.DB, query, engagemen
 	}
 	if got != want {
 		t.Errorf("count query %q = %d, want %d", query, got, want)
+	}
+}
+
+func assertAtLeast(t *testing.T, ctx context.Context, db *sql.DB, query, engagementID string, min int) {
+	t.Helper()
+	var got int
+	if err := db.QueryRowContext(ctx, query, engagementID).Scan(&got); err != nil {
+		t.Fatalf("count query %q: %v", query, err)
+	}
+	if got < min {
+		t.Errorf("count query %q = %d, want >= %d", query, got, min)
 	}
 }

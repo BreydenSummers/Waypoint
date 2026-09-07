@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	dbutil "waypoint/internal/db"
@@ -50,9 +51,10 @@ type demoSeeder struct {
 	ownerHandle  string
 	base         time.Time
 
-	operatorID string
-	agentID    string
-	entities   map[string]string // logical key -> entity id
+	operatorID  string
+	agentID     string
+	entities    map[string]string // logical key -> entity id
+	estateHosts []estateHost      // wider estate, discovered + fingerprinted by scans
 }
 
 func (s *demoSeeder) at(hoursIn float64) time.Time {
@@ -174,37 +176,179 @@ func (s *demoSeeder) seedEntities(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-// seedEstate fills out the wider estate with discovered host entities across the
-// campus subnets, so read views (especially the territory map) show a realistic
-// spread of segments and host counts rather than only the handful of hosts the
-// attack narrative touches. Each host carries an IP attribute so it groups into
-// its /24 on the map.
-func (s *demoSeeder) seedEstate(ctx context.Context, tx *sql.Tx) error {
-	groups := []struct {
-		base, role, os string
-		n              int
-	}{
-		{"10.4.10", "domain-member", "Windows Server 2019", 5},
-		{"10.4.11", "app-server", "Ubuntu 22.04", 9},
-		{"10.4.12", "db-server", "Windows Server 2016", 5},
-		{"10.4.20", "dmz-web", "Ubuntu 22.04", 4},
-		{"10.4.30", "faculty-ws", "Windows 11", 14},
-		{"10.4.32", "lab-ws", "Windows 10", 18},
-		{"10.4.40", "voip-phone", "Embedded / RTOS", 8},
-		{"10.4.42", "iot-device", "Embedded / RTOS", 10},
+// estateGroup defines one subnet of the wider campus estate a recon sweep turns
+// up beyond the handful of hosts the attack narrative touches. The service
+// fingerprint is what a service scan (nmap -sV) reports for that role, so every
+// host's open ports trace back to an actual capture rather than being asserted.
+type estateGroup struct {
+	subnet, role, os string
+	n                int
+	services         []string
+}
+
+// estateHost is a single discovered host in the wider estate, carried on the
+// seeder so the recon actions can attach discovery + service observations to it.
+type estateHost struct {
+	key, ip, hostname, role, os, subnet string
+	services                            []string
+}
+
+func estateGroups() []estateGroup {
+	return []estateGroup{
+		{"10.4.10", "domain-member", "Windows Server 2019", 5, []string{"msrpc/135", "netbios-ssn/139", "microsoft-ds/445", "rdp/3389"}},
+		{"10.4.11", "app-server", "Ubuntu 22.04", 9, []string{"ssh/22", "http/80", "https/443"}},
+		{"10.4.12", "db-server", "Windows Server 2016", 5, []string{"msrpc/135", "microsoft-ds/445", "ms-sql-s/1433", "rdp/3389"}},
+		{"10.4.20", "dmz-web", "Ubuntu 22.04", 4, []string{"http/80", "https/443", "ssh/22"}},
+		{"10.4.30", "faculty-ws", "Windows 11", 14, []string{"msrpc/135", "netbios-ssn/139", "microsoft-ds/445", "rdp/3389"}},
+		{"10.4.32", "lab-ws", "Windows 10", 18, []string{"msrpc/135", "netbios-ssn/139", "microsoft-ds/445"}},
+		{"10.4.40", "voip-phone", "Embedded / RTOS", 8, []string{"sip/5060", "http/80"}},
+		{"10.4.42", "iot-device", "Embedded / RTOS", 10, []string{"http/80", "https/443"}},
 	}
-	for _, g := range groups {
+}
+
+// seedEstate lays down the wider estate — the campus subnets a recon sweep turns
+// up — so read views (especially the territory map) show a realistic spread of
+// segments and host counts. It only creates the entity records here; the host's
+// liveness and its services are attached later by estateReconActions so nothing
+// about a host appears in the UI without a scan behind it.
+func (s *demoSeeder) seedEstate(ctx context.Context, tx *sql.Tx) error {
+	for _, g := range estateGroups() {
 		for i := 1; i <= g.n; i++ {
-			ip := fmt.Sprintf("%s.%d", g.base, 20+i)
+			ip := fmt.Sprintf("%s.%d", g.subnet, 20+i)
 			host := fmt.Sprintf("%s-%03d", g.role, i)
 			key := fmt.Sprintf("hostname=%s|ip=%s", host, ip)
 			attrs := map[string]any{"ip": ip, "role": g.role, "os": g.os, "hostname": host}
-			if _, err := upsertEntity(ctx, tx, s.engagementID, "host", "hostname_ip", key, attrs); err != nil {
+			id, err := upsertEntity(ctx, tx, s.engagementID, "host", "hostname_ip", key, attrs)
+			if err != nil {
 				return fmt.Errorf("demo seed: estate host %s: %w", host, err)
 			}
+			logical := "estate:" + host
+			s.entities[logical] = id
+			s.estateHosts = append(s.estateHosts, estateHost{
+				key: logical, ip: ip, hostname: host, role: g.role, os: g.os, subnet: g.subnet, services: g.services,
+			})
 		}
 	}
 	return nil
+}
+
+// scanHost is a host a service scan fingerprints; its fields mirror estateHost so
+// estate hosts convert directly, while named narrative hosts are added by hand.
+type scanHost struct {
+	key, ip, hostname, role, os, subnet string
+	services                            []string
+}
+
+func splitService(sv string) (name, port string) {
+	if i := strings.IndexByte(sv, '/'); i >= 0 {
+		return sv[:i], sv[i+1:]
+	}
+	return sv, ""
+}
+
+// nmapDiscoveryStdout renders a realistic `nmap -sn` host-discovery report for
+// the whole estate, one host-up line per live host.
+func nmapDiscoveryStdout(hosts []estateHost) string {
+	var b strings.Builder
+	b.WriteString("Starting Nmap 7.94 ( https://nmap.org )\n")
+	for _, h := range hosts {
+		fmt.Fprintf(&b, "Nmap scan report for %s (%s)\nHost is up (0.00%02ds latency).\n", h.hostname, h.ip, (len(h.hostname)%9)+1)
+	}
+	fmt.Fprintf(&b, "Nmap done: 65536 IP addresses (%d hosts up) scanned in %d.%02d seconds\n", len(hosts), 44+len(hosts)/3, (len(hosts)*7)%100)
+	return b.String()
+}
+
+// nmapServiceStdout renders a realistic `nmap -sV` service report for a subnet,
+// a port table per host mirroring the service observations attached to it.
+func nmapServiceStdout(hosts []scanHost) string {
+	var b strings.Builder
+	b.WriteString("Starting Nmap 7.94 ( https://nmap.org )\n")
+	for _, h := range hosts {
+		fmt.Fprintf(&b, "Nmap scan report for %s (%s)\nPORT      STATE SERVICE\n", h.hostname, h.ip)
+		for _, sv := range h.services {
+			name, p := splitService(sv)
+			fmt.Fprintf(&b, "%-9s open  %s\n", p+"/tcp", name)
+		}
+		fmt.Fprintf(&b, "Service Info: OS: %s\n\n", h.os)
+	}
+	fmt.Fprintf(&b, "Nmap done: 256 IP addresses (%d hosts up) scanned\n", len(hosts))
+	return b.String()
+}
+
+// estateReconActions generates the recon captures that discover and fingerprint
+// the wider estate, so every estate host and every service/port the UI shows
+// traces back to an actual scan rather than being asserted by the seeder. It
+// returns one broad host-discovery sweep plus a service scan per /24; the named
+// hosts that the attack narrative would otherwise leave without a service
+// fingerprint (the gateway, portal, file server and lab workstation) are folded
+// into their subnet's scan.
+func (s *demoSeeder) estateReconActions() []demoAction {
+	ai := s.aiAgent()
+	op := s.human(s.operatorID, "sam.rivera", "operator")
+
+	discovery := demoAction{
+		hoursIn: 0.05, durationSec: 58, actor: ai, sourceKind: "remote_agent", initiatedBy: "ai", phase: "recon",
+		command: "nmap", argv: []string{"nmap", "-sn", "-PS22,80,443,445,3389", "10.4.0.0/16"},
+		targetKind: "cidr", targetValue: "10.4.0.0/16", execHostIP: "10.4.30.21", exitCode: 0,
+		rationale: "Broad TCP-SYN host discovery to enumerate the live estate before any service scanning.",
+		stdout:    nmapDiscoveryStdout(s.estateHosts),
+		pluginID:  "nmap-host-discovery",
+	}
+	for _, h := range s.estateHosts {
+		discovery.observations = append(discovery.observations, demoObservation{
+			entityKey: h.key, kind: "host",
+			identifiers: []map[string]any{{"type": "hostname", "value": h.hostname}, {"type": "ip", "value": h.ip}},
+			attributes:  map[string]any{"ip": h.ip, "state": "up"},
+		})
+	}
+
+	hosts := make([]scanHost, 0, len(s.estateHosts)+4)
+	for _, h := range s.estateHosts {
+		hosts = append(hosts, scanHost(h))
+	}
+	hosts = append(hosts,
+		scanHost{"gw", "10.4.0.1", "gw-01.campus.example.edu", "edge-gateway", "VyOS 1.4", "10.4.0", []string{"ssh/22", "https/443", "isakmp/500"}},
+		scanHost{"portal", "10.4.20.15", "portal.campus.example.edu", "student-portal", "Ubuntu 22.04", "10.4.20", []string{"http/80", "https/443", "ssh/22"}},
+		scanHost{"fileshare", "10.4.20.40", "fileshare-01", "file-server", "Windows Server 2016", "10.4.20", []string{"microsoft-ds/445", "netbios-ssn/139"}},
+		scanHost{"workstation", "10.4.30.88", "ws-lab-88", "lab-workstation", "Windows 10", "10.4.30", []string{"msrpc/135", "netbios-ssn/139", "microsoft-ds/445"}},
+	)
+
+	bySubnet := map[string][]scanHost{}
+	var order []string
+	for _, h := range hosts {
+		if _, ok := bySubnet[h.subnet]; !ok {
+			order = append(order, h.subnet)
+		}
+		bySubnet[h.subnet] = append(bySubnet[h.subnet], h)
+	}
+
+	out := []demoAction{discovery}
+	for i, subnet := range order {
+		hs := bySubnet[subnet]
+		actor, kind, initiatedBy, exec := op, "operator_wrapper", "manual", "10.4.30.20"
+		var rationale string
+		if i%2 == 1 {
+			actor, kind, initiatedBy, exec = ai, "remote_agent", "ai", "10.4.30.21"
+			rationale = "Fingerprint services on live hosts in " + subnet + ".0/24 to prioritise targets."
+		}
+		act := demoAction{
+			hoursIn: 0.3 + float64(i)*0.18, durationSec: len(hs)*4 + 9, actor: actor, sourceKind: kind, initiatedBy: initiatedBy, phase: "recon",
+			command: "nmap", argv: []string{"nmap", "-sV", "--top-ports", "1000", subnet + ".0/24"},
+			targetKind: "cidr", targetValue: subnet + ".0/24", execHostIP: exec, exitCode: 0,
+			rationale: rationale,
+			stdout:    nmapServiceStdout(hs),
+			pluginID:  "nmap-service-scan",
+		}
+		for _, h := range hs {
+			act.observations = append(act.observations, demoObservation{
+				entityKey: h.key, kind: "service",
+				identifiers: []map[string]any{{"type": "hostname", "value": h.hostname}, {"type": "ip", "value": h.ip}},
+				attributes:  map[string]any{"services": h.services, "os": h.os},
+			})
+		}
+		out = append(out, act)
+	}
+	return out
 }
 
 // demoAction is the variable surface of a synthetic action; the seeder fills in
@@ -244,7 +388,10 @@ type demoObservation struct {
 func port(p int) *int { return &p }
 
 func (s *demoSeeder) seedActions(ctx context.Context, tx *sql.Tx) error {
-	actions := s.actionScript()
+	// The estate recon sweep + per-subnet service scans run first (earliest in
+	// the timeline); the hand-written narrative then tells the attack story on
+	// top of the hosts they discovered.
+	actions := append(s.estateReconActions(), s.actionScript()...)
 	// Keep a handle on attack actions so findings can cite them as evidence.
 	attackAction := map[string]string{}
 	for i := range actions {
