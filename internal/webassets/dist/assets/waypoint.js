@@ -1,4 +1,4 @@
-const sourceHash = "36213ed8b82d21f25b2d8d9c4c001a4f53e5e3a895d6825626b71ed5573bf405";
+const sourceHash = "560aee0c67fcf7e754eb8674714547ef896582b94f0bbb95dccb191f3092552a";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -2016,7 +2016,8 @@ function mTrailSVG(trails, positions) {
 
 /* ============================ Left nav ============================ */
 const NAV_ITEMS = [
-  { key: 'trail', label: 'Trail', icon: '<path d="M6 21c1-6 6-7 6-13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M12 8c0-4 4-5 6-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="6" cy="21" r="1.6"/><circle cx="18" cy="3" r="1.6"/>' },
+  // "Trail" = a trail of footprints (Lucide "footprints", ISC-licensed / open).
+  { key: 'trail', label: 'Trail', icon: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/><path d="M16 17h4"/><path d="M4 13h4"/></g>' },
   { key: 'devices', label: 'Assets', icon: '<rect x="4" y="4" width="16" height="4" rx="1.5"/><rect x="4" y="10" width="16" height="4" rx="1.5"/><rect x="4" y="16" width="16" height="4" rx="1.5"/>' },
   { key: 'captures', label: 'Captures', icon: '<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="m7 9 3 3-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 15h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
   { key: 'map', label: 'Map', icon: '<path d="M3 20 L9 7 L13 14 L16 9 L21 20 Z"/><path d="M9 7 L11 10 L7 10 Z" fill="#fff"/>' },
@@ -3457,6 +3458,7 @@ function renderReportView() {
           </div>
         </div>
         <div class="report-toolbar">
+          ${renderThemeToggle()}
           <button type="button" class="secondary-link" data-action="back-to-summit">Back to Summit</button>
           <div class="report-downloads" role="group" aria-label="Report exports">
             <button type="button" class="primary-button" data-action="open-pdf" ${snapshot ? '' : 'disabled'}>Full report (PDF)</button>
