@@ -51,6 +51,7 @@ const state = {
   view: 'trail',
   activePhase: 'attacks',
   mapSelectedSegment: '',
+  mapGrouping: 'role',
   mapLens: 'off',
   mapHighlightActor: '',
   atlasSev: new Set(),
@@ -1769,15 +1770,75 @@ function mEntityIP(e) {
   return null;
 }
 function mSubnet(ip) { if (!ip) return null; const p = ip.split('.'); if (p.length < 4) return null; return `${p[0]}.${p[1]}.${p[2]}.0/24`; }
-// A segment key + display label for an entity. Hosts with an IP group by /24;
-// IP-less directory objects (AD identities) get their own "Directory" camp
-// rather than an anonymous "unresolved" bucket.
-function mSegmentKey(e) {
+// How campsites are grouped is a selectable dimension. Each mode maps an entity
+// to a { key, label } bucket; the map, trails and side panel all read whichever
+// is active in state.mapGrouping. Role is the default: it uses the richest
+// signal an entity carries (its role) and spreads groups down the trust tiers.
+const MGROUP_MODES = ['role', 'subnet', 'zone'];
+const MGROUP_LABEL = { role: 'Role', subnet: 'Subnet', zone: 'Zone' };
+const MGROUP_NOUN = { role: 'Role group', subnet: 'Segment', zone: 'Zone' };
+const MGROUP_BLURB = {
+  role: 'Assets are camps grouped by role — sized by hosts, coloured by their worst finding, stacked in trust tiers up to the core.',
+  subnet: 'Subnets are campsites — sized by hosts, coloured by their worst finding, stacked in trust tiers up to the core.',
+  zone: 'Exposure zones are campsites — sized by hosts, coloured by their worst finding, stacked in trust tiers up to the core.',
+};
+const MGROUP_EMPTY = {
+  role: 'Entities appear here as campsites, grouped by role.',
+  subnet: 'Entities with an IP address appear here as campsites, grouped by /24 subnet.',
+  zone: 'Entities appear here as campsites, grouped by exposure zone.',
+};
+// Order matters: the first rule whose keywords match a host's role/hostname/kind
+// wins, so specific infra (DCs, PKI) is claimed before the broad server terms.
+const MROLE_RULES = [
+  { key: 'rdc', label: 'Domain Controllers', words: ['dc-', 'domain controller', 'domain-controller', 'active directory', 'kerbero', 'ldap'] },
+  { key: 'rpki', label: 'PKI / Certificate', words: ['pki', 'adcs', 'certificate'] },
+  { key: 'rdb', label: 'Databases', words: ['db-', 'database', 'sql', 'postgres', 'oracle', 'mysql'] },
+  { key: 'rvirt', label: 'Hypervisors', words: ['esxi', 'vcenter', 'hyperv', 'virtual'] },
+  { key: 'rfile', label: 'File / Storage / Backup', words: ['file', 'storage', 'backup', 'nas', 'share'] },
+  { key: 'rweb', label: 'Web / App servers', words: ['web', 'portal', 'app-', 'iis', 'nginx', 'apache', 'api'] },
+  { key: 'redge', label: 'Network / Edge', words: ['vpn', 'waf', 'gateway', 'firewall', 'router', 'proxy', 'switch', 'edge'] },
+  { key: 'rprint', label: 'Printers / IoT / OT', words: ['printer', 'mfp', 'camera', 'iot', 'voip', 'phone', 'kiosk', 'sensor'] },
+  { key: 'rws', label: 'Workstations', words: ['ws', 'workstation', 'desktop', 'laptop', 'faculty', 'student', 'lab', 'member'] },
+];
+function mIsDirectory(e) {
+  const ids = e.identifiers || [];
+  return e.kind === 'identity' || ids.some((i) => i.type === 'ad_sid');
+}
+function mRoleHay(e) {
+  const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+  return `${String(a.role || '').toLowerCase()} ${String(a.hostname || '').toLowerCase()} ${String(e.kind || '').toLowerCase()}`;
+}
+// Group by /24; IP-less directory objects get their own "Directory" camp rather
+// than an anonymous "unresolved" bucket.
+function mKeySubnet(e) {
   const cidr = mSubnet(mEntityIP(e));
   if (cidr) return { key: cidr, label: cidr };
-  const ids = e.identifiers || [];
-  if (e.kind === 'identity' || ids.some((i) => i.type === 'ad_sid')) return { key: 'directory', label: 'Directory · AD' };
+  if (mIsDirectory(e)) return { key: 'directory', label: 'Directory · AD' };
   return { key: 'off-subnet', label: 'Off-subnet' };
+}
+// Group by function: DCs, databases, hypervisors, web, workstations, printers…
+function mKeyRole(e) {
+  if (mIsDirectory(e)) return { key: 'rident', label: 'Identity principals' };
+  const hay = mRoleHay(e);
+  for (const r of MROLE_RULES) { if (r.words.some((w) => hay.includes(w))) return { key: r.key, label: r.label }; }
+  return { key: 'rother', label: 'Other hosts' };
+}
+// Group by exposure: on a flat estate Internal will dominate — that is the map
+// telling the truth about the segmentation, not a bug.
+function mKeyZone(e) {
+  if (mIsDirectory(e)) return { key: 'zdir', label: 'Directory' };
+  const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+  const hay = mRoleHay(e);
+  const has = (words) => words.some((w) => hay.includes(w));
+  if (a.exposure === 'internet' || has(['vpn', 'waf', 'gateway', 'edge', 'external', 'proxy', 'firewall'])) return { key: 'zinet', label: 'Internet-facing' };
+  if (has(['dmz', 'portal'])) return { key: 'zdmz', label: 'DMZ' };
+  if (mEntityIP(e)) return { key: 'zint', label: 'Internal' };
+  return { key: 'zoff', label: 'Unzoned' };
+}
+function mSegmentKey(e) {
+  if (state.mapGrouping === 'subnet') return mKeySubnet(e);
+  if (state.mapGrouping === 'zone') return mKeyZone(e);
+  return mKeyRole(e);
 }
 function mBuildSegments() {
   const sevByEntity = {};
@@ -2477,10 +2538,13 @@ function renderTerritoryMap() {
   const treesSVG = treeSpots.map(([x, y, s]) => `<g transform="translate(${x},${y})">${mPine(s)}</g>`).join('');
   const legend = MSEV_ORDER.map((sev) => `<span class="territory-li"><i style="background:${MSEV_COLOR[sev]}"></i>${MSEV_LABEL[sev]}</span>`).join('');
 
+  const groupNoun = MGROUP_NOUN[state.mapGrouping] || 'Group';
   const sel = segments.find((s) => s.cidr === state.mapSelectedSegment) || segments[0] || null;
-  const sideHTML = sel ? `<h3>Segment</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt"><span class="territory-zone">${escapeHtml(MTIER_LABEL[sel.tier])}</span> · ${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><button type="button" class="territory-hostrow" data-action="open-asset" data-id="${escapeHtml(h.id)}" aria-label="Open ${escapeHtml(mEntityName(h))}"><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml(mEntityName(h))}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}<span class="territory-hgo" aria-hidden="true">→</span></button></li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : '<h3>Segment</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>';
+  const sideHTML = sel ? `<h3>${escapeHtml(groupNoun)}</h3><p class="territory-nm">${escapeHtml(sel.label || sel.cidr)}</p><div class="territory-mt"><span class="territory-zone">${escapeHtml(MTIER_LABEL[sel.tier])}</span> · ${escapeHtml(mSegmentRole(sel))} · ${sel.n} host${sel.n === 1 ? '' : 's'} · worst: ${MSEV_LABEL[sel.worst]}</div><h3>Hosts</h3><ul class="territory-hostlist">${sel.hosts.slice(0, 60).map((h) => { const ip = mEntityIP(h); return `<li><button type="button" class="territory-hostrow" data-action="open-asset" data-id="${escapeHtml(h.id)}" aria-label="Open ${escapeHtml(mEntityName(h))}"><span class="territory-dot" style="background:${MSEV_COLOR[sel.worst]}"></span><span class="territory-hn">${escapeHtml(mEntityName(h))}</span>${ip ? `<span class="territory-hip">${escapeHtml(ip)}</span>` : ''}<span class="territory-hgo" aria-hidden="true">→</span></button></li>`; }).join('')}</ul>${sel.hosts.length > 60 ? `<p class="territory-more">+${sel.hosts.length - 60} more hosts</p>` : ''}` : `<h3>${escapeHtml(groupNoun)}</h3><p class="territory-mt">Select a campsite to inspect its hosts.</p>`;
 
-  const emptyState = segments.length ? '' : `<div class="territory-empty"><strong>No mapped hosts yet</strong><p>Entities with an IP address appear here as campsites, grouped by /24 subnet. Capture some recon to populate the map.</p></div>`;
+  const emptyState = segments.length ? '' : `<div class="territory-empty"><strong>No mapped hosts yet</strong><p>${escapeHtml(MGROUP_EMPTY[state.mapGrouping] || MGROUP_EMPTY.role)} Capture some recon to populate the map.</p></div>`;
+
+  const groupControl = `<div class="territory-modeseg territory-group" role="group" aria-label="Group campsites by">${MGROUP_MODES.map((m) => `<button type="button" data-action="map-group" data-group="${m}" class="${state.mapGrouping === m ? 'on' : ''}" aria-pressed="${state.mapGrouping === m}">${MGROUP_LABEL[m]}</button>`).join('')}</div>`;
 
   const lensOn = state.mapLens === 'operators';
   const trails = lensOn ? mBuildTrails(positions) : [];
@@ -2502,9 +2566,10 @@ function renderTerritoryMap() {
         </svg>
         <div class="territory-hud">
           <h1>Map</h1>
-          <p>Subnets are campsites — sized by hosts, coloured by their worst finding, stacked in trust tiers up to the core.</p>
-          <p class="territory-hud-stats">${segments.length} segment${segments.length === 1 ? '' : 's'} · ${totalHosts.toLocaleString()} asset${totalHosts === 1 ? '' : 's'} · ${totalFindings} finding${totalFindings === 1 ? '' : 's'}</p>
+          <p>${escapeHtml(MGROUP_BLURB[state.mapGrouping] || MGROUP_BLURB.role)}</p>
+          <p class="territory-hud-stats">${segments.length} group${segments.length === 1 ? '' : 's'} · ${totalHosts.toLocaleString()} asset${totalHosts === 1 ? '' : 's'} · ${totalFindings} finding${totalFindings === 1 ? '' : 's'}</p>
         </div>
+        <div class="territory-groupbar"><span class="territory-legend-title">Group by</span>${groupControl}</div>
         <div class="territory-topbar">
           <div class="territory-legend"><span class="territory-legend-title">Worst finding</span>${legend}</div>
           ${renderThemeToggle()}
@@ -3527,6 +3592,15 @@ async function handleClick(event) {
   }
   if (action === 'map-select') {
     state.mapSelectedSegment = target.dataset.seg || '';
+    render();
+    return;
+  }
+  if (action === 'map-group') {
+    const g = target.dataset.group || 'role';
+    if (g !== state.mapGrouping) {
+      state.mapGrouping = g;
+      state.mapSelectedSegment = '';
+    }
     render();
     return;
   }

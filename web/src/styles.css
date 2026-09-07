@@ -2314,6 +2314,10 @@ a:focus-visible,
   .territory-side { border-left: 0; border-top: 1px solid var(--chrome-border); }
 }
 
+/* Grouping control sits top-left under the HUD. Its label ink uses a fixed
+   dark token because the terrain stays parchment in both themes. */
+.territory-groupbar { position: absolute; top: 104px; left: 20px; display: inline-flex; align-items: center; gap: 9px; }
+.territory-groupbar .territory-legend-title { color: var(--stone-dark); }
 .territory-modeseg { display: inline-flex; background: var(--workspace-surface); border: 1px solid var(--chrome-border); border-radius: 10px; padding: 3px; gap: 2px; }
 .territory-modeseg button { font: inherit; font-size: 12.5px; cursor: pointer; border: 0; background: none; color: var(--chrome-muted); padding: 5px 12px; border-radius: 7px; font-weight: 600; }
 .territory-modeseg button.on { background: var(--artifact-parchment); color: var(--deep-bark); box-shadow: 0 1px 3px -1px var(--chrome-shadow); }
