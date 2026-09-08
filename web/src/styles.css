@@ -20,6 +20,12 @@
   --artifact-parchment: #faeeda;
   --artifact-border: #d4c4a0;
   --artifact-shadow: rgba(59, 38, 23, 0.14);
+  --ink: #2a1b10;
+  --sev-critical: #b4231a;
+  --sev-high: #c65a11;
+  --sev-medium: #ba7517;
+  --sev-low: #4e7d18;
+  --sev-info: #6b4423;
   --page-bg: #f4eee0;
   --page-bg-2: #ede3ce;
   --page-text: #3b2617;
@@ -1950,6 +1956,562 @@ html[data-theme='dark'] .report-card {
   border: 1px solid rgba(139, 94, 52, 0.16);
 }
 
+/* ============================================================================
+   Report preview (.rdoc) — mirrors the branded PDF (report.go). Painted on
+   fixed "paper" colours so it reads identically in light and dark mode and
+   matches the exported document. Serif body, bark cover band, severity rails.
+   ========================================================================== */
+.rdoc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.rdoc {
+  --paper: #fbf5ea;
+  --paper-2: #faeeda;
+  --line: #d4c4a0;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--artifact-border);
+  border-radius: 18px;
+  box-shadow: 0 18px 34px var(--artifact-shadow);
+  padding: 30px 34px 26px;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  line-height: 1.55;
+}
+
+.rdoc-empty {
+  padding: 40px;
+  color: var(--stone-dark);
+  text-align: center;
+}
+
+.rdoc h1,
+.rdoc h2,
+.rdoc h3,
+.rdoc h4,
+.rdoc p,
+.rdoc ul,
+.rdoc dl {
+  margin: 0;
+}
+
+.rdoc .sans {
+  font-family: 'Helvetica Neue', Arial, system-ui, sans-serif;
+}
+
+/* Cover */
+.rdoc-cover {
+  margin-bottom: 22px;
+}
+
+.rdoc-band {
+  background: var(--deep-bark);
+  color: var(--artifact-parchment);
+  border-radius: 14px;
+  padding: 22px 26px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.rdoc-band-mark {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 auto;
+  display: block;
+}
+
+.rdoc-band-mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.rdoc-band-word {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.rdoc-band-name {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.rdoc-band-kicker {
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--wheat);
+  margin-top: 4px;
+}
+
+.rdoc-coverbody {
+  padding: 22px 4px 4px;
+}
+
+.rdoc-doctype {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.26em;
+  font-size: 11px;
+  color: var(--cocoa);
+}
+
+.rdoc-coverbody h1 {
+  font-size: 34px;
+  line-height: 1.08;
+  color: var(--deep-bark);
+  margin: 10px 0 4px;
+}
+
+.rdoc-client {
+  font-size: 17px;
+  color: var(--saddle);
+}
+
+.rdoc-facts {
+  margin-top: 22px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 22px;
+}
+
+.rdoc-fact {
+  border-top: 2px solid var(--harvest);
+  padding-top: 7px;
+}
+
+.rdoc-fact-wide {
+  grid-column: 1 / -1;
+}
+
+.rdoc-fact .k {
+  display: block;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--cocoa);
+}
+
+.rdoc-fact .v {
+  display: block;
+  font-size: 14px;
+  color: var(--deep-bark);
+  margin-top: 2px;
+}
+
+.rdoc-sevbar {
+  margin-top: 22px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rdoc-chip {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: #fff;
+}
+
+.rdoc-chip .n {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.rdoc-chip.zero {
+  background: var(--artifact-map) !important;
+  color: var(--stone-dark);
+}
+
+.rdoc .sev-critical {
+  background: var(--sev-critical);
+}
+.rdoc .sev-high {
+  background: var(--sev-high);
+}
+.rdoc .sev-medium {
+  background: var(--sev-medium);
+}
+.rdoc .sev-low {
+  background: var(--sev-low);
+}
+.rdoc .sev-info {
+  background: var(--sev-info);
+}
+
+/* Section heads */
+.rdoc-sechead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 2px solid var(--harvest);
+  padding-bottom: 6px;
+  margin-bottom: 14px;
+}
+
+.rdoc-sechead h2 {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 19px;
+  color: var(--deep-bark);
+}
+
+.rdoc-sechead .sn {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 11px;
+  color: var(--cocoa);
+  margin-left: auto;
+  letter-spacing: 0.1em;
+}
+
+.rdoc-block {
+  margin-bottom: 20px;
+}
+
+.rdoc-lead {
+  color: var(--bark);
+  margin-bottom: 12px;
+}
+
+.rdoc-empty-txt {
+  color: var(--stone-dark);
+  font-style: italic;
+}
+
+/* Trail list */
+.rdoc-trail {
+  list-style: none;
+  padding: 0;
+}
+
+.rdoc-trail li {
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 7px;
+  color: var(--ink);
+}
+
+.rdoc-trail li::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0.6em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--harvest);
+}
+
+/* Executive tiles */
+.rdoc-tiles {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+}
+
+.rdoc-tile {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 8px;
+  text-align: center;
+}
+
+.rdoc-tile .n {
+  display: block;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--deep-bark);
+}
+
+.rdoc-tile .l {
+  display: block;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--cocoa);
+  margin-top: 7px;
+}
+
+.rdoc-tile.t-total {
+  background: var(--deep-bark);
+  border-color: var(--deep-bark);
+}
+.rdoc-tile.t-total .n,
+.rdoc-tile.t-total .l {
+  color: var(--wheat);
+}
+.rdoc-tile.t-critical .n {
+  color: var(--sev-critical);
+}
+.rdoc-tile.t-high .n {
+  color: var(--sev-high);
+}
+.rdoc-tile.t-medium .n {
+  color: var(--sev-medium);
+}
+.rdoc-tile.t-low .n {
+  color: var(--sev-low);
+}
+.rdoc-tile.t-info .n {
+  color: var(--sev-info);
+}
+
+/* Findings */
+.rdoc-finding {
+  border: 1px solid var(--line);
+  border-left: 5px solid var(--saddle);
+  border-radius: 12px;
+  padding: 15px 17px;
+  margin-bottom: 12px;
+}
+
+.rdoc-finding.f-critical {
+  border-left-color: var(--sev-critical);
+}
+.rdoc-finding.f-high {
+  border-left-color: var(--sev-high);
+}
+.rdoc-finding.f-medium {
+  border-left-color: var(--sev-medium);
+}
+.rdoc-finding.f-low {
+  border-left-color: var(--sev-low);
+}
+.rdoc-finding.f-info {
+  border-left-color: var(--sev-info);
+}
+
+.rdoc-fhead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.rdoc-badge {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #fff;
+  border-radius: 5px;
+  padding: 3px 9px;
+}
+
+.rdoc-fno {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 11px;
+  color: var(--stone-dark);
+  margin-left: auto;
+}
+
+.rdoc-finding h3 {
+  font-size: 18px;
+  color: var(--deep-bark);
+  line-height: 1.2;
+}
+
+.rdoc-fmeta {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 11px;
+  color: var(--cocoa);
+  margin: 7px 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.rdoc-frow {
+  margin-top: 8px;
+}
+
+.rdoc-frow .k {
+  display: block;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--saddle);
+  margin-bottom: 1px;
+}
+
+.rdoc-frow .v {
+  color: var(--ink);
+}
+
+/* Evidence appendix */
+.rdoc-evidence {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 11px;
+}
+
+.rdoc-ehead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 9px;
+  flex-wrap: wrap;
+}
+
+.rdoc-elabel {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--artifact-parchment);
+  background: var(--saddle);
+  border-radius: 5px;
+  padding: 2px 9px;
+}
+
+.rdoc-ecmd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--deep-bark);
+  overflow-wrap: anywhere;
+}
+
+.rdoc-dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 20px;
+}
+
+.rdoc-dl > div {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.rdoc-dl dt {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cocoa);
+  flex: 0 0 34%;
+  padding-top: 2px;
+}
+
+.rdoc-dl dd {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.rdoc-pre {
+  margin: 9px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--bark);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+}
+
+.rdoc-enote {
+  font-size: 11px;
+  color: var(--cocoa);
+  margin-top: 8px;
+  font-style: italic;
+}
+
+/* Attribution */
+.rdoc-attrib {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.rdoc-acard {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.rdoc-acard h4 {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--saddle);
+  margin-bottom: 6px;
+}
+
+.rdoc-acard ul {
+  list-style: none;
+  padding: 0;
+}
+
+.rdoc-acard li {
+  font-size: 13px;
+  padding: 3px 0;
+  border-bottom: 1px dotted var(--line);
+  color: var(--ink);
+}
+
+.rdoc-acard li:last-child {
+  border-bottom: none;
+}
+
+.rdoc-gaps {
+  list-style: none;
+  padding: 0;
+}
+
+.rdoc-gaps li {
+  border-left: 3px solid var(--harvest);
+  padding: 4px 0 4px 12px;
+  margin-bottom: 7px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.rdoc-foot {
+  margin-top: 22px;
+  padding-top: 12px;
+  border-top: 2px solid var(--harvest);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  font-size: 11px;
+  color: var(--saddle);
+}
+
+.rdoc-foot svg {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.rdoc-foot strong {
+  color: var(--cocoa);
+  letter-spacing: 0.08em;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
@@ -1990,7 +2552,7 @@ a:focus-visible,
   .map-card,
   .sidebar,
   .theme-switcher,
-  .report-toolbar {
+  .rdoc-actions {
     box-shadow: none;
   }
 
@@ -1999,13 +2561,16 @@ a:focus-visible,
     padding-top: 0;
   }
 
-  .report-section,
-  .report-hero {
+  .rdoc,
+  .rdoc-finding,
+  .rdoc-evidence,
+  .rdoc-tile {
     break-inside: avoid;
     box-shadow: none;
   }
 
-  .report-toolbar {
+  .rdoc-actions,
+  .appnav {
     display: none;
   }
 }
@@ -2055,6 +2620,24 @@ a:focus-visible,
   .report-grid,
   .receipt-grid {
     grid-template-columns: 1fr;
+  }
+
+  .rdoc {
+    padding: 20px 18px;
+  }
+
+  .rdoc-tiles {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .rdoc-facts,
+  .rdoc-dl,
+  .rdoc-attrib {
+    grid-template-columns: 1fr;
+  }
+
+  .rdoc-coverbody h1 {
+    font-size: 26px;
   }
 
   .workspace-footer,

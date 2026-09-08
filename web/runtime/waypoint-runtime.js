@@ -2012,8 +2012,9 @@ function mTrailSVG(trails, positions) {
 
 /* ============================ Left nav ============================ */
 const NAV_ITEMS = [
-  // "Trail" = a trail of footprints (Lucide "footprints", ISC-licensed / open).
-  { key: 'trail', label: 'Trail', icon: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16a2 2 0 1 1-4 0Z"/><path d="M20 20v-2.38c0-2.12 1.03-3.12 1-5.62-.03-2.72-1.49-6-4.5-6C14.63 6 14 7.8 14 9.5c0 3.11 2 5.66 2 8.68V20a2 2 0 1 0 4 0Z"/><path d="M16 17h4"/><path d="M4 13h4"/></g>' },
+  // "Trail" = a dashed winding path from a start dot to an X-marks-the-spot
+  // (recreated after the Noun Project "Trail" mark by Jacqueline Sarah Brown).
+  { key: 'trail', label: 'Trail', icon: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="16.5" r="2.1" fill="currentColor" stroke="none"/><path d="M5.6 14.8 C 7.2 12.2 3.6 10.6 5.6 8.2 C 7.2 6.2 10.4 7.2 11.4 4.2" stroke-dasharray="0.1 3.2"/><path d="M15.5 5 L20.5 10 M20.5 5 L15.5 10"/></g>' },
   { key: 'devices', label: 'Assets', icon: '<rect x="4" y="4" width="16" height="4" rx="1.5"/><rect x="4" y="10" width="16" height="4" rx="1.5"/><rect x="4" y="16" width="16" height="4" rx="1.5"/>' },
   { key: 'captures', label: 'Captures', icon: '<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="m7 9 3 3-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 15h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
   { key: 'map', label: 'Map', icon: '<path d="M3 20 L9 7 L13 14 L16 9 L21 20 Z"/><path d="M9 7 L11 10 L7 10 Z" fill="#fff"/>' },
@@ -3429,78 +3430,169 @@ function renderSummitWorkspace() {
     </section>`;
 }
 
+// Severity buckets, ordered high-to-low. Shared by the summary tiles and chips.
+const REPORT_SEVERITIES = [['critical', 'Critical'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low'], ['info', 'Info']];
+
+function formatCaptureGap(gap) {
+  if (typeof gap === 'string') return escapeHtml(gap);
+  const kind = String(gap.claimKind || '').trim();
+  const label = kind ? `${kind.charAt(0).toUpperCase()}${kind.slice(1)} capture gap` : 'Capture gap';
+  const bits = [`<strong>${escapeHtml(label)}</strong>`];
+  if (gap.status) bits.push(escapeHtml(gap.status));
+  let line = bits.join(' · ');
+  if (gap.reason) line += ` — ${escapeHtml(gap.reason)}`;
+  if (gap.notes) line += ` · notes: ${escapeHtml(gap.notes)}`;
+  return line;
+}
+
+// renderReportView renders the in-app preview to mirror the branded PDF
+// (cover, executive summary, severity-railed findings, evidence appendix). It
+// paints on fixed "paper" colors (.rdoc) so it reads the same in light and dark
+// mode and matches the exported document exactly.
 function renderReportView() {
   const snapshot = state.reportSnapshot;
-  // Resolve a finding's "Action N" evidence labels against the snapshot's own
-  // evidence cards so the reference reads as the command it points at.
+  const findings = snapshot?.findings || [];
+  const evidence = snapshot?.evidence || [];
+  const gaps = snapshot?.knownCaptureGaps || [];
+  const counts = {};
+  findings.forEach((f) => { const s = String(f.severity || '').toLowerCase(); counts[s] = (counts[s] || 0) + 1; });
+  const sev = (s) => String(s || '').toLowerCase();
+
   const evidenceByLabel = {};
-  (snapshot?.evidence || []).forEach((item) => { if (item.label) evidenceByLabel[item.label] = item; });
+  evidence.forEach((item) => { if (item.label) evidenceByLabel[item.label] = item; });
   const evidenceRef = (label) => {
     const card = evidenceByLabel[label];
     if (!card) return label;
     const what = [String(card.command || '').split(/\s+/)[0], card.target].filter(Boolean).join(' on ');
     return what ? `${label} (${what})` : label;
   };
+  const field = (dt, dd) => `<div><dt>${dt}</dt><dd>${dd}</dd></div>`;
+
+  const toolbar = `
+      <div class="rdoc-actions">
+        ${renderThemeToggle()}
+        <button type="button" class="secondary-link" data-action="back-to-summit">Back to Summit</button>
+        <div class="report-downloads" role="group" aria-label="Report exports">
+          <button type="button" class="primary-button" data-action="open-pdf" ${snapshot ? '' : 'disabled'}>Full report (PDF)</button>
+          <button type="button" class="download-button" data-action="open-findings-pdf" ${snapshot ? '' : 'disabled'}>Findings (PDF)</button>
+          <button type="button" class="download-button" data-action="download-findings-csv" ${snapshot ? '' : 'disabled'}>Findings (CSV)</button>
+          <button type="button" class="download-button" data-action="download-bundle">Evidence bundle</button>
+        </div>
+      </div>`;
+
+  const banners = `${state.reportStatus === 'loading' ? '<div class="live-banner review"><strong>Loading</strong> Authoritative report snapshot in the pack…</div>' : ''}${state.reportStatus === 'error' ? `<div class="live-banner"><strong>Report error</strong> ${escapeHtml(state.reportError)}</div>` : ''}`;
+
+  if (!snapshot) {
+    return `<main class="app-shell report-shell" aria-label="Frozen report snapshot">${renderNav('report')}${toolbar}${banners}<article class="rdoc rdoc-empty"><p>The report is fetched from the authoritative API.</p></article></main>`;
+  }
+
+  const cover = `
+        <header class="rdoc-cover">
+          <div class="rdoc-band">
+            <span class="rdoc-band-mark" aria-hidden="true">${WP_MARK}</span>
+            <span class="rdoc-band-word"><span class="rdoc-band-name">WAYPOINT</span><span class="rdoc-band-kicker">Security Assessment</span></span>
+          </div>
+          <div class="rdoc-coverbody">
+            <p class="rdoc-doctype">Engagement Report</p>
+            <h1>${escapeHtml(snapshot.engagement || snapshot.title || 'Engagement')}</h1>
+            ${snapshot.client ? `<p class="rdoc-client">Prepared for ${escapeHtml(snapshot.client)}</p>` : ''}
+            <div class="rdoc-facts">
+              <div class="rdoc-fact"><span class="k">Findings</span><span class="v">${findings.length} promoted</span></div>
+              <div class="rdoc-fact"><span class="k">Evidence cutoff</span><span class="v">${escapeHtml(snapshot.cutoff || '—')}</span></div>
+              <div class="rdoc-fact"><span class="k">Snapshot</span><span class="v">${escapeHtml(snapshot.version || 'v1')}</span></div>
+              ${(snapshot.scope || []).length ? `<div class="rdoc-fact rdoc-fact-wide"><span class="k">Scope</span><span class="v">${escapeHtml((snapshot.scope || []).join(' · '))}</span></div>` : ''}
+            </div>
+            <div class="rdoc-sevbar">
+              ${REPORT_SEVERITIES.map(([slug, label]) => `<span class="rdoc-chip sev-${slug}${(counts[slug] || 0) === 0 ? ' zero' : ''}"><span class="n">${counts[slug] || 0}</span>${label}</span>`).join('')}
+            </div>
+          </div>
+        </header>`;
+
+  const exec = `
+        <section class="rdoc-block">
+          <div class="rdoc-sechead"><h2>Executive summary</h2><span class="sn">01</span></div>
+          <p class="rdoc-lead">This assessment promoted ${findings.length} confirmed finding${findings.length === 1 ? '' : 's'} against ${escapeHtml(snapshot.engagement || 'the engagement')}, each backed by preserved capture evidence with full command, host, and actor attribution.</p>
+          <div class="rdoc-tiles">
+            <div class="rdoc-tile t-total"><span class="n">${findings.length}</span><span class="l">Total</span></div>
+            ${REPORT_SEVERITIES.map(([slug, label]) => `<div class="rdoc-tile t-${slug}"><span class="n">${counts[slug] || 0}</span><span class="l">${label}</span></div>`).join('')}
+          </div>
+        </section>`;
+
+  const findingsBlock = `
+        <section class="rdoc-block">
+          <div class="rdoc-sechead"><h2>Findings</h2><span class="sn">02</span></div>
+          ${findings.length ? findings.map((f) => `
+            <article class="rdoc-finding f-${sev(f.severity)}">
+              <div class="rdoc-fhead"><span class="rdoc-badge sev-${sev(f.severity)}">${escapeHtml(f.severity)}</span><span class="rdoc-fno">Finding ${escapeHtml(f.id || '')}</span></div>
+              <h3>${escapeHtml(f.title)}</h3>
+              <div class="rdoc-fmeta">${[f.status ? `Status: ${escapeHtml(f.status)}` : '', f.promotedBy ? `Promoted by ${escapeHtml(f.promotedBy)}` : '', f.promotedAt ? escapeHtml(f.promotedAt) : '', `Revision ${escapeHtml(String(f.revision ?? 0))}`].filter(Boolean).map((b) => `<span>${b}</span>`).join('')}</div>
+              ${(f.affectedEntityIds || []).length ? `<div class="rdoc-frow"><span class="k">Affected assets</span><span class="v">${escapeHtml((f.affectedEntityIds || []).join(', '))}</span></div>` : ''}
+              ${(f.evidence || []).length ? `<div class="rdoc-frow"><span class="k">Evidence</span><span class="v">${escapeHtml((f.evidence || []).map(evidenceRef).join(', '))}</span></div>` : ''}
+              <div class="rdoc-frow"><span class="k">Remediation</span><span class="v">${f.remediation ? escapeHtml(f.remediation) : '<span class="rdoc-empty-txt">No remediation recorded.</span>'}</span></div>
+            </article>`).join('') : '<p class="rdoc-empty-txt">No findings were promoted in this engagement.</p>'}
+        </section>`;
+
+  const methodology = `
+        <section class="rdoc-block">
+          <div class="rdoc-sechead"><h2>Methodology</h2><span class="sn">03</span></div>
+          <ul class="rdoc-trail">${(snapshot.methodology || []).map((m) => `<li>${escapeHtml(m)}</li>`).join('') || '<li class="rdoc-empty-txt">None recorded.</li>'}</ul>
+        </section>`;
+
+  const evidenceBlock = `
+        <section class="rdoc-block">
+          <div class="rdoc-sechead"><h2>Evidence appendix</h2><span class="sn">04</span></div>
+          <p class="rdoc-lead">${evidence.length} capture${evidence.length === 1 ? '' : 's'} preserved as text, in chronological order. Each is attributed to its actor, host, and public egress.</p>
+          ${evidence.length ? evidence.map((e) => `
+            <article class="rdoc-evidence">
+              <div class="rdoc-ehead"><span class="rdoc-elabel">${escapeHtml(e.label || '')}</span><span class="rdoc-ecmd">${escapeHtml(e.command || '')}</span></div>
+              <dl class="rdoc-dl">
+                ${field('Source agent', escapeHtml(e.sourceAgent || 'not recorded'))}
+                ${field('Target', escapeHtml(e.target || '—'))}
+                ${field('Actor', escapeHtml(e.actor || '—'))}
+                ${field('Exec host', escapeHtml(e.host || '—'))}
+                ${field('Egress', escapeHtml(e.egress || 'not recorded'))}
+                ${field('Started', escapeHtml(e.startedAt || 'not recorded'))}
+                ${field('Duration', escapeHtml(e.duration || 'not recorded'))}
+                ${field('Exit', escapeHtml([e.exitCode, e.executionStatus].filter(Boolean).join(' · ') || 'not recorded'))}
+                ${field('Initiated by', escapeHtml(e.initiatedBy || '—'))}
+                ${field('Parse status', escapeHtml(e.parseStatus || '—'))}
+                ${field('Attribution', escapeHtml(e.attribution || '—'))}
+              </dl>
+              ${e.rawStdout ? `<pre class="rdoc-pre">${escapeHtml(e.rawStdout)}</pre>` : ''}
+              ${e.rawStderr ? `<pre class="rdoc-pre">${escapeHtml(e.rawStderr)}</pre>` : ''}
+              ${e.note ? `<p class="rdoc-enote">${escapeHtml(e.note)}</p>` : ''}
+            </article>`).join('') : '<p class="rdoc-empty-txt">No evidence recorded.</p>'}
+        </section>`;
+
+  const attribution = `
+        <section class="rdoc-block">
+          <div class="rdoc-sechead"><h2>Attribution</h2><span class="sn">05</span></div>
+          <div class="rdoc-attrib">${(snapshot.attribution || []).map((s) => `<div class="rdoc-acard"><h4>${escapeHtml(s.title)}</h4><ul>${(s.items || []).map((i) => `<li>${escapeHtml(i)}</li>`).join('') || '<li class="rdoc-empty-txt">None recorded.</li>'}</ul></div>`).join('')}</div>
+        </section>`;
+
+  const gapsBlock = `
+        <section class="rdoc-block">
+          <div class="rdoc-sechead"><h2>Known capture gaps</h2><span class="sn">06</span></div>
+          <ul class="rdoc-gaps">${gaps.map((g) => `<li>${formatCaptureGap(g)}</li>`).join('') || '<li class="rdoc-empty-txt">None recorded.</li>'}</ul>
+        </section>`;
+
+  const footer = `<div class="rdoc-foot">${WP_MARK}<span><strong>WAYPOINT</strong> · Confidential · ${escapeHtml(snapshot.engagement || '')} · Snapshot ${escapeHtml(snapshot.version || 'v1')}</span></div>`;
+
   return `
     <main class="app-shell report-shell" aria-label="Frozen report snapshot">
       ${renderNav('report')}
-      <section class="report-hero artifact">
-        <div class="report-hero-head">
-          <span class="report-mark" aria-hidden="true">${WP_MARK}</span>
-          <div>
-            <p class="eyebrow">Waypoint · frozen report snapshot</p>
-            <h1>${escapeHtml(snapshot?.engagement || snapshot?.title || 'Loading report snapshot')}</h1>
-            <p class="subtitle">${snapshot ? `Version ${escapeHtml(snapshot.version)} · ${escapeHtml(snapshot.engagement)} · Cutoff ${escapeHtml(snapshot.cutoff)}` : 'The report is fetched from the authoritative API.'}</p>
-          </div>
-        </div>
-        <div class="report-toolbar">
-          ${renderThemeToggle()}
-          <button type="button" class="secondary-link" data-action="back-to-summit">Back to Summit</button>
-          <div class="report-downloads" role="group" aria-label="Report exports">
-            <button type="button" class="primary-button" data-action="open-pdf" ${snapshot ? '' : 'disabled'}>Full report (PDF)</button>
-            <button type="button" class="download-button" data-action="open-findings-pdf" ${snapshot ? '' : 'disabled'}>Findings (PDF)</button>
-            <button type="button" class="download-button" data-action="download-findings-csv" ${snapshot ? '' : 'disabled'}>Findings (CSV)</button>
-            <button type="button" class="download-button" data-action="download-bundle">Evidence bundle</button>
-          </div>
-        </div>
-      </section>
-      ${state.reportStatus === 'loading' ? '<div class="live-banner review"><strong>Loading</strong> Authoritative report snapshot in the pack…</div>' : ''}
-      ${state.reportStatus === 'error' ? `<div class="live-banner"><strong>Report error</strong> ${escapeHtml(state.reportError)}</div>` : ''}
-      ${snapshot ? `
-        <article class="report-page" aria-label="Printable engagement report">
-          <section class="report-section"><h2>Scope</h2><ul>${(snapshot.scope || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
-          <section class="report-section"><h2>Methodology</h2><ul>${(snapshot.methodology || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
-          <section class="report-section">
-            <h2>Findings</h2>
-            <div class="report-grid">
-              ${(snapshot.findings || []).map((finding) => `
-                <article class="report-card">
-                  <p class="report-badge">${escapeHtml(finding.severity)}</p>
-                  <h3>${escapeHtml(finding.title)}</h3>
-                  <p>${escapeHtml(finding.status ? `${finding.status} · ` : '')}${escapeHtml(finding.promotedBy ? `Promoted by ${finding.promotedBy}` : '')}</p>
-                  <p><strong>Evidence:</strong> ${escapeHtml((finding.evidence || []).map(evidenceRef).join(', '))}</p>
-                  <p><strong>Remediation:</strong> ${escapeHtml(finding.remediation)}</p>
-                </article>`).join('')}
-            </div>
-          </section>
-          <section class="report-section">
-            <h2>Evidence</h2>
-            <div class="report-grid">
-              ${(snapshot.evidence || []).map((item) => `
-                <article class="report-card">
-                  <p class="report-badge">${escapeHtml(item.label)}</p>
-                  <p><strong>Source:</strong> ${escapeHtml(item.command)}</p>
-                  <p><strong>Target:</strong> ${escapeHtml(item.target)}</p>
-                  <p><strong>Actor:</strong> ${escapeHtml(item.actor)}</p>
-                  <p><strong>Host:</strong> ${escapeHtml(item.host)}</p>
-                  <p><strong>Attribution:</strong> ${escapeHtml(item.attribution)}</p>
-                  <p class="report-snippet">${escapeHtml(item.rawStdout)}</p>
-                </article>`).join('')}
-            </div>
-          </section>
-          <section class="report-section"><h2>Attribution</h2><div class="report-grid">${(snapshot.attribution || []).map((section) => `<article class="report-card"><h3>${escapeHtml(section.title)}</h3><ul>${(section.items || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></article>`).join('')}</div></section>
-          <section class="report-section"><h2>Known capture gaps</h2><ul>${(snapshot.knownCaptureGaps || []).map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
-        </article>` : ''}
+      ${toolbar}
+      ${banners}
+      <article class="rdoc" aria-label="Engagement report preview">
+        ${cover}
+        ${exec}
+        ${findingsBlock}
+        ${methodology}
+        ${evidenceBlock}
+        ${attribution}
+        ${gapsBlock}
+        ${footer}
+      </article>
     </main>`;
 }
 
