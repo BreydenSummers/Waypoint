@@ -2014,9 +2014,9 @@ function mTrailSVG(trails, positions) {
 
 /* ============================ Left nav ============================ */
 const NAV_ITEMS = [
-  // "Trail" = a dashed winding path from a start dot to an X-marks-the-spot
-  // (recreated after the Noun Project "Trail" mark by Jacqueline Sarah Brown).
-  { key: 'trail', label: 'Trail', icon: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="4.5" cy="16.5" r="2.1" fill="currentColor" stroke="none"/><path d="M5.6 14.8 C 7.2 12.2 3.6 10.6 5.6 8.2 C 7.2 6.2 10.4 7.2 11.4 4.2" stroke-dasharray="0.1 3.2"/><path d="M15.5 5 L20.5 10 M20.5 5 L15.5 10"/></g>' },
+  // "Trail" = a dotted S-curve running the 45° diagonal from a start dot
+  // (bottom-left) to an X-marks-the-spot (top-right).
+  { key: 'trail', label: 'Trail', icon: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="4" cy="20" r="2.1" fill="currentColor" stroke="none"/><path d="M6.5 18.2 C 12 20.8, 15.8 15.6, 11.9 12.1 C 8 8.6, 11.8 3.2, 17.4 5.9" stroke-dasharray="0.1 3.2"/><path d="M17.6 1.6 L22 6 M22 1.6 L17.6 6"/></g>' },
   { key: 'devices', label: 'Assets', icon: '<rect x="4" y="4" width="16" height="4" rx="1.5"/><rect x="4" y="10" width="16" height="4" rx="1.5"/><rect x="4" y="16" width="16" height="4" rx="1.5"/>' },
   { key: 'captures', label: 'Captures', icon: '<rect x="3" y="4" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="m7 9 3 3-3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M13 15h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>' },
   { key: 'map', label: 'Map', icon: '<path d="M3 20 L9 7 L13 14 L16 9 L21 20 Z"/><path d="M9 7 L11 10 L7 10 Z" fill="#fff"/>' },
