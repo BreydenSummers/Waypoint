@@ -32,19 +32,20 @@ type entityPageCursor struct {
 }
 
 type entityReadResponse struct {
-	ContractVersion string                    `json:"contractVersion"`
-	ID              string                    `json:"id"`
-	EngagementID    string                    `json:"engagementId"`
-	Kind            string                    `json:"kind"`
-	Identifiers     []captureEntityIdentifier `json:"identifiers"`
-	Attributes      json.RawMessage           `json:"attributes"`
-	TierOverride    *int                      `json:"tierOverride,omitempty"`
-	Access          entityAccessRollup        `json:"access"`
-	Credentials     []credentialSummary       `json:"credentials"`
-	Observations    []entityObservationItem   `json:"observations"`
-	FirstSeen       time.Time                 `json:"firstSeen"`
-	LastSeen        time.Time                 `json:"lastSeen"`
-	Revision        int                       `json:"revision"`
+	ContractVersion  string                    `json:"contractVersion"`
+	ID               string                    `json:"id"`
+	EngagementID     string                    `json:"engagementId"`
+	Kind             string                    `json:"kind"`
+	Identifiers      []captureEntityIdentifier `json:"identifiers"`
+	Attributes       json.RawMessage           `json:"attributes"`
+	TierOverride     *int                      `json:"tierOverride,omitempty"`
+	SeverityOverride *string                   `json:"severityOverride,omitempty"`
+	Access           entityAccessRollup        `json:"access"`
+	Credentials      []credentialSummary       `json:"credentials"`
+	Observations     []entityObservationItem   `json:"observations"`
+	FirstSeen        time.Time                 `json:"firstSeen"`
+	LastSeen         time.Time                 `json:"lastSeen"`
+	Revision         int                       `json:"revision"`
 }
 
 // entityAccessRollup summarises how much access an operator has established on an
@@ -84,6 +85,7 @@ type entityReadRow struct {
 	MergedIntoEntityID sql.NullString
 	Attributes         json.RawMessage
 	TierOverride       sql.NullInt64
+	SeverityOverride   sql.NullString
 	FirstSeen          time.Time
 	LastSeen           time.Time
 }
@@ -188,9 +190,18 @@ func handleEntityList(w http.ResponseWriter, r *http.Request, db *sql.DB, actor 
 	writeJSONWithHeaders(w, http.StatusOK, page, reqID)
 }
 
-type entityTierOverrideRequest struct {
-	TierOverride     *int `json:"tierOverride"`
-	ExpectedRevision *int `json:"expectedRevision,omitempty"`
+// entityPatchRequest carries an operator's manual overrides. Each override
+// field is a raw message so the handler can tell "field absent" (nil) from
+// "field present and null" (clear the override) — a PATCH touches only the
+// override it names.
+type entityPatchRequest struct {
+	TierOverride     json.RawMessage `json:"tierOverride,omitempty"`
+	SeverityOverride json.RawMessage `json:"severityOverride,omitempty"`
+	ExpectedRevision *int            `json:"expectedRevision,omitempty"`
+}
+
+var validSeverityOverrides = map[string]struct{}{
+	"info": {}, "low": {}, "medium": {}, "high": {}, "critical": {},
 }
 
 func handleEntityItem(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, entityID string) {
@@ -204,7 +215,7 @@ func handleEntityItem(w http.ResponseWriter, r *http.Request, db *sql.DB, actor 
 		return
 	}
 	if r.Method == http.MethodPatch {
-		handleEntityTierOverride(w, r, db, actor, reqID, entityID)
+		handleEntityOverridePatch(w, r, db, actor, reqID, entityID)
 		return
 	}
 
@@ -222,12 +233,14 @@ func handleEntityItem(w http.ResponseWriter, r *http.Request, db *sql.DB, actor 
 	writeJSONWithHeaders(w, http.StatusOK, item, reqID)
 }
 
-// handleEntityTierOverride sets or clears an operator's tier override on an
-// entity. Operator/owner only; revision-guarded and audit-logged. A null
-// tierOverride clears the override (revert to the derived tier).
-func handleEntityTierOverride(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, entityID string) {
+// handleEntityOverridePatch sets or clears an operator's manual override on an
+// entity — the AD tier (from the Assets page) or the board severity (dragged
+// between risk columns). Operator/owner only; revision-guarded and audit-logged.
+// A null override value clears it (revert to the derived value). Exactly one
+// override field must be present per request.
+func handleEntityOverridePatch(w http.ResponseWriter, r *http.Request, db *sql.DB, actor actorRecord, reqID, entityID string) {
 	if !isLifecycleOperator(actor) {
-		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusForbidden), Status: http.StatusForbidden, Code: "forbidden", RequestID: reqID, Retryable: false, Detail: "only an operator or owner can override an asset's tier."})
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusForbidden), Status: http.StatusForbidden, Code: "forbidden", RequestID: reqID, Retryable: false, Detail: "only an operator or owner can override an asset."})
 		return
 	}
 	body, err := ioReadAllLimited(r.Body, 1<<16)
@@ -235,16 +248,55 @@ func handleEntityTierOverride(w http.ResponseWriter, r *http.Request, db *sql.DB
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: "request body is invalid"})
 		return
 	}
-	var req entityTierOverrideRequest
+	var req entityPatchRequest
 	if err := decodeStrictJSON(body, &req); err != nil {
 		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: err.Error()})
 		return
 	}
-	if req.TierOverride != nil && (*req.TierOverride < 0 || *req.TierOverride > 2) {
-		pb := badField("/tierOverride", "invalid_range", "tierOverride must be 0, 1, 2, or null.")
-		pb.RequestID = reqID
-		writeProblem(w, *pb)
+	if (req.TierOverride != nil) == (req.SeverityOverride != nil) {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: "provide exactly one of tierOverride or severityOverride."})
 		return
+	}
+
+	// Resolve which override this PATCH targets into a column, a DB argument
+	// (nil → NULL/clear), an audit event type, and the value echoed to the
+	// audit log — so the tx machinery below is written once.
+	var column, auditType string
+	var overrideArg, auditValue any
+	if req.TierOverride != nil {
+		var tier *int
+		if err := json.Unmarshal(req.TierOverride, &tier); err != nil {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: "tierOverride must be a number or null."})
+			return
+		}
+		if tier != nil && (*tier < 0 || *tier > 2) {
+			pb := badField("/tierOverride", "invalid_range", "tierOverride must be 0, 1, 2, or null.")
+			pb.RequestID = reqID
+			writeProblem(w, *pb)
+			return
+		}
+		column, auditType, auditValue = "tier_override", "entity.tier-overridden", tier
+		if tier != nil {
+			overrideArg = *tier
+		}
+	} else {
+		var sev *string
+		if err := json.Unmarshal(req.SeverityOverride, &sev); err != nil {
+			writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusBadRequest), Status: http.StatusBadRequest, Code: "invalid_request", RequestID: reqID, Retryable: false, Detail: "severityOverride must be a string or null."})
+			return
+		}
+		if sev != nil {
+			if _, ok := validSeverityOverrides[*sev]; !ok {
+				pb := badField("/severityOverride", "invalid_value", "severityOverride must be info, low, medium, high, critical, or null.")
+				pb.RequestID = reqID
+				writeProblem(w, *pb)
+				return
+			}
+		}
+		column, auditType, auditValue = "severity_override", "entity.severity-overridden", sev
+		if sev != nil {
+			overrideArg = *sev
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -271,16 +323,14 @@ func handleEntityTierOverride(w http.ResponseWriter, r *http.Request, db *sql.DB
 	}
 
 	newRevision := revision + 1
-	var overrideArg any
-	if req.TierOverride != nil {
-		overrideArg = *req.TierOverride
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE entity SET tier_override = $3, revision = $4, updated_at = now() WHERE engagement_id = $1 AND id = $2`, actor.EngagementID, entityID, overrideArg, newRevision); err != nil {
-		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "update tier override failed"})
+	// column is a fixed identifier chosen above (never user input), so it is safe
+	// to interpolate into the statement.
+	if _, err := tx.ExecContext(ctx, `UPDATE entity SET `+column+` = $3, revision = $4, updated_at = now() WHERE engagement_id = $1 AND id = $2`, actor.EngagementID, entityID, overrideArg, newRevision); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "update override failed"})
 		return
 	}
-	if err := appendEntityAuditEvent(ctx, tx, actor, reqID, "entity.tier-overridden", entityID, newRevision, map[string]any{"tierOverride": req.TierOverride, "revision": newRevision}); err != nil {
-		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "audit tier override failed"})
+	if err := appendEntityAuditEvent(ctx, tx, actor, reqID, auditType, entityID, newRevision, map[string]any{column: auditValue, "revision": newRevision}); err != nil {
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "audit override failed"})
 		return
 	}
 	item, err := loadEntityReadResponseWithTx(ctx, tx, actor.EngagementID, entityID)
@@ -289,7 +339,7 @@ func handleEntityTierOverride(w http.ResponseWriter, r *http.Request, db *sql.DB
 		return
 	}
 	if err := tx.Commit(); err != nil {
-		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "commit tier override failed"})
+		writeProblem(w, captureProblem{Type: "about:blank", Title: http.StatusText(http.StatusInternalServerError), Status: http.StatusInternalServerError, Code: "internal_error", RequestID: reqID, Retryable: true, Detail: "commit override failed"})
 		return
 	}
 	writeJSONWithHeaders(w, http.StatusOK, item, reqID)
@@ -431,20 +481,26 @@ func loadEntityReadResponseWithTx(ctx context.Context, q queryer, engagementID, 
 		v := int(row.TierOverride.Int64)
 		tierOverride = &v
 	}
+	var severityOverride *string
+	if row.SeverityOverride.Valid {
+		v := row.SeverityOverride.String
+		severityOverride = &v
+	}
 	return entityReadResponse{
-		ContractVersion: entityReadContractVersion,
-		ID:              row.ID,
-		EngagementID:    row.EngagementID,
-		Kind:            row.Kind,
-		Identifiers:     entityIdentifiersFromRow(row, observations),
-		Attributes:      normalizeJSONObject(row.Attributes),
-		TierOverride:    tierOverride,
-		Access:          access,
-		Credentials:     creds,
-		Observations:    observations,
-		FirstSeen:       row.FirstSeen,
-		LastSeen:        row.LastSeen,
-		Revision:        row.Revision,
+		ContractVersion:  entityReadContractVersion,
+		ID:               row.ID,
+		EngagementID:     row.EngagementID,
+		Kind:             row.Kind,
+		Identifiers:      entityIdentifiersFromRow(row, observations),
+		Attributes:       normalizeJSONObject(row.Attributes),
+		TierOverride:     tierOverride,
+		SeverityOverride: severityOverride,
+		Access:           access,
+		Credentials:      creds,
+		Observations:     observations,
+		FirstSeen:        row.FirstSeen,
+		LastSeen:         row.LastSeen,
+		Revision:         row.Revision,
 	}, nil
 }
 
@@ -551,20 +607,20 @@ func loadCanonicalEntityRow(ctx context.Context, q queryer, engagementID, entity
 	var mergedInto sql.NullString
 	if err := q.QueryRowContext(ctx, `
 		WITH RECURSIVE lineage AS (
-			SELECT id, engagement_id, kind, key_type, key_value, revision, merged_into_entity_id, attributes, tier_override, first_seen, last_seen
+			SELECT id, engagement_id, kind, key_type, key_value, revision, merged_into_entity_id, attributes, tier_override, severity_override, first_seen, last_seen
 			FROM entity
 			WHERE engagement_id = $1 AND id = $2
 			UNION ALL
-			SELECT e.id, e.engagement_id, e.kind, e.key_type, e.key_value, e.revision, e.merged_into_entity_id, e.attributes, e.tier_override, e.first_seen, e.last_seen
+			SELECT e.id, e.engagement_id, e.kind, e.key_type, e.key_value, e.revision, e.merged_into_entity_id, e.attributes, e.tier_override, e.severity_override, e.first_seen, e.last_seen
 			FROM entity e
 			JOIN lineage l ON e.id = l.merged_into_entity_id
 			WHERE e.engagement_id = $1
 		)
-		SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes, tier_override, first_seen, last_seen
+		SELECT id, engagement_id, kind, key_type, key_value, revision, COALESCE(merged_into_entity_id::text, ''), attributes, tier_override, severity_override, first_seen, last_seen
 		FROM lineage
 		WHERE merged_into_entity_id IS NULL
 		LIMIT 1
-	`, engagementID, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.TierOverride, &row.FirstSeen, &row.LastSeen); err != nil {
+	`, engagementID, entityID).Scan(&row.ID, &row.EngagementID, &row.Kind, &row.KeyType, &row.KeyValue, &row.Revision, &mergedInto, &row.Attributes, &row.TierOverride, &row.SeverityOverride, &row.FirstSeen, &row.LastSeen); err != nil {
 		return entityReadRow{}, err
 	}
 	if mergedInto.Valid && mergedInto.String != "" {

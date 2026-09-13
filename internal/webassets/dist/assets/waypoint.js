@@ -1,4 +1,4 @@
-const sourceHash = "bc3a041f60af0cb0413c5b8deb7e8422a1a6c3146b7bd92dd52a4a5327ed4d6d";
+const sourceHash = "f1a70dba9ca2f1979c2fce288c36e63e3994cd5b639baffe110a3883dc82a70f";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -70,6 +70,8 @@ const state = {
   boardShown: {},
   boardQuery: '',
   boardSort: 'sev',
+  boardDrag: null,
+  boardDropCol: null,
   assetKind: 'hosts',
   assetQuery: '',
   assetAccess: new Set(),
@@ -2055,12 +2057,19 @@ function mHostRows() {
   return (state.entities || []).map((e) => {
     const ip = mEntityIP(e);
     const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+    // An operator's board override wins over the finding-derived severity, and
+    // is flagged so the card can show it's manual (and offer a revert).
+    const derived = sev[e.id] || 'info';
+    const override = (e.severityOverride !== undefined && e.severityOverride !== null) ? e.severityOverride : null;
     return {
       id: e.id,
       name: mEntityName(e),
       ip: ip || '', kind: e.kind || 'host', role: a.role || '',
       subnet: mSubnet(ip) || mSegmentKey(e).label,
-      sev: sev[e.id] || 'info',
+      sev: override || derived,
+      derivedSev: derived,
+      sevOverride: override,
+      rev: e.revision || 0,
       seen: e.lastSeen ? formatTime(e.lastSeen) : '',
       seenRaw: e.lastSeen || '',
     };
@@ -2469,6 +2478,24 @@ async function setEntityTier(entityId, tier, expectedRevision) {
   } catch (_) { /* leave the entity unchanged on failure */ }
   render();
 }
+
+// setEntitySeverity sets or clears (sev === null) an operator's manual board
+// severity override, then swaps the updated entity into state. Revision-guarded
+// server-side; on any failure we leave the entity as-is and re-render, so a
+// rejected drag snaps the card back to where it was.
+async function setEntitySeverity(entityId, sev, expectedRevision) {
+  try {
+    const response = await fetch(`/api/v1/entities/${entityId}`, {
+      method: 'PATCH',
+      headers: { ...authHeaders(state.token, newRequestId()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ severityOverride: sev, expectedRevision }),
+    });
+    if (!response.ok) throw new Error(await readProblem(response));
+    const updated = await response.json();
+    state.entities = (state.entities || []).map((ent) => (ent.id === updated.id ? updated : ent));
+  } catch (_) { /* leave the entity unchanged on failure */ }
+  render();
+}
 function openAssetDossier(id) { state.drawer = { kind: 'asset', id }; render(); }
 function openCaptureDrawer(id, from) { state.drawer = { kind: 'capture', id, from: from || null }; render(); }
 function closeDrawer(silent) { const had = !!state.drawer; state.drawer = null; if (had && !silent) render(); }
@@ -2633,7 +2660,7 @@ function mBoardColsHTML() {
   const rows = mBoardRows();
   const buckets = { info: [], low: [], medium: [], high: [], critical: [] };
   rows.forEach((r) => { (buckets[r.sev] || buckets.info).push(r); });
-  const cardHTML = (r) => `<div class="board-card"><div class="board-card-top"><span class="board-id mono">${escapeHtml(r.name)}</span><span class="sev-tag"><i style="background:${MSEV_COLOR[r.sev]}"></i>${MSEV_LABEL[r.sev]}</span></div><div class="board-ip mono muted">${escapeHtml(r.ip || r.subnet)}</div>${r.role ? `<div class="board-chips"><span class="board-chip">${escapeHtml(r.role)}</span><span class="board-chip">${escapeHtml(r.kind)}</span></div>` : ''}</div>`;
+  const cardHTML = (r) => `<div class="board-card" draggable="true" data-drag-card data-id="${escapeHtml(r.id)}" data-rev="${r.rev}" data-sev="${r.sev}"><div class="board-card-top"><span class="board-grip" aria-hidden="true">⠿</span><span class="board-id mono">${escapeHtml(r.name)}</span><span class="sev-tag"><i style="background:${MSEV_COLOR[r.sev]}"></i>${MSEV_LABEL[r.sev]}</span></div><div class="board-ip mono muted">${escapeHtml(r.ip || r.subnet)}</div>${r.role ? `<div class="board-chips"><span class="board-chip">${escapeHtml(r.role)}</span><span class="board-chip">${escapeHtml(r.kind)}</span></div>` : ''}${r.sevOverride ? `<button type="button" class="board-manual" data-action="clear-sev-override" data-id="${escapeHtml(r.id)}" data-rev="${r.rev}" title="Manual override — click to revert to the evidence-derived severity">manual ✕</button>` : ''}</div>`;
   const cols = BOARD_COLS.map((c) => {
     const list = buckets[c.key] || [];
     const shownN = state.boardShown[c.key] || BOARD_PAGE;
@@ -2642,7 +2669,7 @@ function mBoardColsHTML() {
     const ctrl = more > 0
       ? `<button type="button" class="board-more" data-action="board-more" data-col="${c.key}">↓ Show ${Math.min(BOARD_MORE, more)} more <span class="muted">(${more})</span></button>`
       : (list.length > BOARD_PAGE ? `<button type="button" class="board-more" data-action="board-more" data-col="${c.key}" data-collapse="1">↑ Collapse</button>` : '');
-    return `<div class="board-col"><div class="board-col-head"><span class="board-dot" style="background:${MSEV_COLOR[c.key]}"></span><span class="board-col-name">${c.label}</span><span class="board-count num">${list.length}</span></div><div class="board-cards">${shown.map(cardHTML).join('') || '<div class="board-empty">—</div>'}</div>${ctrl}</div>`;
+    return `<div class="board-col" data-drop-col="${c.key}"><div class="board-col-head"><span class="board-dot" style="background:${MSEV_COLOR[c.key]}"></span><span class="board-col-name">${c.label}</span><span class="board-count num">${list.length}</span></div><div class="board-cards">${shown.map(cardHTML).join('') || '<div class="board-empty">Drop a host here</div>'}</div>${ctrl}</div>`;
   }).join('');
   const findings = (state.findings || []).slice().sort((a, b) => MSEV_RANK[String(a.severity || 'info').toLowerCase()] - MSEV_RANK[String(b.severity || 'info').toLowerCase()]);
   const findingCards = findings.map((f) => { const s = String(f.severity || 'info').toLowerCase(); return `<div class="board-card"><div class="board-card-top"><span class="board-id mono">FND</span><span class="sev-tag"><i style="background:${MSEV_COLOR[s]}"></i>${MSEV_LABEL[s]}</span></div><h5 class="board-fh">${escapeHtml(f.title || 'Finding')}</h5><div class="board-ip muted">${escapeHtml(f.status || 'open')} · ${(f.affectedEntityIds || []).length} host${(f.affectedEntityIds || []).length === 1 ? '' : 's'}</div></div>`; }).join('') || '<div class="board-empty">No findings yet</div>';
@@ -3896,6 +3923,60 @@ function copyToClipboard(text, button) {
   }
 }
 
+// ---- Base-camp board drag-and-drop -----------------------------------------
+// Cards carry data-drag-card + id/rev/sev; columns carry data-drop-col=<sev>.
+// Dropping a card on a different column PATCHes a manual severity override (see
+// setEntitySeverity). state.boardDrag holds the in-flight card between events.
+function handleDragStart(event) {
+  const card = event.target.closest('[data-drag-card]');
+  if (!card) return;
+  state.boardDrag = { id: card.dataset.id, rev: Number(card.dataset.rev), fromSev: card.dataset.sev };
+  card.classList.add('dragging');
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    // Firefox needs data set for a drag to start at all.
+    try { event.dataTransfer.setData('text/plain', card.dataset.id); } catch (_) { /* ignore */ }
+  }
+}
+function handleDragOver(event) {
+  if (!state.boardDrag) return;
+  const col = event.target.closest('[data-drop-col]');
+  if (!col) return;
+  event.preventDefault(); // allow the drop
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+  if (col !== state.boardDropCol) {
+    if (state.boardDropCol) state.boardDropCol.classList.remove('drop-target');
+    col.classList.add('drop-target');
+    state.boardDropCol = col;
+  }
+}
+function handleDragLeave(event) {
+  const col = event.target.closest('[data-drop-col]');
+  if (col && col === state.boardDropCol && !col.contains(event.relatedTarget)) {
+    col.classList.remove('drop-target');
+    state.boardDropCol = null;
+  }
+}
+function handleDrop(event) {
+  const drag = state.boardDrag;
+  if (!drag) return;
+  const col = event.target.closest('[data-drop-col]');
+  clearBoardDragUI();
+  if (!col) return;
+  event.preventDefault();
+  const toSev = col.dataset.dropCol;
+  state.boardDrag = null;
+  if (toSev && toSev !== drag.fromSev) void setEntitySeverity(drag.id, toSev, drag.rev);
+}
+function handleDragEnd() {
+  clearBoardDragUI();
+  state.boardDrag = null;
+}
+function clearBoardDragUI() {
+  document.querySelectorAll('.board-card.dragging').forEach((el) => el.classList.remove('dragging'));
+  if (state.boardDropCol) { state.boardDropCol.classList.remove('drop-target'); state.boardDropCol = null; }
+}
+
 async function handleClick(event) {
   const target = event.target.closest('[data-action]');
   if (!target) return;
@@ -3989,6 +4070,7 @@ async function handleClick(event) {
   if (action === 'finding-attach-toggle') { const id = target.dataset.finding; state.attachFor = state.attachFor === id ? null : id; render(); return; }
   if (action === 'finding-attach') { await attachCaptureToFinding(target.dataset.finding, target.dataset.cap, Number(target.dataset.rev)); return; }
   if (action === 'set-tier') { await setEntityTier(target.dataset.id, target.dataset.tier, Number(target.dataset.rev)); return; }
+  if (action === 'clear-sev-override') { await setEntitySeverity(target.dataset.id, null, Number(target.dataset.rev)); return; }
   if (action === 'board-more') {
     const c = target.dataset.col;
     if (target.dataset.collapse) state.boardShown[c] = BOARD_PAGE;
@@ -4404,6 +4486,11 @@ async function boot() {
   root.addEventListener('submit', handleSubmit);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);
+  root.addEventListener('dragstart', handleDragStart);
+  root.addEventListener('dragover', handleDragOver);
+  root.addEventListener('dragleave', handleDragLeave);
+  root.addEventListener('drop', handleDrop);
+  root.addEventListener('dragend', handleDragEnd);
 
   await loadSetupState();
   if (state.setupRequired) {
