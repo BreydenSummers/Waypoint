@@ -3352,3 +3352,55 @@ html[data-theme='dark'] .snform-err { color: #e08a6a; }
   .subnets-shell { grid-template-columns: 1fr; }
   .subnet-side { position: static; max-height: none; }
 }
+
+/* Subnets · Grid mode: the block's address space as squares. Empty space stays
+   faint; occupied squares carry their evidence colour and, at higher
+   resolution, split into sub-range / per-IP cells. */
+.sngrid { display: grid; gap: 3px; background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 14px; padding: 12px; }
+.sngc { position: relative; aspect-ratio: 1; border-radius: 4px; background: color-mix(in srgb, var(--stone) 14%, transparent); min-width: 0; display: flex; align-items: center; justify-content: center; }
+.sngc.on { cursor: pointer; }
+.sngc.on:hover { outline: 2px solid var(--harvest); outline-offset: 1px; z-index: 1; }
+.sngc.on:focus-visible { outline: 2px solid var(--harvest); outline-offset: 1px; z-index: 1; }
+.sngc.hosts { background: color-mix(in srgb, var(--gc, var(--forest)) 34%, transparent); box-shadow: inset 0 0 0 1.5px var(--gc, var(--forest)); }
+.sngc.scanned { background: color-mix(in srgb, var(--forest) 8%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--forest) 55%, transparent); border: 0; }
+.sngc.is-sel { outline: 2.5px solid var(--harvest); outline-offset: 1px; z-index: 1; }
+.sngc.dim { opacity: 0.3; }
+.sngc-n { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; font-weight: 700; color: var(--page-text); }
+.sngc-dec { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; background: var(--harvest); transform: rotate(45deg); }
+.sngc.split { padding: 2px; }
+.sngsub { display: grid; gap: 1px; width: 100%; height: 100%; }
+.sngip { border-radius: 1.5px; background: color-mix(in srgb, var(--stone) 16%, transparent); min-width: 0; min-height: 0; }
+.sngip.on { background: var(--gc, var(--forest)); cursor: default; }
+.sngip.on.soft { background: color-mix(in srgb, var(--gc, var(--harvest)) 70%, transparent); }
+.sngip.on[data-action] { cursor: pointer; }
+.sngip.on[data-action]:hover, .sngip.on[data-action]:focus-visible { outline: 1.5px solid var(--page-text); z-index: 1; }
+.snglegend { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-size: 11.5px; color: var(--chrome-muted); }
+.sngl { display: inline-flex; align-items: center; gap: 6px; }
+.sngl i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.sngl .sngl-scan, .sngl-scan { width: 10px; height: 10px; border-radius: 3px; display: inline-block; box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--forest) 55%, transparent); background: color-mix(in srgb, var(--forest) 8%, transparent); }
+.snres { align-items: center; gap: 2px; }
+.snres button { font-size: 15px; font-weight: 800; padding: 5px 12px; line-height: 1; }
+.snres button:disabled { opacity: 0.35; cursor: default; }
+.snres-label { font-size: 12px; font-weight: 700; color: var(--chrome-muted); padding: 0 6px; min-width: 82px; text-align: center; }
+
+/* Subnet label editing in the side rail. */
+.snside-title { display: flex; align-items: center; gap: 8px; }
+.snside-label { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--page-text); }
+.snedit-btn { border: 1px solid var(--card-border); background: var(--card-surface); color: var(--chrome-muted); font-size: 12px; border-radius: 7px; padding: 2px 8px; cursor: pointer; }
+.snedit-btn:hover, .snedit-btn.on { border-color: var(--harvest); color: var(--page-text); }
+.snform.snedit { padding: 8px 10px; margin: 6px 0 8px; gap: 8px; }
+.snform.snedit input { min-width: 0; flex: 1; }
+
+/* Grid mode, zoomed: occupied ranges as tiles with legible inner cells. */
+.sntiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 14px; padding: 12px; }
+.sntile { border: 1px solid var(--card-border); background: var(--page-bg); border-radius: 10px; padding: 8px; }
+.sntile[data-action] { cursor: pointer; }
+.sntile[data-action]:hover, .sntile[data-action]:focus-visible { outline: 2px solid var(--harvest); outline-offset: 1px; }
+.sntile.is-sel { outline: 2.5px solid var(--harvest); outline-offset: 1px; }
+.sntile.dim { opacity: 0.35; }
+.sntile-head { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; color: var(--page-text); margin-bottom: 6px; }
+.sntile-head .sngc-dec { position: static; flex: 0 0 auto; }
+.sntile-cap { margin-left: auto; font-weight: 500; font-size: 10.5px; color: var(--chrome-muted); white-space: nowrap; }
+.sntile .sngsub { aspect-ratio: 1; gap: 2px; }
+.sntile-none { font-size: 11px; padding: 10px 2px; }
+.sngc-hidden { font-size: 11.5px; margin-top: 6px; }

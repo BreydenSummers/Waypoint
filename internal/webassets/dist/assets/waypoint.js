@@ -1,4 +1,4 @@
-const sourceHash = "219930fda99ec5fc622bb4fe40f987c9f0c2ba9d5ab3b2a5f34776e1ba19d611";
+const sourceHash = "7eecd1da9a9af57ece38759166b68c14247b6b1f24ba2dd79127ed0358e5e7ff";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -87,6 +87,7 @@ const state = {
   mapHostSort: { key: 'sev', dir: 'asc' },
   mapHostLimit: MAP_HOST_PAGE,
   subnetMode: 'grid',
+  subnetRes: 0,
   subnetQuery: '',
   subnetSelected: '',
   subnetReach: new Set(),
@@ -99,6 +100,10 @@ const state = {
   subnetFormStatus: 'idle',
   subnetFormError: '',
   subnetDraft: { cidr: '', label: '' },
+  subnetEditOpen: false,
+  subnetEditDraft: '',
+  subnetEditStatus: 'idle',
+  subnetEditError: '',
   engagementScope: '',
   drawer: null,
   evidenceCache: {},
@@ -2136,12 +2141,32 @@ function mBuildSubnetData() {
     if (!byCidr[cidr]) byCidr[cidr] = { cidr, label: '', hosts: [], worst: 'info', findings: 0, declared: false, declaredNote: '', scanned: false, sweptBy: [], deviceIndex: {} };
     return byCidr[cidr];
   };
+  // Every individual address with evidence against it, for the Grid's IP-level
+  // resolution: hosts we observed, exec hosts, targets captures hit, pivots.
+  const ipIndex = {};
+  const noteIP = (ipRaw, kind, ent) => {
+    const ip = String(ipRaw || '').replace(/\/\d{1,2}$/, '');
+    const v = mIPInt(ip);
+    if (v === null) return;
+    let rec = ipIndex[ip];
+    if (!rec) { rec = { ip, int: v, kinds: {}, entityId: '', name: '', sev: 'info' }; ipIndex[ip] = rec; }
+    rec.kinds[kind] = true;
+    if (ent) {
+      rec.entityId = ent.id;
+      if (!rec.name) rec.name = mEntityName(ent);
+      const s = sev[ent.id];
+      if (s && MSEV_RANK[s] < MSEV_RANK[rec.sev]) rec.sev = s;
+    }
+  };
 
   // 1) Residents: observed entity IPs bucket into /24 rows.
   (state.entities || []).forEach((e) => {
     if (e.kind === 'subnet') return;
-    const cidr = mSubnet(mEntityIP(e));
+    const ip = mEntityIP(e);
+    if (!ip) return;
+    const cidr = mSubnet(ip);
     if (!cidr) return;
+    noteIP(ip, 'host', e);
     const row = ensure(cidr);
     row.hosts.push(e);
     const s = sev[e.id] || 'info';
@@ -2221,14 +2246,25 @@ function mBuildSubnetData() {
   };
   const edgeMap = {};
   (state.actions || []).forEach((ac) => {
-    const targets = targetSubnetsFor(ac);
-    if (!targets.length) return;
     const net = (ac.capture && ac.capture.network) || {};
     const exec = execAddr(ac);
     const execEnt = exec ? entByName[exec.toLowerCase()] : null;
     const from = mSubnet(exec);
     const range = rangeOf(ac);
     const sweep = range && range.bits < 24 ? mCidrText(range) : '';
+    if (exec) noteIP(exec, 'exec', execEnt);
+    if (!range) {
+      const rawTarget = String((ac.capture && ac.capture.target && ac.capture.target.value) || '').toLowerCase();
+      const tm = rawTarget.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+      if (tm) noteIP(tm[1], 'target', entByName[tm[1]] || entByName[rawTarget]);
+      else if (entByName[rawTarget]) noteIP(mEntityIP(entByName[rawTarget]), 'target', entByName[rawTarget]);
+    }
+    (net.pivotChain || []).forEach((hop) => {
+      const hopEnt = hop && hop.host ? entByName[String(hop.host).toLowerCase()] : null;
+      if (hopEnt) noteIP(mEntityIP(hopEnt), 'pivot', hopEnt);
+    });
+    const targets = targetSubnetsFor(ac);
+    if (!targets.length) return;
     targets.forEach((cidr) => {
       const row = byCidr[cidr];
       if (!row) return;
@@ -2249,6 +2285,13 @@ function mBuildSubnetData() {
     });
   });
 
+  const inPlay = Object.values(ipIndex).sort((a, b) => a.int - b.int);
+  const ipsByCidr = {};
+  inPlay.forEach((rec) => {
+    const cidr = mSubnet(rec.ip);
+    if (!cidr) return;
+    (ipsByCidr[cidr] = ipsByCidr[cidr] || []).push(rec);
+  });
   const rows = Object.values(byCidr).map((row) => {
     const devices = Object.values(row.deviceIndex);
     devices.forEach((d) => { d.best = d.tiers.resident ? 'resident' : (d.tiers.demonstrated ? 'demonstrated' : 'pivot'); });
@@ -2262,10 +2305,11 @@ function mBuildSubnetData() {
       scannedOnly: !row.hosts.length,
       devices,
       groups,
+      ips: ipsByCidr[row.cidr] || [],
     };
   });
   const edges = Object.values(edgeMap).sort((a, b) => b.count - a.count);
-  return { rows, byCidr, scope, declaredBlocks, edges };
+  return { rows, byCidr, scope, declaredBlocks, edges, inPlay };
 }
 
 // Rows group into blocks: the containing scope/declared range if any, else the
@@ -2370,7 +2414,141 @@ function mSubnetBlocksHTML() {
 }
 function drawSubnetRows() {
   const wrap = document.getElementById('subnet-blocks');
-  if (wrap) wrap.innerHTML = state.subnetMode === 'grid' ? mSubnetBlocksHTML() : mSubnetReachHTML();
+  if (wrap) wrap.innerHTML = state.subnetMode === 'list' ? mSubnetBlocksHTML() : (state.subnetMode === 'reach' ? mSubnetReachHTML() : mSubnetGridHTML());
+}
+
+/* ---- Grid: the block's address space as squares. Each square is a range;
+   stepping the resolution up splits occupied squares into their sub-ranges
+   and finally into individual addresses, so the IPs actually in play (hosts,
+   exec hosts, capture targets, pivots) sit visibly inside their space. ---- */
+const SN_IP_KIND_LABEL = { host: 'observed host', exec: 'exec host', target: 'capture target', pivot: 'pivot host' };
+const SN_RES_LABEL = ['Subnets', 'Sub-ranges', 'IPs'];
+function mIpRecColor(rec) {
+  if (rec.kinds.host) return rec.sev !== 'info' ? MSEV_COLOR[rec.sev] : MPAL.forest;
+  if (rec.kinds.exec) return MPAL.lantern;
+  if (rec.kinds.pivot) return MPAL.rust;
+  return MPAL.harvest;
+}
+function mIpRecTitle(rec) {
+  const kinds = Object.keys(rec.kinds).map((k) => SN_IP_KIND_LABEL[k]).join(', ');
+  return `${rec.ip}${rec.name ? ` · ${rec.name}` : ''} · ${kinds}${rec.sev !== 'info' ? ` · worst finding: ${MSEV_LABEL[rec.sev]}` : ''}`;
+}
+// Strongest evidence in a range: any observed host wins (worst finding first),
+// then exec > pivot > target.
+function mIpRollup(recs) {
+  let best = null; let score = -1;
+  recs.forEach((rec) => {
+    const s = rec.kinds.host ? 400 + (4 - MSEV_RANK[rec.sev]) : rec.kinds.exec ? 300 : rec.kinds.pivot ? 200 : 100;
+    if (s > score) { score = s; best = rec; }
+  });
+  return best;
+}
+function mSubnetGridHTML() {
+  const data = mSubnetData();
+  const blocks = mSubnetBlocks(data.rows).filter((b) => b.parsed);
+  if (!blocks.length) return '<div class="board-empty">No subnets yet — the grid fills in as captures land or when an operator declares a range.</div>';
+  const visible = new Set(mFilteredSubnets().map((r) => r.cidr));
+  const rowByCidr = {};
+  data.rows.forEach((r) => { rowByCidr[r.cidr] = r; });
+  const steps = Math.max(0, Math.min(2, state.subnetRes));
+  const cellSize = (bits) => Math.pow(2, 32 - bits);
+  const ipText = (v) => `${v >>> 24}.${(v >>> 16) & 255}.${(v >>> 8) & 255}.${v & 255}`;
+  const recsIn = (recs, start, size) => recs.filter((r) => r.int >= start && r.int < start + size);
+  // Inner grid for one occupied range: its sub-ranges (rollup colour) or, at
+  // full depth, one cell per address — hosts solid, other evidence softened.
+  const innerGrid = (start, baseBits, innerBits, recs, blockRecs) => {
+    const subCells = Math.pow(2, innerBits - baseBits);
+    const subCols = Math.pow(2, Math.ceil((innerBits - baseBits) / 2));
+    const subs = [];
+    for (let j = 0; j < subCells; j += 1) {
+      const s2 = (start + j * cellSize(innerBits)) >>> 0;
+      if (innerBits === 32) {
+        const rec = blockRecs.find((r) => r.int === s2);
+        if (!rec) { subs.push(`<span class="sngip" title="${escapeHtml(ipText(s2))}"></span>`); continue; }
+        const open = rec.entityId ? ` data-action="open-asset" data-id="${escapeHtml(rec.entityId)}" tabindex="0" role="button"` : '';
+        subs.push(`<span class="sngip on${rec.kinds.host ? '' : ' soft'}"${open} style="--gc:${mIpRecColor(rec)}" title="${escapeHtml(mIpRecTitle(rec))}" aria-label="${escapeHtml(mIpRecTitle(rec))}"></span>`);
+      } else {
+        const subRecs = recsIn(recs, s2, cellSize(innerBits));
+        if (!subRecs.length) { subs.push(`<span class="sngip" title="${escapeHtml(`${ipText(s2)}/${innerBits}`)}"></span>`); continue; }
+        const rep = mIpRollup(subRecs);
+        subs.push(`<span class="sngip on" style="--gc:${mIpRecColor(rep)}" title="${escapeHtml(`${ipText(s2)}/${innerBits} · ${subRecs.length} address${subRecs.length === 1 ? '' : 'es'} in play`)}"></span>`);
+      }
+    }
+    return `<span class="sngsub" style="grid-template-columns:repeat(${subCols},1fr)">${subs.join('')}</span>`;
+  };
+  return blocks.map((b) => {
+    const B = b.parsed.bits;
+    const baseBits = B >= 16 ? 24 : B + 8; // cap a block at 256 squares
+    const cells = Math.pow(2, baseBits - B);
+    const cols = Math.pow(2, Math.ceil((baseBits - B) / 2));
+    const blockStart = mCidrBase(b.parsed);
+    const blockRecs = data.inPlay.filter((r) => mCidrContainsIP(b.parsed, r.int));
+    const innerBits = Math.min(baseBits + 4 * steps, 32);
+    const head = `<header class="snblock-head"><span class="snblock-cidr mono">${escapeHtml(b.key)}</span>${b.label ? `<span class="snblock-label">${escapeHtml(b.label)}</span>` : ''}<span class="snblock-kind ${b.kind}">${SN_BLOCK_KIND[b.kind]}</span><span class="snblock-count">${b.rows.length ? `${b.rows.length} subnet${b.rows.length === 1 ? '' : 's'} · ${blockRecs.length} address${blockRecs.length === 1 ? '' : 'es'} in play` : 'no captures yet'}</span></header>`;
+    if (steps > 0) {
+      // Zoomed in: only the occupied ranges, as tiles big enough that the
+      // sub-range / per-IP cells are actually legible; empty space is counted,
+      // not drawn.
+      const tiles = []; let hidden = 0;
+      for (let i = 0; i < cells; i += 1) {
+        const start = (blockStart + i * cellSize(baseBits)) >>> 0;
+        const cidr = `${ipText(start)}/${baseBits}`;
+        const recs = recsIn(blockRecs, start, cellSize(baseBits));
+        const finished = baseBits === 24 ? rowByCidr[cidr] : null;
+        if (!finished && !recs.length) { hidden += 1; continue; }
+        const sel = finished && state.subnetSelected === cidr ? ' is-sel' : '';
+        const dim = finished && !visible.has(cidr) ? ' dim' : '';
+        const act = finished ? ` data-action="subnet-select" data-cidr="${escapeHtml(cidr)}"` : '';
+        const cap = finished
+          ? `${finished.n} host${finished.n === 1 ? '' : 's'} · ${recs.length} in play`
+          : `${recs.length} address${recs.length === 1 ? '' : 'es'} in play`;
+        tiles.push(`<div class="sntile${sel}${dim}"${act} ${finished ? 'tabindex="0" role="button"' : ''} aria-label="${escapeHtml(cidr)}">
+          <div class="sntile-head"><span class="mono">${escapeHtml(cidr)}</span>${finished && finished.declared ? '<i class="sngc-dec" aria-hidden="true"></i>' : ''}<span class="sntile-cap">${escapeHtml(cap)}</span></div>
+          ${recs.length ? innerGrid(start, baseBits, innerBits, recs, blockRecs) : '<div class="sntile-none muted">scanned / declared — nothing seen inside yet</div>'}
+        </div>`);
+      }
+      const hiddenNote = hidden ? `<div class="sngc-hidden muted">${hidden} empty /${baseBits} range${hidden === 1 ? '' : 's'} not drawn</div>` : '';
+      return `<section class="snblock snblock-${b.kind}">${head}<div class="sntiles">${tiles.join('') || '<div class="board-empty">Nothing seen in this range yet.</div>'}</div>${hiddenNote}</section>`;
+    }
+    const cellHTML = [];
+    for (let i = 0; i < cells; i += 1) {
+      const start = (blockStart + i * cellSize(baseBits)) >>> 0;
+      const cidr = `${ipText(start)}/${baseBits}`;
+      const recs = recsIn(blockRecs, start, cellSize(baseBits));
+      const finished = baseBits === 24 ? rowByCidr[cidr] : null;
+      const occupied = !!(finished || recs.length);
+      const dim = finished && !visible.has(cidr) ? ' dim' : '';
+      if (!occupied) { cellHTML.push(`<span class="sngc" title="${escapeHtml(cidr)} — nothing seen"></span>`); continue; }
+      const sel = finished && state.subnetSelected === cidr ? ' is-sel' : '';
+      const act = finished ? ` data-action="subnet-select" data-cidr="${escapeHtml(cidr)}" tabindex="0" role="button" aria-label="${escapeHtml(cidr)}, ${finished.n} hosts"` : '';
+      const chip = finished && finished.declared ? '<i class="sngc-dec" aria-hidden="true"></i>' : '';
+      let cls = 'sngc on'; let style = ''; let body = '';
+      if (finished && finished.n > 0) {
+        style = ` style="--gc:${MSEV_COLOR[finished.worst]}"`;
+        cls += ' hosts';
+        body = `<span class="sngc-n">${finished.n}</span>`;
+      } else if (finished && (finished.scanned || finished.declared)) {
+        cls += ' scanned';
+      } else if (recs.length) {
+        style = ` style="--gc:${mIpRecColor(mIpRollup(recs))}"`;
+        cls += ' hosts';
+      }
+      const title = finished
+        ? `${cidr} · ${finished.n} host${finished.n === 1 ? '' : 's'} · ${recs.length} address${recs.length === 1 ? '' : 'es'} in play${finished.worst !== 'info' ? ` · worst: ${MSEV_LABEL[finished.worst]}` : ''}`
+        : `${cidr} · ${recs.length} address${recs.length === 1 ? '' : 'es'} in play`;
+      cellHTML.push(`<span class="${cls}${sel}${dim}"${act}${style} title="${escapeHtml(title)}">${chip}${body}</span>`);
+    }
+    return `<section class="snblock snblock-${b.kind}">${head}
+      <div class="sngrid" style="grid-template-columns:repeat(${cols},1fr)">${cellHTML.join('')}</div>
+    </section>`;
+  }).join('') + `<div class="snglegend">
+      <span class="afcap">Legend</span>
+      <span class="sngl"><i style="background:${MPAL.forest}"></i>observed host (worst finding colours it)</span>
+      <span class="sngl"><i style="background:${MPAL.lantern}"></i>exec host</span>
+      <span class="sngl"><i style="background:${MPAL.rust}"></i>pivot</span>
+      <span class="sngl"><i style="background:${MPAL.harvest}"></i>capture target</span>
+      <span class="sngl"><i class="sngl-scan"></i>scanned / declared, empty</span>
+    </div>`;
 }
 
 /* ---- Side panel: who can get into the selected subnet, by evidence tier ---- */
@@ -2402,7 +2580,15 @@ function mSubnetSideHTML() {
     </div>`;
   }).join('');
   const swept = sel.sweptBy.length ? `<p class="snside-swept muted">Covered by ${sel.sweptBy.map((s) => `<span class="mono">${escapeHtml(s)}</span>`).join(', ')}</p>` : '';
-  return `<h3>Subnet</h3><p class="territory-nm mono">${escapeHtml(sel.cidr)}</p><div class="territory-mt">${escapeHtml(meta.join(' · '))}</div>${swept}${groups}`;
+  // The label is operator-editable: saving it declares the subnet with the new
+  // label (an upsert), so an inferred row simply becomes a declared one.
+  const editForm = state.subnetEditOpen ? `<form class="snform snedit" data-action="subnet-rename">
+      <input data-action="subnet-edit-draft" value="${escapeHtml(state.subnetEditDraft)}" placeholder="Label, e.g. Faculty VLAN" aria-label="Subnet label" ${state.subnetEditStatus === 'saving' ? 'disabled' : ''}/>
+      <button type="submit" class="primary-button" ${state.subnetEditStatus === 'saving' ? 'disabled' : ''}>${state.subnetEditStatus === 'saving' ? 'Saving…' : 'Save'}</button>
+      ${state.subnetEditError ? `<span class="snform-err" role="alert">${escapeHtml(state.subnetEditError)}</span>` : ''}
+    </form>` : '';
+  const labelLine = sel.label ? `<p class="snside-label">${escapeHtml(sel.label)}</p>` : '';
+  return `<h3>Subnet</h3><div class="snside-title"><p class="territory-nm mono">${escapeHtml(sel.cidr)}</p><button type="button" class="snedit-btn${state.subnetEditOpen ? ' on' : ''}" data-action="subnet-edit-toggle" title="${sel.label ? 'Rename this subnet' : 'Give this subnet a label'}" aria-label="Edit subnet label">✎</button></div>${labelLine}${editForm}<div class="territory-mt">${escapeHtml(meta.join(' · '))}</div>${swept}${groups}`;
 }
 
 /* ---- Reach: subnet-to-subnet connections observed from captures ---- */
@@ -2479,6 +2665,30 @@ function mSubnetReachHTML() {
   </div>`;
 }
 
+async function renameSubnet() {
+  const sel = mSubnetSelected();
+  if (!sel) return;
+  const label = state.subnetEditDraft.trim();
+  if (!label) {
+    state.subnetEditError = 'Enter a label — clearing one is not supported yet.';
+    render();
+    return;
+  }
+  state.subnetEditStatus = 'saving';
+  state.subnetEditError = '';
+  render();
+  try {
+    await apiJsonPost('/api/v1/entities', state.token, { kind: 'subnet', cidr: sel.cidr, label });
+    state.subnetEditStatus = 'idle';
+    state.subnetEditOpen = false;
+    await refreshEntities();
+  } catch (error) {
+    state.subnetEditStatus = 'idle';
+    state.subnetEditError = error instanceof Error ? error.message : 'Unable to save label';
+  }
+  render();
+}
+
 async function declareSubnet() {
   const cidr = state.subnetDraft.cidr.trim();
   if (!mParseCidr(cidr)) {
@@ -2525,8 +2735,14 @@ function renderSubnetsView() {
   }).join('');
   const modeSeg = `<div class="aseg" role="group" aria-label="Subnet view mode">
       <button class="${state.subnetMode === 'grid' ? 'on' : ''}" data-action="subnet-mode" data-mode="grid" aria-pressed="${state.subnetMode === 'grid'}">Grid</button>
+      <button class="${state.subnetMode === 'list' ? 'on' : ''}" data-action="subnet-mode" data-mode="list" aria-pressed="${state.subnetMode === 'list'}">List</button>
       <button class="${state.subnetMode === 'reach' ? 'on' : ''}" data-action="subnet-mode" data-mode="reach" aria-pressed="${state.subnetMode === 'reach'}">Reach</button>
     </div>`;
+  const resCtl = state.subnetMode === 'grid' ? `<div class="aseg snres" role="group" aria-label="Grid resolution">
+      <button data-action="subnet-res" data-dir="-1" ${state.subnetRes <= 0 ? 'disabled' : ''} aria-label="Coarser resolution">−</button>
+      <span class="snres-label">${SN_RES_LABEL[Math.max(0, Math.min(2, state.subnetRes))]}</span>
+      <button data-action="subnet-res" data-dir="1" ${state.subnetRes >= 2 ? 'disabled' : ''} aria-label="Finer resolution">+</button>
+    </div>` : '';
   const form = state.subnetFormOpen ? `<form class="snform" data-action="subnet-declare">
       <label>CIDR<input data-action="subnet-draft" data-field="cidr" value="${escapeHtml(state.subnetDraft.cidr)}" placeholder="10.9.1.0/24" class="mono" aria-label="Subnet CIDR" ${state.subnetFormStatus === 'saving' ? 'disabled' : ''}/></label>
       <label>Label<input data-action="subnet-draft" data-field="label" value="${escapeHtml(state.subnetDraft.label)}" placeholder="Branch office (optional)" aria-label="Subnet label" ${state.subnetFormStatus === 'saving' ? 'disabled' : ''}/></label>
@@ -2551,12 +2767,13 @@ ${renderThemeToggle()}
         </div>
         <div class="atoolbar">
           ${modeSeg}
+          ${resCtl}
           <button type="button" class="sndeclare${state.subnetFormOpen ? ' on' : ''}" data-action="subnet-add-toggle">+ Declare subnet</button>
           <label class="asearch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5" stroke-linecap="round"/></svg><input data-action="subnet-search" placeholder="Search subnet, host, IP…" value="${escapeHtml(state.subnetQuery)}" aria-label="Search subnets"/></label>
         </div>
         ${form}
         <div class="afacets"><div class="afgroup"><span class="afcap">Way in</span>${reachFacets}</div><div class="afgroup"><span class="afcap">Tier</span>${tierFacets}</div></div>
-        <div id="subnet-blocks">${state.subnetMode === 'grid' ? mSubnetBlocksHTML() : mSubnetReachHTML()}</div>
+        <div id="subnet-blocks">${state.subnetMode === 'list' ? mSubnetBlocksHTML() : (state.subnetMode === 'reach' ? mSubnetReachHTML() : mSubnetGridHTML())}</div>
       </div>
       <aside class="subnet-side" aria-label="Subnet detail">${mSubnetSideHTML()}</aside>
     </main>`;
@@ -4434,6 +4651,8 @@ async function handleSubmit(event) {
     await submitLogin();
   } else if (action === 'subnet-declare') {
     await declareSubnet();
+  } else if (action === 'subnet-rename') {
+    await renameSubnet();
   }
 }
 
@@ -4631,13 +4850,22 @@ async function handleClick(event) {
   if (action === 'board-sort') { state.boardSort = target.dataset.key || 'name'; state.boardShown = {}; render(); return; }
   if (action === 'map-host-sort') { mApplySort(state.mapHostSort, target.dataset.key, mColDir(mMapHostCols(), target.dataset.key)); state.mapHostLimit = MAP_HOST_PAGE; render(); return; }
   if (action === 'map-host-more') { state.mapHostLimit += MAP_HOST_PAGE; drawMapHosts(); return; }
-  if (action === 'subnet-mode') { state.subnetMode = target.dataset.mode || 'grid'; state.subnetEdge = ''; render(); return; }
+  if (action === 'subnet-mode') { state.subnetMode = target.dataset.mode || 'grid'; state.subnetEdge = ''; state.subnetEditOpen = false; render(); return; }
+  if (action === 'subnet-res') { state.subnetRes = Math.max(0, Math.min(2, state.subnetRes + Number(target.dataset.dir || 0))); render(); return; }
   if (action === 'subnet-select') {
     const cidr = target.dataset.cidr || '';
-    if (cidr !== state.subnetSelected) { state.subnetSelected = cidr; state.subnetHostLimit = MAP_HOST_PAGE; state.subnetEdge = ''; }
+    if (cidr !== state.subnetSelected) { state.subnetSelected = cidr; state.subnetHostLimit = MAP_HOST_PAGE; state.subnetEdge = ''; state.subnetEditOpen = false; state.subnetEditError = ''; }
     render();
     return;
   }
+  if (action === 'subnet-edit-toggle') {
+    state.subnetEditOpen = !state.subnetEditOpen;
+    state.subnetEditError = '';
+    if (state.subnetEditOpen) { const sel = mSubnetSelected(); state.subnetEditDraft = (sel && sel.label) || ''; }
+    render();
+    return;
+  }
+  if (action === 'subnet-edit-draft') return;
   if (action === 'subnet-sort') { mApplySort(state.subnetSort, target.dataset.key, mColDir(mSubnetCols(), target.dataset.key)); state.subnetShown = {}; render(); return; }
   if (action === 'subnet-reach') { const v = target.dataset.val; if (state.subnetReach.has(v)) state.subnetReach.delete(v); else state.subnetReach.add(v); state.subnetShown = {}; render(); return; }
   if (action === 'subnet-tier') { const v = target.dataset.val; if (state.subnetTier.has(v)) state.subnetTier.delete(v); else state.subnetTier.add(v); state.subnetShown = {}; render(); return; }
@@ -4881,7 +5109,7 @@ async function handleClick(event) {
 // buttons, so Enter/Space must be wired to the same sort action as a click.
 function handleKeydown(event) {
   if (event.key !== 'Enter' && event.key !== ' ') return;
-  const target = event.target.closest('th.asort[data-action], tr.thostrow[data-action], tr.snrow[data-action], g.subnet-node[data-action]');
+  const target = event.target.closest('th.asort[data-action], tr.thostrow[data-action], tr.snrow[data-action], g.subnet-node[data-action], span.sngc[data-action], span.sngip[data-action]');
   if (!target) return;
   event.preventDefault();
   handleClick(event);
@@ -4934,6 +5162,10 @@ function handleInput(event) {
   if (action === 'subnet-draft') {
     const field = target.dataset.field || '';
     if (field) state.subnetDraft[field] = target.value;
+    return;
+  }
+  if (action === 'subnet-edit-draft') {
+    state.subnetEditDraft = target.value;
     return;
   }
   if (action === 'entity-search') {

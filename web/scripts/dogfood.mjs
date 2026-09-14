@@ -362,9 +362,44 @@ async function main() {
   await visit('subnets', `/engagements/${ENGAGEMENT}/subnets`);
   const snNav = await page.$$eval('.appnav-item.is-active', (e) => e.map((x) => x.dataset.nav)).catch(() => []);
   if (!snNav.includes('subnets')) bug('medium', 'subnets', 'nav active-state not "subnets"', JSON.stringify(snNav));
-  const snRows = await $count('#subnet-blocks tr.snrow');
-  if (snRows === 0) bug('high', 'subnets', 'no subnet rows rendered');
   if (await $count('.snblock') === 0) bug('high', 'subnets', 'no block sections rendered');
+  // Grid (default): occupied squares, then step the resolution down to IPs
+  const snSquares = await $count('.sngc.on');
+  if (snSquares === 0) bug('high', 'subnets', 'grid mode drew no occupied squares');
+  await click('[data-action="subnet-res"][data-dir="1"]');
+  await sleep(250);
+  await click('[data-action="subnet-res"][data-dir="1"]');
+  await sleep(300);
+  const snIPs = await $count('.sngip.on');
+  if (snIPs === 0) bug('high', 'subnets', 'IP resolution drew no in-play address cells');
+  const plusDisabled = await page.$eval('[data-action="subnet-res"][data-dir="1"]', (e) => e.disabled).catch(() => false);
+  if (!plusDisabled) bug('low', 'subnets', 'resolution "+" not disabled at max resolution');
+  await click('[data-action="subnet-res"][data-dir="-1"]');
+  await click('[data-action="subnet-res"][data-dir="-1"]');
+  await sleep(250);
+  // a grid square selects its subnet in the side rail
+  const sqPicked = await page.evaluate(() => {
+    const cs = [...document.querySelectorAll('.sngc.on[data-action]')];
+    const t = cs[0];
+    if (!t) return null;
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return t.dataset.cidr;
+  });
+  await sleep(400);
+  const sqSide = await page.$eval('.subnet-side .territory-nm', (e) => e.textContent).catch(() => null);
+  if (sqPicked && sqSide && !sqSide.includes(sqPicked)) bug('medium', 'subnets', 'grid square select did not update the side panel', `clicked=${sqPicked} side=${sqSide}`);
+  // the label edit affordance opens its form (no mutation — dogfood stays read-only)
+  if (await click('[data-action="subnet-edit-toggle"]')) {
+    await sleep(250);
+    if (await $count('.snform.snedit') === 0) bug('medium', 'subnets', 'label edit toggle did not open the edit form');
+    await click('[data-action="subnet-edit-toggle"]');
+    await sleep(200);
+  }
+  // List mode: block tables of rows
+  await click('[data-action="subnet-mode"][data-mode="list"]');
+  await sleep(300);
+  const snRows = await $count('#subnet-blocks tr.snrow');
+  if (snRows === 0) bug('high', 'subnets', 'no subnet rows rendered in list mode');
   const snSideDefault = await page.$eval('.subnet-side .territory-nm', (e) => e.textContent).catch(() => null);
   if (!snSideDefault) bug('medium', 'subnets', 'subnet detail side panel did not populate');
   // search filters the blocks down and restores on clear
