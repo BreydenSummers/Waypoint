@@ -1,4 +1,4 @@
-const sourceHash = "d11d9496115d68a0f50ba249965393117bc9b28d3dfb962c2e6eae85b92f5b2a";
+const sourceHash = "5437f820485dada2523b9f3e92881c43db2965298aac91fbf15f39ff0f70f017";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -2402,7 +2402,15 @@ function mSubnetBlocks(rows) {
     if (!row.parsed) return;
     const home = blocks.find((b) => b.parsed && mCidrContainsCidr(b.parsed, row.parsed));
     if (home) { home.rows.push(row); return; }
-    if (row.bits < 24) { mkBlock(row.cidr, row.label, kindOf(row.source), row.parsed).rows.push(row); return; }
+    // A recorded unit (declared, scope line, captured range) with no recorded
+    // container above it stands as its own block at its own size — the page
+    // must not draw a /16 boundary nobody recorded. Only auto-inferred /24s
+    // (stray observed hosts we bucketed ourselves) get a grouping shelf: their
+    // /16, or the NAT range when that is what the space is.
+    if (row.bits < 24 || (row.source !== 'auto' && row.source !== 'nat')) {
+      mkBlock(row.cidr, row.label, kindOf(row.source), row.parsed).rows.push(row);
+      return;
+    }
     const s16 = `${row.parsed.oct[0]}.${row.parsed.oct[1]}.0.0/16`;
     const nat = SN_NAT.find((n) => n.cidr === s16);
     mkBlock(s16, nat ? 'private NAT range' : '', 'observed', mParseCidr(s16)).rows.push(row);

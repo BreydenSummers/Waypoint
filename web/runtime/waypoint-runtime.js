@@ -2398,7 +2398,15 @@ function mSubnetBlocks(rows) {
     if (!row.parsed) return;
     const home = blocks.find((b) => b.parsed && mCidrContainsCidr(b.parsed, row.parsed));
     if (home) { home.rows.push(row); return; }
-    if (row.bits < 24) { mkBlock(row.cidr, row.label, kindOf(row.source), row.parsed).rows.push(row); return; }
+    // A recorded unit (declared, scope line, captured range) with no recorded
+    // container above it stands as its own block at its own size — the page
+    // must not draw a /16 boundary nobody recorded. Only auto-inferred /24s
+    // (stray observed hosts we bucketed ourselves) get a grouping shelf: their
+    // /16, or the NAT range when that is what the space is.
+    if (row.bits < 24 || (row.source !== 'auto' && row.source !== 'nat')) {
+      mkBlock(row.cidr, row.label, kindOf(row.source), row.parsed).rows.push(row);
+      return;
+    }
     const s16 = `${row.parsed.oct[0]}.${row.parsed.oct[1]}.0.0/16`;
     const nat = SN_NAT.find((n) => n.cidr === s16);
     mkBlock(s16, nat ? 'private NAT range' : '', 'observed', mParseCidr(s16)).rows.push(row);
