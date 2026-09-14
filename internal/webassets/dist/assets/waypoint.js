@@ -1,4 +1,4 @@
-const sourceHash = "8a9984b6a13228acd613399fc12405d74c12025ed144f228da0b027a20ba2d49";
+const sourceHash = "eac0df13b09d921fbf26bad73cf30d7883b9acaa46d2a4c8a5a3555a878ece38";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -104,6 +104,7 @@ const state = {
   subnetEditDraft: '',
   subnetEditStatus: 'idle',
   subnetEditError: '',
+  subnetPops: [],
   engagementScope: '',
   drawer: null,
   evidenceCache: {},
@@ -2457,6 +2458,33 @@ function mIpRollup(recs) {
   });
   return best;
 }
+function snCellSize(bits) { return Math.pow(2, 32 - bits); }
+function snIpText(v) { return `${v >>> 24}.${(v >>> 16) & 255}.${(v >>> 8) & 255}.${v & 255}`; }
+function snRecsIn(recs, start, size) { return recs.filter((r) => r.int >= start && r.int < start + size); }
+// Inner grid for one occupied range: its sub-ranges (rollup colour) or, at
+// full depth, one cell per address — hosts solid, other evidence softened.
+// Shared by the spatial squares, the zoom tiles, the floating zoom panels and
+// the popped-out window.
+function mIpGridHTML(start, baseBits, innerBits, recs, blockRecs, interactive) {
+  const subCells = Math.pow(2, innerBits - baseBits);
+  const subCols = Math.pow(2, Math.ceil((innerBits - baseBits) / 2));
+  const subs = [];
+  for (let j = 0; j < subCells; j += 1) {
+    const s2 = (start + j * snCellSize(innerBits)) >>> 0;
+    if (innerBits === 32) {
+      const rec = blockRecs.find((r) => r.int === s2);
+      if (!rec) { subs.push(`<span class="sngip" title="${escapeHtml(snIpText(s2))}"></span>`); continue; }
+      const open = interactive && rec.entityId ? ` data-action="open-asset" data-id="${escapeHtml(rec.entityId)}" tabindex="0" role="button"` : '';
+      subs.push(`<span class="sngip on${rec.kinds.host ? '' : ' soft'}"${open} data-ip="${escapeHtml(rec.ip)}" style="--gc:${mIpRecColor(rec)}" title="${escapeHtml(mIpRecTitle(rec))}" aria-label="${escapeHtml(mIpRecTitle(rec))}"></span>`);
+    } else {
+      const subRecs = snRecsIn(recs, s2, snCellSize(innerBits));
+      if (!subRecs.length) { subs.push(`<span class="sngip" title="${escapeHtml(`${snIpText(s2)}/${innerBits}`)}"></span>`); continue; }
+      const rep = mIpRollup(subRecs);
+      subs.push(`<span class="sngip on" style="--gc:${mIpRecColor(rep)}" title="${escapeHtml(`${snIpText(s2)}/${innerBits} · ${subRecs.length} address${subRecs.length === 1 ? '' : 'es'} in play`)}"></span>`);
+    }
+  }
+  return `<span class="sngsub" style="grid-template-columns:repeat(${subCols},1fr)">${subs.join('')}</span>`;
+}
 function mSubnetGridHTML() {
   const data = mSubnetData();
   const blocks = mSubnetBlocks(data.rows).filter((b) => b.parsed);
@@ -2465,31 +2493,10 @@ function mSubnetGridHTML() {
   const rowByCidr = {};
   data.rows.forEach((r) => { rowByCidr[r.cidr] = r; });
   const steps = Math.max(0, Math.min(2, state.subnetRes));
-  const cellSize = (bits) => Math.pow(2, 32 - bits);
-  const ipText = (v) => `${v >>> 24}.${(v >>> 16) & 255}.${(v >>> 8) & 255}.${v & 255}`;
-  const recsIn = (recs, start, size) => recs.filter((r) => r.int >= start && r.int < start + size);
-  // Inner grid for one occupied range: its sub-ranges (rollup colour) or, at
-  // full depth, one cell per address — hosts solid, other evidence softened.
-  const innerGrid = (start, baseBits, innerBits, recs, blockRecs, interactive) => {
-    const subCells = Math.pow(2, innerBits - baseBits);
-    const subCols = Math.pow(2, Math.ceil((innerBits - baseBits) / 2));
-    const subs = [];
-    for (let j = 0; j < subCells; j += 1) {
-      const s2 = (start + j * cellSize(innerBits)) >>> 0;
-      if (innerBits === 32) {
-        const rec = blockRecs.find((r) => r.int === s2);
-        if (!rec) { subs.push(`<span class="sngip" title="${escapeHtml(ipText(s2))}"></span>`); continue; }
-        const open = interactive && rec.entityId ? ` data-action="open-asset" data-id="${escapeHtml(rec.entityId)}" tabindex="0" role="button"` : '';
-        subs.push(`<span class="sngip on${rec.kinds.host ? '' : ' soft'}"${open} data-ip="${escapeHtml(rec.ip)}" style="--gc:${mIpRecColor(rec)}" title="${escapeHtml(mIpRecTitle(rec))}" aria-label="${escapeHtml(mIpRecTitle(rec))}"></span>`);
-      } else {
-        const subRecs = recsIn(recs, s2, cellSize(innerBits));
-        if (!subRecs.length) { subs.push(`<span class="sngip" title="${escapeHtml(`${ipText(s2)}/${innerBits}`)}"></span>`); continue; }
-        const rep = mIpRollup(subRecs);
-        subs.push(`<span class="sngip on" style="--gc:${mIpRecColor(rep)}" title="${escapeHtml(`${ipText(s2)}/${innerBits} · ${subRecs.length} address${subRecs.length === 1 ? '' : 'es'} in play`)}"></span>`);
-      }
-    }
-    return `<span class="sngsub" style="grid-template-columns:repeat(${subCols},1fr)">${subs.join('')}</span>`;
-  };
+  const cellSize = snCellSize;
+  const ipText = snIpText;
+  const recsIn = snRecsIn;
+  const innerGrid = mIpGridHTML;
   return blocks.map((b) => {
     const B = b.parsed.bits;
     const baseBits = B >= 16 ? 24 : B + 8; // cap a block at 256 squares
@@ -2512,7 +2519,7 @@ function mSubnetGridHTML() {
         if (!finished && !recs.length) { hidden += 1; continue; }
         const sel = finished && state.subnetSelected === cidr ? ' is-sel' : '';
         const dim = finished && !visible.has(cidr) ? ' dim' : '';
-        const act = finished ? ` data-action="subnet-select" data-cidr="${escapeHtml(cidr)}"` : '';
+        const act = finished ? ` data-action="subnet-select" data-cidr="${escapeHtml(cidr)}" data-pop="1"` : '';
         const cap = finished
           ? `${finished.n} host${finished.n === 1 ? '' : 's'} · ${recs.length} in play`
           : `${recs.length} address${recs.length === 1 ? '' : 'es'} in play`;
@@ -2534,7 +2541,7 @@ function mSubnetGridHTML() {
       const dim = finished && !visible.has(cidr) ? ' dim' : '';
       if (!occupied) { cellHTML.push(`<span class="sngc" title="${escapeHtml(cidr)} — nothing seen"></span>`); continue; }
       const sel = finished && state.subnetSelected === cidr ? ' is-sel' : '';
-      const act = finished ? ` data-action="subnet-select" data-cidr="${escapeHtml(cidr)}" tabindex="0" role="button" aria-label="${escapeHtml(cidr)}, ${finished.n} hosts"` : '';
+      const act = finished ? ` data-action="subnet-select" data-cidr="${escapeHtml(cidr)}" data-pop="1" tabindex="0" role="button" aria-label="${escapeHtml(cidr)}, ${finished.n} hosts"` : '';
       const chip = finished && finished.declared ? '<i class="sngc-dec" aria-hidden="true"></i>' : '';
       let cls = 'sngc on'; let style = ''; let body = '';
       if (finished && finished.n > 0) {
@@ -2566,6 +2573,111 @@ function mSubnetGridHTML() {
       <span class="sngl"><i style="background:${MPAL.harvest}"></i>capture target</span>
       <span class="sngl"><i class="sngl-scan"></i>scanned / declared, empty</span>
     </div>`;
+}
+
+/* ---- Floating zoom panels: click a subnet and it opens as a draggable
+   inspector showing every individual address; several can be open at once,
+   and any of them can be popped out into its own browser window. ---- */
+function openSubnetPop(cidr) {
+  const existing = state.subnetPops.find((p) => p.cidr === cidr);
+  if (existing) {
+    state.subnetPops = state.subnetPops.filter((p) => p !== existing).concat(existing);
+    return;
+  }
+  const n = state.subnetPops.length;
+  state.subnetPops.push({ cidr, x: 140 + (n % 6) * 44, y: 150 + (n % 6) * 38 });
+}
+function renderSubnetPops() {
+  if (!state.subnetPops.length) return '';
+  const data = mSubnetData();
+  return state.subnetPops.map((p, i) => {
+    const row = data.rows.find((r) => r.cidr === p.cidr);
+    if (!row) return '';
+    const parsed = mParseCidr(p.cidr);
+    const start = mCidrBase(parsed);
+    const cap = `${row.n} host${row.n === 1 ? '' : 's'} · ${row.ips.length} address${row.ips.length === 1 ? '' : 'es'} in play${row.worst !== 'info' ? ` · worst: ${MSEV_LABEL[row.worst]}` : ''}`;
+    return `<section class="snpop" data-cidr="${escapeHtml(p.cidr)}" style="left:${p.x}px;top:${p.y}px;z-index:${40 + i}" role="dialog" aria-label="Zoom on ${escapeHtml(p.cidr)}">
+      <header class="snpop-head" title="Drag to move">
+        <span class="snpop-cidr mono">${escapeHtml(p.cidr)}</span>
+        ${row.label ? `<span class="snpop-label">${escapeHtml(row.label)}</span>` : ''}
+        <button type="button" class="snpop-btn" data-action="subnet-popout" data-cidr="${escapeHtml(p.cidr)}" title="Open in a separate window" aria-label="Open ${escapeHtml(p.cidr)} in a separate window">⧉</button>
+        <button type="button" class="snpop-btn" data-action="subnet-pop-close" data-cidr="${escapeHtml(p.cidr)}" title="Close" aria-label="Close zoom on ${escapeHtml(p.cidr)}">✕</button>
+      </header>
+      <div class="snpop-cap">${escapeHtml(cap)}</div>
+      <div class="snpop-grid">${mIpGridHTML(start, 24, 32, row.ips, row.ips, true)}</div>
+      <div class="snpop-foot muted">Hover a dot for its address · click a discovered asset to open its dossier</div>
+    </section>`;
+  }).join('');
+}
+// The popped-out window is a self-contained snapshot: the same per-address
+// grid plus the in-play list, no app chrome, so it can live on a second
+// monitor while the main view moves on.
+function popOutSubnet(cidr) {
+  const data = mSubnetData();
+  const row = data.rows.find((r) => r.cidr === cidr);
+  if (!row) return;
+  const dark = state.theme === 'dark';
+  const bg = dark ? '#17120f' : '#f4eee0';
+  const fg = dark ? '#f5e8ce' : '#3b2617';
+  const muted = dark ? '#c9b292' : '#7c6a56';
+  const line = dark ? 'rgba(198,169,123,0.25)' : 'rgba(132,106,73,0.3)';
+  const parsed = mParseCidr(cidr);
+  const grid = mIpGridHTML(mCidrBase(parsed), 24, 32, row.ips, row.ips, false);
+  const list = row.ips.map((rec) => `<li><span class="dot" style="background:${mIpRecColor(rec)}"></span><span class="mono">${escapeHtml(rec.ip)}</span>${rec.name ? ` · ${escapeHtml(rec.name)}` : ''}<span class="k"> · ${Object.keys(rec.kinds).map((k) => SN_IP_KIND_LABEL[k]).join(', ')}${rec.sev !== 'info' ? ` · ${MSEV_LABEL[rec.sev]}` : ''}</span></li>`).join('');
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Waypoint — ${escapeHtml(cidr)}</title><style>
+    body { margin: 0; padding: 18px 20px; background: ${bg}; color: ${fg}; font: 13px/1.5 Inter, system-ui, sans-serif; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+    h1 { margin: 0; font-size: 19px; } h1 small { font-weight: 500; color: ${muted}; font-size: 12px; margin-left: 8px; }
+    .sngsub { display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin: 14px 0 6px; border: 1px solid ${line}; border-radius: 10px; padding: 8px; }
+    .sngip { aspect-ratio: 1; border-radius: 50%; background: ${dark ? 'rgba(198,169,123,0.14)' : 'rgba(180,167,140,0.28)'}; }
+    .sngip.on { background: var(--gc); } .sngip.on.soft { opacity: 0.75; }
+    ul { list-style: none; margin: 10px 0 0; padding: 0; } li { padding: 3px 0; border-bottom: 1px dotted ${line}; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px; }
+    .k { color: ${muted}; font-size: 12px; } .foot { color: ${muted}; font-size: 11px; margin-top: 14px; }
+  </style></head><body>
+    <h1><span class="mono">${escapeHtml(cidr)}</span>${row.label ? `<small>${escapeHtml(row.label)}</small>` : ''}</h1>
+    <div class="k">${row.n} host${row.n === 1 ? '' : 's'} · ${row.ips.length} address${row.ips.length === 1 ? '' : 'es'} in play${row.worst !== 'info' ? ` · worst finding: ${MSEV_LABEL[row.worst]}` : ''}</div>
+    ${grid}
+    <ul>${list || '<li class="k">Nothing seen inside this range yet.</li>'}</ul>
+    <p class="foot">Waypoint snapshot taken ${escapeHtml(new Date().toLocaleTimeString())} — reopen from the app to refresh.</p>
+  </body></html>`;
+  // A Blob URL rather than document.write into about:blank: the popup gets a
+  // real document of its own (an empty URL would even reload the whole app).
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  const win = window.open(url, `waypoint-subnet-${cidr.replace(/[^0-9a-zA-Z]/g, '-')}`, 'width=640,height=780,popup=yes');
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+  if (!win) return;
+}
+// Dragging a zoom panel is direct DOM manipulation — no re-render per move —
+// with the final position saved back into state so the next render keeps it.
+let snPopDrag = null;
+function handleSnPopPointerDown(event) {
+  const pop = event.target.closest('.snpop');
+  if (!pop) return;
+  const entry = state.subnetPops.find((p) => p.cidr === pop.dataset.cidr);
+  if (!entry) return;
+  // Any press brings the panel to the front without a re-render.
+  state.subnetPops = state.subnetPops.filter((p) => p !== entry).concat(entry);
+  pop.style.zIndex = String(40 + state.subnetPops.length);
+  const head = event.target.closest('.snpop-head');
+  if (!head || event.target.closest('button')) return;
+  snPopDrag = { entry, el: pop, sx: event.clientX, sy: event.clientY, ox: entry.x, oy: entry.y };
+  pop.classList.add('dragging');
+  event.preventDefault();
+  window.addEventListener('pointermove', handleSnPopPointerMove);
+  window.addEventListener('pointerup', handleSnPopPointerUp, { once: true });
+}
+function handleSnPopPointerMove(event) {
+  if (!snPopDrag) return;
+  snPopDrag.entry.x = Math.max(0, Math.min(window.innerWidth - 80, snPopDrag.ox + event.clientX - snPopDrag.sx));
+  snPopDrag.entry.y = Math.max(0, Math.min(window.innerHeight - 40, snPopDrag.oy + event.clientY - snPopDrag.sy));
+  snPopDrag.el.style.left = `${snPopDrag.entry.x}px`;
+  snPopDrag.el.style.top = `${snPopDrag.entry.y}px`;
+}
+function handleSnPopPointerUp() {
+  window.removeEventListener('pointermove', handleSnPopPointerMove);
+  if (snPopDrag) snPopDrag.el.classList.remove('dragging');
+  snPopDrag = null;
 }
 
 /* ---- Side panel: who can get into the selected subnet, by evidence tier ---- */
@@ -2605,7 +2717,7 @@ function mSubnetSideHTML() {
       ${state.subnetEditError ? `<span class="snform-err" role="alert">${escapeHtml(state.subnetEditError)}</span>` : ''}
     </form>` : '';
   const labelLine = sel.label ? `<p class="snside-label">${escapeHtml(sel.label)}</p>` : '';
-  return `<h3>Subnet</h3><div class="snside-title"><p class="territory-nm mono">${escapeHtml(sel.cidr)}</p><button type="button" class="snedit-btn${state.subnetEditOpen ? ' on' : ''}" data-action="subnet-edit-toggle" title="${sel.label ? 'Rename this subnet' : 'Give this subnet a label'}" aria-label="Edit subnet label">✎</button></div>${labelLine}${editForm}<div class="territory-mt">${escapeHtml(meta.join(' · '))}</div>${swept}${groups}`;
+  return `<h3>Subnet</h3><div class="snside-title"><p class="territory-nm mono">${escapeHtml(sel.cidr)}</p><button type="button" class="snedit-btn${state.subnetEditOpen ? ' on' : ''}" data-action="subnet-edit-toggle" title="${sel.label ? 'Rename this subnet' : 'Give this subnet a label'}" aria-label="Edit subnet label">✎</button><button type="button" class="snedit-btn" data-action="subnet-pop-open" title="Open a draggable zoom panel for this subnet" aria-label="Open zoom panel">⧉</button></div>${labelLine}${editForm}<div class="territory-mt">${escapeHtml(meta.join(' · '))}</div>${swept}${groups}`;
 }
 
 /* ---- Reach: subnet-to-subnet connections observed from captures ---- */
@@ -2783,6 +2895,7 @@ function renderSubnetsView() {
         <p class="sn-foot muted">Boundaries are inferred from the engagement scope, captured ranges and /24 grouping of observed IPv4 hosts — not authoritative topology. Hover a subnet or an address to light up the subnets it has demonstrably reached.</p>
       </div>
       <aside class="subnet-side" aria-label="Subnet detail">${mSubnetSideHTML()}</aside>
+      ${renderSubnetPops()}
     </main>`;
 }
 
@@ -4862,9 +4975,13 @@ async function handleClick(event) {
   if (action === 'subnet-select') {
     const cidr = target.dataset.cidr || '';
     if (cidr !== state.subnetSelected) { state.subnetSelected = cidr; state.subnetHostLimit = MAP_HOST_PAGE; state.subnetEdge = ''; state.subnetEditOpen = false; state.subnetEditError = ''; }
+    if (target.dataset.pop) openSubnetPop(cidr);
     render();
     return;
   }
+  if (action === 'subnet-pop-open') { const sel = mSubnetSelected(); if (sel) { openSubnetPop(sel.cidr); render(); } return; }
+  if (action === 'subnet-pop-close') { state.subnetPops = state.subnetPops.filter((p) => p.cidr !== target.dataset.cidr); render(); return; }
+  if (action === 'subnet-popout') { popOutSubnet(target.dataset.cidr || ''); return; }
   if (action === 'subnet-edit-toggle') {
     state.subnetEditOpen = !state.subnetEditOpen;
     state.subnetEditError = '';
@@ -5144,6 +5261,11 @@ function applyReachHighlights(target) {
 function handleHoverIn(event) { applyReachHighlights(event.target); }
 
 function handleKeydown(event) {
+  if (event.key === 'Escape' && state.view === 'subnets' && !state.drawer && state.subnetPops.length) {
+    state.subnetPops = state.subnetPops.slice(0, -1);
+    render();
+    return;
+  }
   if (event.key !== 'Enter' && event.key !== ' ') return;
   const target = event.target.closest('th.asort[data-action], tr.thostrow[data-action], tr.snrow[data-action], g.subnet-node[data-action], span.sngc[data-action], span.sngip[data-action]');
   if (!target) return;
@@ -5331,6 +5453,7 @@ async function boot() {
   root.addEventListener('mouseover', handleHoverIn);
   root.addEventListener('mouseleave', clearReachHighlights);
   root.addEventListener('focusin', handleHoverIn);
+  root.addEventListener('pointerdown', handleSnPopPointerDown);
   root.addEventListener('submit', handleSubmit);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);

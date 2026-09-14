@@ -402,6 +402,35 @@ async function main() {
   await sleep(400);
   const sqSide = await page.$eval('.subnet-side .territory-nm', (e) => e.textContent).catch(() => null);
   if (sqPicked && sqSide && !sqSide.includes(sqPicked)) bug('medium', 'subnets', 'grid square select did not update the side panel', `clicked=${sqPicked} side=${sqSide}`);
+  // clicking a square opens a draggable zoom panel; several can be open at once
+  if (await $count('.snpop') === 0) bug('high', 'subnets', 'clicking a square did not open a zoom panel');
+  await page.evaluate(() => {
+    const cells = [...document.querySelectorAll('.sngc.on[data-pop]')];
+    const other = cells.find((c) => !document.querySelector(`.snpop[data-cidr="${c.dataset.cidr}"]`));
+    if (other) other.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await sleep(300);
+  if (await $count('.snpop') < 2) notes.push('subnets: could not open a second zoom panel (ok if only one subnet exists)');
+  if (await $count('.snpop [data-action="subnet-popout"]') === 0) bug('medium', 'subnets', 'zoom panel is missing its pop-out-to-window button');
+  if (await $count('.snpop .sngip.on') === 0) bug('high', 'subnets', 'zoom panel drew no address dots');
+  // dragging by the header moves the panel
+  const dragged = await (async () => {
+    const head = await page.$('.snpop .snpop-head');
+    if (!head) return false;
+    const box = await head.boundingBox();
+    const before = await page.$eval('.snpop', (e) => e.style.left);
+    await page.mouse.move(box.x + 50, box.y + 10);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 250, box.y + 160, { steps: 6 });
+    await page.mouse.up();
+    await sleep(200);
+    const after = await page.$eval('.snpop', (e) => e.style.left);
+    return before !== after;
+  })();
+  if (!dragged) bug('medium', 'subnets', 'zoom panel did not move when dragged by its header');
+  // close every panel before moving on
+  while (await click('[data-action="subnet-pop-close"]')) { await sleep(150); }
+  if (await $count('.snpop') !== 0) bug('low', 'subnets', 'zoom panels did not all close');
   // the label edit affordance opens its form (no mutation — dogfood stays read-only)
   if (await click('[data-action="subnet-edit-toggle"]')) {
     await sleep(250);
