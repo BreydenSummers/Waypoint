@@ -2461,9 +2461,10 @@ function snRecsIn(recs, start, size) { return recs.filter((r) => r.int >= start 
 // full depth, one cell per address — hosts solid, other evidence softened.
 // Shared by the spatial squares, the zoom tiles, the floating zoom panels and
 // the popped-out window.
-function mIpGridHTML(start, baseBits, innerBits, recs, blockRecs, interactive) {
+function mIpGridHTML(start, baseBits, innerBits, recs, blockRecs, interactive, xreach) {
   const subCells = Math.pow(2, innerBits - baseBits);
   const subCols = Math.pow(2, Math.ceil((innerBits - baseBits) / 2));
+  const reachByIp = xreach && xreach.size ? mSubnetData().reachByIp : null;
   const subs = [];
   for (let j = 0; j < subCells; j += 1) {
     const s2 = (start + j * snCellSize(innerBits)) >>> 0;
@@ -2471,7 +2472,11 @@ function mIpGridHTML(start, baseBits, innerBits, recs, blockRecs, interactive) {
       const rec = blockRecs.find((r) => r.int === s2);
       if (!rec) { subs.push(`<span class="sngip" title="${escapeHtml(snIpText(s2))}"></span>`); continue; }
       const open = interactive && rec.entityId ? ` data-action="open-asset" data-id="${escapeHtml(rec.entityId)}" tabindex="0" role="button"` : '';
-      subs.push(`<span class="sngip on${rec.kinds.host ? '' : ' soft'}"${open} data-ip="${escapeHtml(rec.ip)}" style="--gc:${mIpRecColor(rec)}" title="${escapeHtml(mIpRecTitle(rec))}" aria-label="${escapeHtml(mIpRecTitle(rec))}"></span>`);
+      // Cross-panel touch: this address has demonstrated reach into the subnet
+      // of another panel that is open right now — ring it.
+      const touches = reachByIp && reachByIp[rec.ip] ? reachByIp[rec.ip].filter((c) => xreach.has(c)) : [];
+      const title = mIpRecTitle(rec) + (touches.length ? ` · can touch open panel${touches.length === 1 ? '' : 's'} ${touches.join(', ')}` : '');
+      subs.push(`<span class="sngip on${rec.kinds.host ? '' : ' soft'}${touches.length ? ' xtouch' : ''}"${open} data-ip="${escapeHtml(rec.ip)}" style="--gc:${mIpRecColor(rec)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}"></span>`);
     } else {
       const subRecs = snRecsIn(recs, s2, snCellSize(innerBits));
       if (!subRecs.length) { subs.push(`<span class="sngip" title="${escapeHtml(`${snIpText(s2)}/${innerBits}`)}"></span>`); continue; }
@@ -2586,13 +2591,25 @@ function openSubnetPop(cidr) {
 function renderSubnetPops() {
   if (!state.subnetPops.length) return '';
   const data = mSubnetData();
-  return state.subnetPops.map((p, i) => {
+  const openCidrs = state.subnetPops.map((p) => p.cidr);
+  let anyTouch = false;
+  const panels = state.subnetPops.map((p, i) => {
     const row = data.rows.find((r) => r.cidr === p.cidr);
     if (!row) return '';
     const parsed = mParseCidr(p.cidr);
     const start = mCidrBase(parsed);
     const cap = `${row.n} host${row.n === 1 ? '' : 's'} · ${row.ips.length} address${row.ips.length === 1 ? '' : 'es'} in play${row.worst !== 'info' ? ` · worst: ${MSEV_LABEL[row.worst]}` : ''}`;
-    return `<section class="snpop" data-cidr="${escapeHtml(p.cidr)}" style="left:${p.x}px;top:${p.y}px;z-index:${40 + i}" role="dialog" aria-label="Zoom on ${escapeHtml(p.cidr)}">
+    // Cross-panel links: which of the OTHER open panels this subnet has
+    // demonstrably touched, and which of them touch it. The chips carry
+    // data-cidr, so the shared hover-reach highlighting picks them up too.
+    const others = new Set(openCidrs.filter((c) => c !== p.cidr));
+    const outTouch = (data.edgesFrom[p.cidr] || []).filter((c) => others.has(c));
+    const inTouch = [...others].filter((c) => (data.edgesFrom[c] || []).includes(p.cidr));
+    if (outTouch.length || inTouch.length) anyTouch = true;
+    const links = (outTouch.length || inTouch.length)
+      ? `<div class="snpop-links">${outTouch.map((c) => `<span class="snpop-link out mono" data-cidr="${escapeHtml(c)}" title="A device in ${escapeHtml(p.cidr)} ran a capture against ${escapeHtml(c)}">→ ${escapeHtml(c)}</span>`).join('')}${inTouch.map((c) => `<span class="snpop-link in mono" data-cidr="${escapeHtml(c)}" title="A device in ${escapeHtml(c)} ran a capture against ${escapeHtml(p.cidr)}">← ${escapeHtml(c)}</span>`).join('')}</div>`
+      : '';
+    return `<section class="snpop${outTouch.length || inTouch.length ? ' linked' : ''}" data-cidr="${escapeHtml(p.cidr)}" style="left:${p.x}px;top:${p.y}px;z-index:${40 + i}" role="dialog" aria-label="Zoom on ${escapeHtml(p.cidr)}">
       <header class="snpop-head" title="Drag to move">
         <span class="snpop-cidr mono">${escapeHtml(p.cidr)}</span>
         ${row.label ? `<span class="snpop-label">${escapeHtml(row.label)}</span>` : ''}
@@ -2600,10 +2617,12 @@ function renderSubnetPops() {
         <button type="button" class="snpop-btn" data-action="subnet-pop-close" data-cidr="${escapeHtml(p.cidr)}" title="Close" aria-label="Close zoom on ${escapeHtml(p.cidr)}">✕</button>
       </header>
       <div class="snpop-cap">${escapeHtml(cap)}</div>
-      <div class="snpop-grid">${mIpGridHTML(start, 24, 32, row.ips, row.ips, true)}</div>
+      ${links}
+      <div class="snpop-grid">${mIpGridHTML(start, 24, 32, row.ips, row.ips, true, others)}</div>
       <div class="snpop-foot muted">Hover a dot for its address · click a discovered asset to open its dossier</div>
     </section>`;
   }).join('');
+  return panels + (anyTouch ? '<div class="snpop-xnote muted">Ringed dots can touch another open panel · arrows in a panel head name the links</div>' : '');
 }
 // The popped-out window is a self-contained snapshot: the same per-address
 // grid plus the in-play list, no app chrome, so it can live on a second

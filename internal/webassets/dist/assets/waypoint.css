@@ -3445,3 +3445,14 @@ tr.snrow.reach-hl td { background: color-mix(in srgb, var(--lantern) 14%, transp
 .snpop-grid .sngip { border-radius: 50%; }
 .snpop-grid .sngip.on[data-action] { cursor: pointer; }
 .snpop-foot { padding: 0 12px 10px; font-size: 10.5px; }
+
+/* Cross-panel touch: a ringed dot has demonstrated reach into the subnet of
+   another panel that is open right now; the header chips name the links. */
+.sngip.on.xtouch { box-shadow: 0 0 0 2px var(--card-surface), 0 0 0 4px var(--lantern); }
+.snpop.linked .snpop-head { box-shadow: inset 0 -2px 0 var(--lantern); }
+.snpop-links { display: flex; flex-wrap: wrap; gap: 6px; padding: 7px 12px 0; }
+.snpop-link { font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 2px 9px; cursor: default; }
+.snpop-link.out { color: var(--saddle); background: color-mix(in srgb, var(--lantern) 22%, transparent); }
+.snpop-link.in { color: var(--chrome-muted); background: color-mix(in srgb, var(--stone) 26%, transparent); }
+.snpop-link.reach-hl { outline: 2px solid var(--lantern); }
+.snpop-xnote { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 60; font-size: 11px; background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 999px; padding: 5px 14px; box-shadow: 0 8px 24px -12px var(--chrome-shadow); }

@@ -413,18 +413,37 @@ async function main() {
   if (await $count('.snpop') < 2) notes.push('subnets: could not open a second zoom panel (ok if only one subnet exists)');
   if (await $count('.snpop [data-action="subnet-popout"]') === 0) bug('medium', 'subnets', 'zoom panel is missing its pop-out-to-window button');
   if (await $count('.snpop .sngip.on') === 0) bug('high', 'subnets', 'zoom panel drew no address dots');
+  // cross-panel touch: open panels for every occupied square (capped) and, if
+  // any pair is linked by observed reach, the link chips and ringed dots show
+  // re-query per click: each open re-renders the page and detaches old nodes
+  const xCidrs = await page.evaluate(() => [...document.querySelectorAll('.sngc.on[data-pop]')].slice(0, 8).map((c) => c.dataset.cidr));
+  for (const c of xCidrs) {
+    await page.evaluate((cc) => {
+      if (document.querySelector(`.snpop[data-cidr="${cc}"]`)) return;
+      const el = document.querySelector(`.sngc.on[data-cidr="${cc}"][data-pop]`);
+      if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    }, c);
+    await sleep(120);
+  }
+  await sleep(300);
+  const xLinks = await $count('.snpop-link');
+  const xRings = await $count('.snpop .sngip.xtouch');
+  if (xLinks > 0 && xRings === 0) bug('medium', 'subnets', 'panels are linked but no source dot is ringed', `links=${xLinks}`);
+  if (xLinks === 0) notes.push('subnets: no cross-panel links among open panels (ok if no cross-subnet captures)');
   // dragging by the header moves the panel
   const dragged = await (async () => {
-    const head = await page.$('.snpop .snpop-head');
+    // the panels cascade, so drag the top-most one — a lower panel's header
+    // coordinates would land the pointer on whatever overlaps it
+    const head = await page.$('.snpop:last-of-type .snpop-head');
     if (!head) return false;
     const box = await head.boundingBox();
-    const before = await page.$eval('.snpop', (e) => e.style.left);
+    const before = await page.$eval('.snpop:last-of-type', (e) => e.style.left);
     await page.mouse.move(box.x + 50, box.y + 10);
     await page.mouse.down();
     await page.mouse.move(box.x + 250, box.y + 160, { steps: 6 });
     await page.mouse.up();
     await sleep(200);
-    const after = await page.$eval('.snpop', (e) => e.style.left);
+    const after = await page.$eval('.snpop:last-of-type', (e) => e.style.left);
     return before !== after;
   })();
   if (!dragged) bug('medium', 'subnets', 'zoom panel did not move when dragged by its header');
