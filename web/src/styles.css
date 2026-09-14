@@ -3265,3 +3265,90 @@ html[data-theme='dark'] .devnote.bad, html[data-theme='dark'] .devnote.bad svg, 
 .dtier-btn.on { background: var(--harvest); color: #fff; border-color: var(--harvest); }
 .dtier-note { font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: #7a2f1a; margin-left: 4px; }
 html[data-theme='dark'] .dtier-note { color: #c8583a; }
+
+/* ============================ Subnets ============================ */
+/* Two-column page: the block sections (or the Reach canvas) flow on the left,
+   the subnet detail rail sits on the right. Unlike the Map's parchment, the
+   Reach canvas is a chrome surface — it reads as an evidence panel, not as
+   part of the territory artwork. */
+.subnets-shell { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+.sn-main { min-width: 0; }
+.subnets-shell .akpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 4px 0 6px; }
+.subnet-side { position: sticky; top: 16px; background: var(--workspace-surface); border: 1px solid var(--chrome-border); border-radius: 16px; padding: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
+.subnet-side h3 { margin: 0 0 3px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--chrome-muted); }
+.snside-group { margin-top: 16px; }
+.snside-group h4 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 12.5px; color: var(--page-text); }
+.snside-group h4 i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.snside-blurb { margin: 2px 0 6px; font-size: 11px; color: var(--chrome-muted); }
+.snside-none { font-size: 12px; margin: 4px 0 0; }
+.snside-swept { font-size: 11.5px; margin: 6px 0 0; }
+.sndev-ghost { display: inline-block; margin-left: 7px; font-size: 10px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: var(--chrome-muted); }
+.sndev-also { display: inline-block; margin-left: 7px; font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; }
+.sndev-note { font-size: 11px; color: var(--chrome-muted); margin-top: 1px; }
+.sndev-inert td { color: var(--chrome-muted); }
+
+/* Block sections: each contiguous range is its own card; the gap between the
+   sections is the point — disconnected address space stands apart. */
+.snblock { margin: 0 0 26px; }
+.snblock + .snblock { margin-top: 26px; }
+.snblock-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 0 2px 8px; }
+.snblock-cidr { font-size: 15px; font-weight: 700; color: var(--page-text); }
+.snblock-label { font-size: 12.5px; color: var(--chrome-muted); }
+.snblock-kind { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border-radius: 999px; padding: 2px 9px; }
+.snblock-kind.scope { color: var(--forest); background: color-mix(in srgb, var(--forest) 14%, transparent); }
+.snblock-kind.declared { color: var(--saddle); background: color-mix(in srgb, var(--harvest) 16%, transparent); }
+.snblock-kind.observed { color: var(--chrome-muted); background: color-mix(in srgb, var(--stone) 22%, transparent); }
+.snblock-count { margin-left: auto; font-size: 11.5px; color: var(--chrome-muted); }
+.atable tbody tr.snrow { cursor: pointer; }
+.atable tbody tr.snrow:hover { background: var(--page-bg-2); }
+.atable tbody tr.snrow.is-sel { background: color-mix(in srgb, var(--harvest) 10%, transparent); box-shadow: inset 3px 0 0 var(--harvest); }
+.snpips { display: inline-flex; align-items: center; gap: 3px; }
+.snpip { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: color-mix(in srgb, var(--stone) 40%, transparent); }
+.snpip-n { font-size: 11px; font-weight: 700; color: var(--page-text); margin-right: 7px; font-family: 'IBM Plex Mono', monospace; }
+.snpip-n.muted { color: var(--chrome-muted); font-weight: 500; }
+.snchip { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 999px; padding: 2px 8px; margin-right: 4px; }
+.snchip.declared { color: var(--saddle); background: color-mix(in srgb, var(--harvest) 16%, transparent); }
+.snchip.scanned { color: var(--forest); background: color-mix(in srgb, var(--forest) 13%, transparent); }
+.snchip.swept { color: var(--chrome-muted); background: color-mix(in srgb, var(--stone) 24%, transparent); }
+
+/* Declare-subnet control + inline form. */
+.sndeclare { border: 1px dashed var(--card-border); background: var(--card-surface); color: var(--chrome-muted); font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 11px; cursor: pointer; }
+.sndeclare:hover, .sndeclare.on { border-color: var(--harvest); color: var(--page-text); border-style: solid; }
+.snform { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 13px; padding: 12px 14px; margin: 0 0 12px; }
+.snform label { display: flex; flex-direction: column; gap: 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--chrome-muted); }
+.snform input { border: 1px solid var(--card-border); background: var(--page-bg); border-radius: 8px; font: inherit; font-size: 13px; color: var(--page-text); padding: 7px 10px; min-width: 170px; }
+.snform input:focus { outline: 2px solid var(--harvest); outline-offset: 1px; }
+.snform-err { font-size: 12px; color: #b04c30; font-weight: 600; }
+html[data-theme='dark'] .snform-err { color: #e08a6a; }
+
+/* Reach: subnet-to-subnet connections observed from captures. */
+.snreach { background: var(--card-surface); border: 1px solid var(--card-border); border-radius: 16px; padding: 10px 12px 12px; }
+.snreach svg { display: block; width: 100%; height: auto; }
+.snband-bg { fill: color-mix(in srgb, var(--stone) 10%, transparent); stroke: var(--card-border); stroke-dasharray: 4 5; }
+.snband-bg.scope { fill: color-mix(in srgb, var(--forest) 7%, transparent); stroke: color-mix(in srgb, var(--forest) 45%, transparent); }
+.snband-label { font-size: 13px; font-weight: 700; fill: var(--page-text); }
+.snband-kind { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; fill: var(--chrome-muted); font-family: Inter, sans-serif; }
+.subnet-node { cursor: pointer; }
+.subnet-node .snn-box { fill: var(--card-surface); stroke-width: 1.6; }
+.subnet-node:hover .snn-box { filter: brightness(1.05); stroke-width: 2.4; }
+.subnet-node.is-sel .snn-box { stroke-width: 2.6; filter: drop-shadow(0 0 8px rgba(239, 159, 39, 0.45)); }
+.subnet-node:focus-visible { outline: 2px solid var(--harvest); outline-offset: 2px; }
+.snn-cidr { font-size: 11px; font-weight: 700; fill: var(--page-text); }
+.snn-meta { font-size: 9px; fill: var(--chrome-muted); font-family: Inter, sans-serif; }
+.subnet-edge { cursor: pointer; }
+.subnet-edge line { stroke: var(--trail); stroke-linecap: round; }
+.subnet-edge .snedge-hit { stroke: transparent; stroke-width: 14; }
+.subnet-edge.is-sel line:first-child { stroke: var(--harvest); }
+.snarrow-head { fill: var(--trail); }
+.subnet-edge.is-sel .snarrow-head { fill: var(--harvest); }
+.snedge-note { font-size: 12.5px; color: var(--page-text); background: var(--page-bg-2); border: 1px solid var(--card-border); border-radius: 9px; padding: 8px 12px; margin-top: 8px; }
+.snreach-blurb { font-size: 11.5px; color: var(--chrome-muted); margin: 8px 2px 0; }
+.snedge-listwrap { margin-top: 6px; font-size: 12px; color: var(--chrome-muted); }
+.snedge-listwrap summary { cursor: pointer; font-weight: 600; }
+.snedge-list { margin: 6px 0 0; padding-left: 20px; color: var(--page-text); }
+.snedge-list li { margin: 2px 0; }
+
+@media (max-width: 1080px) {
+  .subnets-shell { grid-template-columns: 1fr; }
+  .subnet-side { position: static; max-height: none; }
+}

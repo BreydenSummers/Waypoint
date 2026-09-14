@@ -117,12 +117,15 @@ func entityReadHandler(db *sql.DB) http.HandlerFunc {
 		trimmed := strings.TrimPrefix(strings.TrimPrefix(r.URL.Path, "/api/v1/entities"), "/")
 		switch {
 		case trimmed == "", trimmed == ".":
-			if r.Method != http.MethodGet {
-				w.Header().Set("Allow", http.MethodGet)
+			switch r.Method {
+			case http.MethodGet:
+				handleEntityList(w, r, db, actor, reqID)
+			case http.MethodPost:
+				handleEntityDeclare(w, r, db, actor, reqID)
+			default:
+				w.Header().Set("Allow", "GET, POST")
 				http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
-				return
 			}
-			handleEntityList(w, r, db, actor, reqID)
 			return
 		default:
 			parts := strings.Split(trimmed, "/")

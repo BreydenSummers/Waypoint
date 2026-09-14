@@ -23,6 +23,11 @@ type RuntimeState struct {
 	// request; the web app adopts it so engagement-scoped routes (report,
 	// phase paths) work without the id in the URL.
 	EngagementID string `json:"engagementId,omitempty"`
+	// EngagementScope is the authenticated caller's engagement scope text,
+	// populated the same way as EngagementID. The web app mines it for CIDR
+	// ranges so the Subnets page can show the agreed scope before any capture
+	// lands.
+	EngagementScope string `json:"engagementScope,omitempty"`
 	// SetupCodeHash is the SHA-256 of the one-time first-run setup code printed
 	// in the startup banner. It arms the bootstrap gate and is never serialized.
 	SetupCodeHash string `json:"-"`
@@ -221,6 +226,10 @@ func runtimeHandler(db *sql.DB, runtime RuntimeState) http.HandlerFunc {
 			if token, err := bearerToken(r.Header.Get("Authorization")); err == nil {
 				if actor, err := lookupActor(r.Context(), db, token); err == nil {
 					out.EngagementID = actor.EngagementID
+					var scope string
+					if err := db.QueryRowContext(r.Context(), `SELECT scope FROM engagement WHERE id = $1`, actor.EngagementID).Scan(&scope); err == nil {
+						out.EngagementScope = scope
+					}
 				}
 			}
 		}

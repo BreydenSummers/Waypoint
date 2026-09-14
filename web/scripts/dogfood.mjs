@@ -234,7 +234,7 @@ async function main() {
 
   // -------- Report --------
   await visit('report', `/engagements/${ENGAGEMENT}/summit/report`, 3000);
-  if (await $count('.report-hero') === 0 && await $count('.report-section') === 0) bug('high', 'report', 'report body did not render');
+  if (await $count('.rdoc-cover') === 0 && await $count('.rdoc') === 0) bug('high', 'report', 'report body did not render');
 
   // -------- Assets --------
   await visit('devices', `/engagements/${ENGAGEMENT}/devices`);
@@ -358,9 +358,71 @@ async function main() {
   // expand a column with a "more" control
   if (await click('.board-more')) { await sleep(300); if (await $count('.board-more') === 0) notes.push('board: only column had a single "more" toggle'); }
 
+  // -------- Subnets --------
+  await visit('subnets', `/engagements/${ENGAGEMENT}/subnets`);
+  const snNav = await page.$$eval('.appnav-item.is-active', (e) => e.map((x) => x.dataset.nav)).catch(() => []);
+  if (!snNav.includes('subnets')) bug('medium', 'subnets', 'nav active-state not "subnets"', JSON.stringify(snNav));
+  const snRows = await $count('#subnet-blocks tr.snrow');
+  if (snRows === 0) bug('high', 'subnets', 'no subnet rows rendered');
+  if (await $count('.snblock') === 0) bug('high', 'subnets', 'no block sections rendered');
+  const snSideDefault = await page.$eval('.subnet-side .territory-nm', (e) => e.textContent).catch(() => null);
+  if (!snSideDefault) bug('medium', 'subnets', 'subnet detail side panel did not populate');
+  // search filters the blocks down and restores on clear
+  await page.focus('.subnets-shell .asearch input').catch(() => {});
+  await page.type('.subnets-shell .asearch input', 'zzz-no-such-subnet', { delay: 5 }).catch(() => {});
+  await sleep(300);
+  if (await $count('#subnet-blocks tr.snrow') !== 0) bug('medium', 'subnets', 'search did not filter subnet rows');
+  await page.evaluate(() => { const i = document.querySelector('.subnets-shell .asearch input'); if (i) { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); } });
+  await sleep(300);
+  if (await $count('#subnet-blocks tr.snrow') < Math.min(snRows, 1)) bug('medium', 'subnets', 'clearing search did not restore subnet rows');
+  // a way-in facet never grows the row count
+  if (await click('[data-action="subnet-reach"][data-val="pivot"]')) {
+    await sleep(300);
+    const pivotRows = await $count('#subnet-blocks tr.snrow');
+    if (pivotRows > snRows) bug('medium', 'subnets', 'reach facet increased the row count', `all=${snRows} pivot=${pivotRows}`);
+    if (pivotRows === 0) notes.push('subnets: pivot facet yields 0 rows (ok if no pivot evidence)');
+    await click('[data-action="subnet-reach"][data-val="pivot"]');
+    await sleep(200);
+  }
+  // selecting a row updates the side panel
+  const snPicked = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#subnet-blocks tr.snrow')];
+    const t = rows[rows.length - 1];
+    if (!t) return null;
+    t.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    return t.dataset.cidr;
+  });
+  await sleep(400);
+  const snSideAfter = await page.$eval('.subnet-side .territory-nm', (e) => e.textContent).catch(() => null);
+  if (snPicked && snSideAfter && !snSideAfter.includes(snPicked)) bug('medium', 'subnets', 'row select did not update the side panel', `clicked=${snPicked} side=${snSideAfter}`);
+  // a resident device row opens the asset dossier drawer
+  if (await click('.subnet-side tr.thostrow')) {
+    await sleep(400);
+    if (await $count('.ddrawer.is-open') === 0) bug('high', 'subnets', 'device row did not open the asset dossier');
+    else { await click('.ddrawer .dclose'); await sleep(300); }
+  }
+  // Reach mode renders nodes, observed edges, and the text fallback
+  if (await click('[data-action="subnet-mode"][data-mode="reach"]')) {
+    await sleep(500);
+    const snNodes = await $count('.subnet-node');
+    if (snNodes === 0) bug('high', 'subnets', 'reach mode drew no subnet nodes');
+    const snEdges = await $count('.subnet-edge');
+    if (snEdges === 0) notes.push('subnets: reach mode drew no edges (ok if no cross-subnet captures)');
+    if (snEdges > 0 && await $count('.snedge-list li') === 0) bug('medium', 'subnets', 'reach edges rendered but the text fallback list is empty');
+    // selecting an edge dims the others and surfaces the capture count
+    if (snEdges > 1 && await click('.subnet-edge')) {
+      await sleep(300);
+      const dims = await page.$$eval('.subnet-edge', (e) => e.map((x) => parseFloat(x.style.opacity || '1'))).catch(() => []);
+      if (dims.filter((o) => o < 0.5).length === 0) bug('medium', 'subnets', 'edge select did not dim the other edges', JSON.stringify(dims));
+      if (await $count('.snedge-note') === 0) bug('medium', 'subnets', 'edge select showed no capture-count note');
+    }
+    await click('[data-action="subnet-mode"][data-mode="grid"]');
+    await sleep(300);
+  }
+
   // -------- Left nav navigation --------
   ctx = 'nav';
-  const navSeq = ['devices', 'captures', 'map', 'board', 'report', 'trail'];
+  const navSeq = ['devices', 'subnets', 'captures', 'map', 'board', 'report', 'trail'];
   for (const n of navSeq) {
     const ok = await click(`[data-action="goto-view"][data-nav="${n}"]`);
     if (!ok) { bug('high', 'nav', `nav item "${n}" not found`); continue; }
@@ -368,7 +430,7 @@ async function main() {
     const active = await page.$$eval('.appnav-item.is-active', (e) => e.map((x) => x.dataset.nav)).catch(() => []);
     if (!active.includes(n)) bug('medium', 'nav', `clicking "${n}" did not set it active`, JSON.stringify(active));
     const url = await page.evaluate(() => location.pathname);
-    const wantFrag = { devices: '/devices', captures: '/captures', map: '/map', board: '/board', report: '/report', trail: '/attacks' }[n];
+    const wantFrag = { devices: '/devices', subnets: '/subnets', captures: '/captures', map: '/map', board: '/board', report: '/report', trail: '/attacks' }[n];
     if (wantFrag && !url.endsWith(wantFrag) && !(n === 'trail' && /\/(recon|attacks|findings|summit)$/.test(url))) bug('low', 'nav', `URL did not update for "${n}"`, url);
   }
 
