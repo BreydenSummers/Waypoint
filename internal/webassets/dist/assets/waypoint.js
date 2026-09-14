@@ -1,4 +1,4 @@
-const sourceHash = "afaaa8f42a1da62c8392ab530d0fa9a71c9f89a361773f238a5abb5cd7a3b652";
+const sourceHash = "d11d9496115d68a0f50ba249965393117bc9b28d3dfb962c2e6eae85b92f5b2a";
 const sourceStrings = ["Waypoint · expedition shell","Waypoint — report snapshot","Journey log","Notable alerts","Alerts arrive from the live SSE stream","No notable alerts yet","Frozen report snapshot","Hash verified, not signed","Recon / Attacks / Findings"];
 void sourceHash;
 void sourceStrings;
@@ -2099,7 +2099,6 @@ function mCidrContainsIP(c, ip) {
 function mCidrContainsCidr(outer, inner) {
   return inner.bits >= outer.bits && mCidrContainsIP(outer, mCidrBase(inner));
 }
-function mCidrTo24(c) { return mCidrText({ oct: c.oct, bits: 24 }); }
 // CIDR ranges mined from the engagement's free-text scope, one per line.
 function mScopeCidrs() {
   const out = []; const seen = new Set();
@@ -2127,6 +2126,14 @@ function mSubnetData() {
   SN_CACHE = { key, data };
   return data;
 }
+// The well-known private (NAT) ranges: a stray private address with no
+// recorded structure around it defaults to its whole NAT block.
+const SN_NAT = [
+  { cidr: '192.168.0.0/16' },
+  { cidr: '172.16.0.0/12' },
+  { cidr: '10.0.0.0/8' },
+].map((n) => ({ ...n, parsed: mParseCidr(n.cidr) }));
+
 function mBuildSubnetData() {
   const sev = mSevByEntity();
   const scope = mScopeCidrs();
@@ -2137,10 +2144,75 @@ function mBuildSubnetData() {
     mAssetTargets(e).forEach((t) => { if (!entByName[t]) entByName[t] = e; });
   });
 
+  // Phase A — recorded ranges keep their actual size. Scope lines, captured
+  // range targets and operator declarations each contribute a range; a range
+  // with a strictly finer recorded range inside it is a container (it groups),
+  // every other recorded range is a unit (it IS a subnet, at that exact size).
+  const recorded = {};
+  const RANK = { captured: 1, declared: 2, scope: 3 };
+  const addRecorded = (parsed, source, label) => {
+    if (!parsed) return;
+    const t = mCidrText(parsed);
+    const prev = recorded[t];
+    if (!prev) { recorded[t] = { cidr: t, parsed: mParseCidr(t), source, label: label || '', wasCaptured: source === 'captured', wasDeclared: source === 'declared' }; return; }
+    if (RANK[source] > RANK[prev.source]) prev.source = source;
+    if (label && !prev.label) prev.label = label;
+    if (source === 'captured') prev.wasCaptured = true;
+    if (source === 'declared') prev.wasDeclared = true;
+  };
+  scope.forEach((s) => addRecorded(s.parsed, 'scope', s.label));
+  (state.entities || []).forEach((e) => {
+    if (e.kind !== 'subnet') return;
+    const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
+    addRecorded(mParseCidr(a.cidr), 'declared', a.label ? String(a.label) : '');
+  });
+  (state.actions || []).forEach((ac) => {
+    const t = ac.capture && ac.capture.target;
+    if (!t) return;
+    const kind = String(t.kind || '').toLowerCase();
+    if (kind === 'cidr' || kind === 'network') addRecorded(mParseCidr(t.value), 'captured');
+  });
+  const recordedList = Object.values(recorded);
+  recordedList.forEach((r) => {
+    r.isContainer = recordedList.some((o) => o !== r && o.parsed.bits > r.parsed.bits && mCidrContainsCidr(r.parsed, o.parsed));
+  });
+  const recordedUnits = recordedList.filter((r) => !r.isContainer).sort((a, b) => b.parsed.bits - a.parsed.bits);
+  const containers = recordedList.filter((r) => r.isContainer);
+
   const byCidr = {};
-  const ensure = (cidr) => {
-    if (!byCidr[cidr]) byCidr[cidr] = { cidr, label: '', hosts: [], worst: 'info', findings: 0, declared: false, declaredNote: '', scanned: false, sweptBy: [], deviceIndex: {} };
+  const ensure = (cidr, init) => {
+    if (!byCidr[cidr]) {
+      const parsed = mParseCidr(cidr);
+      byCidr[cidr] = { cidr, parsed, bits: parsed ? parsed.bits : 24, source: 'auto', label: '', hosts: [], worst: 'info', findings: 0, declared: false, declaredNote: '', scanned: false, sweptBy: [], deviceIndex: {} };
+    }
+    if (init) Object.assign(byCidr[cidr], init);
     return byCidr[cidr];
+  };
+  recordedUnits.forEach((u) => ensure(u.cidr, { source: u.source, label: u.label, declared: u.wasDeclared, scanned: u.wasCaptured }));
+  // Which unit does an address belong to? A recorded unit that contains it
+  // wins (finest first); inside a container the fallback is the conventional
+  // /24; a stray private address defaults to its whole NAT block; anything
+  // else falls back to /24.
+  const to24 = (v) => `${v >>> 24}.${(v >>> 16) & 255}.${(v >>> 8) & 255}.0/24`;
+  const ipInt = (ipRaw) => mIPInt(String(ipRaw || '').replace(/\/\d{1,2}$/, ''));
+  const unitForCreate = (ipRaw) => {
+    const v = typeof ipRaw === 'number' ? ipRaw : ipInt(ipRaw);
+    if (v === null) return null;
+    for (const u of recordedUnits) { if (mCidrContainsIP(u.parsed, v)) return u.cidr; }
+    if (containers.some((c) => mCidrContainsIP(c.parsed, v))) { ensure(to24(v)); return to24(v); }
+    const nat = SN_NAT.find((n) => mCidrContainsIP(n.parsed, v));
+    if (nat) { ensure(nat.cidr, { source: 'nat', label: 'private NAT range' }); return nat.cidr; }
+    ensure(to24(v));
+    return to24(v);
+  };
+  // Read-only lookup against the units that exist right now (for targets and
+  // for the renderers — these must never mint new rows).
+  const unitLookup = (ipRaw) => {
+    const v = typeof ipRaw === 'number' ? ipRaw : ipInt(ipRaw);
+    if (v === null) return null;
+    let best = null;
+    Object.values(byCidr).forEach((r) => { if (r.parsed && mCidrContainsIP(r.parsed, v) && (!best || r.bits > best.bits)) best = r; });
+    return best ? best.cidr : null;
   };
   // Every individual address with evidence against it, for the Grid's IP-level
   // resolution: hosts we observed, exec hosts, targets captures hit, pivots.
@@ -2160,12 +2232,12 @@ function mBuildSubnetData() {
     }
   };
 
-  // 1) Residents: observed entity IPs bucket into /24 rows.
+  // 1) Residents: observed entity IPs land in their unit.
   (state.entities || []).forEach((e) => {
     if (e.kind === 'subnet') return;
     const ip = mEntityIP(e);
     if (!ip) return;
-    const cidr = mSubnet(ip);
+    const cidr = unitForCreate(ip);
     if (!cidr) return;
     noteIP(ip, 'host', e);
     const row = ensure(cidr);
@@ -2175,29 +2247,8 @@ function mBuildSubnetData() {
     if (e.id in sev) row.findings += 1;
   });
 
-  // 2) Operator-declared subnets: /24-or-narrower becomes a row (bucketed to
-  //    its /24); anything broader becomes a block of its own.
-  const declaredBlocks = [];
-  (state.entities || []).forEach((e) => {
-    if (e.kind !== 'subnet') return;
-    const a = (e.attributes && typeof e.attributes === 'object') ? e.attributes : {};
-    const c = mParseCidr(a.cidr);
-    if (!c) return;
-    const label = a.label ? String(a.label) : '';
-    if (c.bits >= 24) {
-      const row = ensure(mCidrTo24(c));
-      row.declared = true;
-      if (c.bits > 24) row.declaredNote = mCidrText(c);
-      if (label && !row.label) row.label = label;
-    } else {
-      declaredBlocks.push({ cidr: mCidrText(c), parsed: c, label, declared: true });
-    }
-  });
-
-  // 3) Captured range targets. The demo seeder says "cidr", the contract says
-  //    "network" — honour both. A /24-or-narrower target guarantees its row
-  //    (scanned even if empty); a broader range is a sweep, which never gets a
-  //    row of its own — it fans evidence across the /24s it contains.
+  // 2) Exec hosts guarantee their unit exists — the demo seeder says "cidr"
+  //    for range targets, the contract says "network"; rangeOf honours both.
   const rangeOf = (ac) => {
     const t = ac.capture && ac.capture.target;
     if (!t) return null;
@@ -2206,16 +2257,14 @@ function mBuildSubnetData() {
     return mParseCidr(t.value);
   };
   // exec_host_ip serializes from a Postgres inet, which can carry a /32 mask —
-  // strip it so exec addresses match entity IPs and group into /24s cleanly.
+  // strip it so exec addresses match entity IPs and group into units cleanly.
   const execAddr = (ac) => {
     const raw = ac.capture && ac.capture.network && ac.capture.network.execHost && ac.capture.network.execHost.address;
     return raw ? String(raw).replace(/\/\d{1,2}$/, '') : '';
   };
   (state.actions || []).forEach((ac) => {
-    const c = rangeOf(ac);
-    if (c && c.bits >= 24) ensure(mCidrTo24(c)).scanned = true;
-    const execCidr = mSubnet(execAddr(ac));
-    if (execCidr) ensure(execCidr);
+    const exec = execAddr(ac);
+    if (exec) unitForCreate(exec);
   });
 
   // 4) Access evidence + subnet-to-subnet edges, one pass over captures.
@@ -2233,31 +2282,34 @@ function mBuildSubnetData() {
   const targetSubnetsFor = (ac) => {
     const c = rangeOf(ac);
     if (c) {
-      if (c.bits >= 24) return [mCidrTo24(c)];
-      return Object.keys(byCidr).filter((k) => { const rc = mParseCidr(k); return rc && mCidrContainsCidr(c, rc); });
+      const t = mCidrText(c);
+      if (byCidr[t]) return [t]; // the range is a unit of its own
+      // a container range fans out over the units it holds
+      return Object.keys(byCidr).filter((k) => { const r = byCidr[k]; return r.parsed && r.bits >= c.bits && mCidrContainsCidr(c, r.parsed); });
     }
     const t = ac.capture && ac.capture.target;
     const raw = String((t && t.value) || '').toLowerCase();
     if (!raw) return [];
     const m = raw.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
-    if (m) { const cd = mSubnet(m[1]); return cd && byCidr[cd] ? [cd] : []; }
+    if (m) { const cd = unitLookup(m[1]); return cd ? [cd] : []; }
     const ent = entByName[raw];
-    if (ent) { const cd = mSubnet(mEntityIP(ent)); return cd && byCidr[cd] ? [cd] : []; }
+    if (ent) { const cd = unitLookup(mEntityIP(ent)); return cd ? [cd] : []; }
     return [];
   };
   const edgeMap = {};
   const reachIpSets = {};
   const noteReach = (ip, cidr) => {
-    if (!ip || !cidr || mSubnet(ip) === cidr) return;
+    if (!ip || !cidr || unitLookup(ip) === cidr) return;
     (reachIpSets[ip] = reachIpSets[ip] || new Set()).add(cidr);
   };
   (state.actions || []).forEach((ac) => {
     const net = (ac.capture && ac.capture.network) || {};
     const exec = execAddr(ac);
     const execEnt = exec ? entByName[exec.toLowerCase()] : null;
-    const from = mSubnet(exec);
+    const from = unitLookup(exec);
     const range = rangeOf(ac);
-    const sweep = range && range.bits < 24 ? mCidrText(range) : '';
+    const rangeRec = range ? recorded[mCidrText(range)] : null;
+    const sweep = rangeRec && rangeRec.isContainer ? mCidrText(range) : '';
     if (exec) noteIP(exec, 'exec', execEnt);
     if (!range) {
       const rawTarget = String((ac.capture && ac.capture.target && ac.capture.target.value) || '').toLowerCase();
@@ -2299,7 +2351,7 @@ function mBuildSubnetData() {
   const inPlay = Object.values(ipIndex).sort((a, b) => a.int - b.int);
   const ipsByCidr = {};
   inPlay.forEach((rec) => {
-    const cidr = mSubnet(rec.ip);
+    const cidr = unitLookup(rec.ip);
     if (!cidr) return;
     (ipsByCidr[cidr] = ipsByCidr[cidr] || []).push(rec);
   });
@@ -2324,12 +2376,16 @@ function mBuildSubnetData() {
   edges.forEach((e) => { (edgesFrom[e.from] = edgesFrom[e.from] || []).push(e.to); });
   const reachByIp = {};
   Object.keys(reachIpSets).forEach((ip) => { reachByIp[ip] = [...reachIpSets[ip]]; });
-  return { rows, byCidr, scope, declaredBlocks, edges, inPlay, edgesFrom, reachByIp };
+  // Read-only unit lookup for the renderers, over the now-final unit set.
+  const unitOf = (ipOrInt) => unitLookup(ipOrInt);
+  return { rows, byCidr, scope, containers, edges, inPlay, edgesFrom, reachByIp, unitOf };
 }
 
-// Rows group into blocks: the containing scope/declared range if any, else the
-// /24's own /16. Disconnected address space reads as a separate block with a
-// visible gap between sections.
+// Rows group into blocks: any recorded container (scope line, declared range,
+// captured sweep) groups the units it holds at its actual size. An uncovered
+// unit broader than /24 stands as its own block; uncovered /24s group into
+// their /16 — labelled as the NAT range when that is what the /16 is.
+// Disconnected address space reads as a separate block with a visible gap.
 function mSubnetBlocks(rows) {
   const data = mSubnetData();
   const blocks = []; const index = {};
@@ -2339,15 +2395,17 @@ function mSubnetBlocks(rows) {
     index[key] = b; blocks.push(b);
     return b;
   };
+  const kindOf = (source) => (source === 'scope' ? 'scope' : source === 'declared' ? 'declared' : 'observed');
   data.scope.forEach((s) => mkBlock(s.cidr, s.label, 'scope', s.parsed));
-  data.declaredBlocks.forEach((d) => mkBlock(d.cidr, d.label, 'declared', d.parsed));
+  data.containers.forEach((c) => mkBlock(c.cidr, c.label, kindOf(c.source), c.parsed));
   (rows || data.rows).forEach((row) => {
-    const rc = mParseCidr(row.cidr);
-    if (!rc) return;
-    const home = blocks.find((b) => b.parsed && mCidrContainsCidr(b.parsed, rc));
+    if (!row.parsed) return;
+    const home = blocks.find((b) => b.parsed && mCidrContainsCidr(b.parsed, row.parsed));
     if (home) { home.rows.push(row); return; }
-    const s16 = `${rc.oct[0]}.${rc.oct[1]}.0.0/16`;
-    mkBlock(s16, '', 'observed', mParseCidr(s16)).rows.push(row);
+    if (row.bits < 24) { mkBlock(row.cidr, row.label, kindOf(row.source), row.parsed).rows.push(row); return; }
+    const s16 = `${row.parsed.oct[0]}.${row.parsed.oct[1]}.0.0/16`;
+    const nat = SN_NAT.find((n) => n.cidr === s16);
+    mkBlock(s16, nat ? 'private NAT range' : '', 'observed', mParseCidr(s16)).rows.push(row);
   });
   return blocks;
 }
@@ -2495,8 +2553,6 @@ function mSubnetGridHTML() {
   const blocks = mSubnetBlocks(data.rows).filter((b) => b.parsed);
   if (!blocks.length) return '<div class="board-empty">No subnets yet — the grid fills in as captures land or when an operator declares a range.</div>';
   const visible = new Set(mFilteredSubnets().map((r) => r.cidr));
-  const rowByCidr = {};
-  data.rows.forEach((r) => { rowByCidr[r.cidr] = r; });
   const steps = Math.max(0, Math.min(2, state.subnetRes));
   const cellSize = snCellSize;
   const ipText = snIpText;
@@ -2504,34 +2560,37 @@ function mSubnetGridHTML() {
   const innerGrid = mIpGridHTML;
   return blocks.map((b) => {
     const B = b.parsed.bits;
-    const baseBits = B >= 16 ? 24 : B + 8; // cap a block at 256 squares
+    // Cell size adapts to the units actually recorded in this block: cells are
+    // as fine as the finest unit, clamped so a block never exceeds 256 squares.
+    // A block whose only unit is itself (a flat /16, a NAT range) is one square.
+    const finest = b.rows.length ? Math.max(...b.rows.map((r) => r.bits)) : Math.min(B + 8, 24);
+    const baseBits = Math.min(Math.max(B, finest), B + 8);
     const cells = Math.pow(2, baseBits - B);
     const cols = Math.pow(2, Math.ceil((baseBits - B) / 2));
     const blockStart = mCidrBase(b.parsed);
     const blockRecs = data.inPlay.filter((r) => mCidrContainsIP(b.parsed, r.int));
-    const innerBits = Math.min(baseBits + 4 * steps, 32);
+    const units = b.rows.slice().sort((x, y) => y.bits - x.bits);
+    const unitAt = (v) => units.find((u) => u.parsed && mCidrContainsIP(u.parsed, v)) || null;
     const head = `<header class="snblock-head"><span class="snblock-cidr mono">${escapeHtml(b.key)}</span>${b.label ? `<span class="snblock-label">${escapeHtml(b.label)}</span>` : ''}<span class="snblock-kind ${b.kind}">${SN_BLOCK_KIND[b.kind]}</span><span class="snblock-count">${b.rows.length ? `${b.rows.length} subnet${b.rows.length === 1 ? '' : 's'} · ${blockRecs.length} address${blockRecs.length === 1 ? '' : 'es'} in play` : 'no captures yet'}</span></header>`;
     if (steps > 0) {
-      // Zoomed in: only the occupied ranges, as tiles big enough that the
-      // sub-range / per-IP cells are actually legible; empty space is counted,
-      // not drawn.
-      const tiles = []; let hidden = 0;
+      // Zoomed in: one tile per unit, at whatever size that unit really is;
+      // empty space is counted, not drawn.
+      const tiles = units.slice().sort((x, y) => (mCidrBase(x.parsed) - mCidrBase(y.parsed)) || 0).map((row) => {
+        const start = mCidrBase(row.parsed);
+        const recs = row.ips;
+        const innerBits = Math.min(32, row.bits + (steps === 1 ? 4 : 8));
+        const sel = state.subnetSelected === row.cidr ? ' is-sel' : '';
+        const dim = !visible.has(row.cidr) ? ' dim' : '';
+        const cap = `${row.n} host${row.n === 1 ? '' : 's'} · ${recs.length} in play${innerBits < 32 ? ` · /${innerBits} cells` : ''}`;
+        return `<div class="sntile${sel}${dim}" data-action="subnet-select" data-cidr="${escapeHtml(row.cidr)}" data-pop="1" tabindex="0" role="button" aria-label="${escapeHtml(row.cidr)}">
+          <div class="sntile-head"><span class="mono">${escapeHtml(row.cidr)}</span>${row.declared ? '<i class="sngc-dec" aria-hidden="true"></i>' : ''}<span class="sntile-cap">${escapeHtml(cap)}</span></div>
+          ${recs.length ? innerGrid(start, row.bits, innerBits, recs, blockRecs, true) : '<div class="sntile-none muted">scanned / declared — nothing seen inside yet</div>'}
+        </div>`;
+      });
+      let hidden = 0;
       for (let i = 0; i < cells; i += 1) {
         const start = (blockStart + i * cellSize(baseBits)) >>> 0;
-        const cidr = `${ipText(start)}/${baseBits}`;
-        const recs = recsIn(blockRecs, start, cellSize(baseBits));
-        const finished = baseBits === 24 ? rowByCidr[cidr] : null;
-        if (!finished && !recs.length) { hidden += 1; continue; }
-        const sel = finished && state.subnetSelected === cidr ? ' is-sel' : '';
-        const dim = finished && !visible.has(cidr) ? ' dim' : '';
-        const act = finished ? ` data-action="subnet-select" data-cidr="${escapeHtml(cidr)}" data-pop="1"` : '';
-        const cap = finished
-          ? `${finished.n} host${finished.n === 1 ? '' : 's'} · ${recs.length} in play`
-          : `${recs.length} address${recs.length === 1 ? '' : 'es'} in play`;
-        tiles.push(`<div class="sntile${sel}${dim}"${act} ${finished ? 'tabindex="0" role="button"' : ''} aria-label="${escapeHtml(cidr)}">
-          <div class="sntile-head"><span class="mono">${escapeHtml(cidr)}</span>${finished && finished.declared ? '<i class="sngc-dec" aria-hidden="true"></i>' : ''}<span class="sntile-cap">${escapeHtml(cap)}</span></div>
-          ${recs.length ? innerGrid(start, baseBits, innerBits, recs, blockRecs, true) : '<div class="sntile-none muted">scanned / declared — nothing seen inside yet</div>'}
-        </div>`);
+        if (!unitAt(start) && !recsIn(blockRecs, start, cellSize(baseBits)).length) hidden += 1;
       }
       const hiddenNote = hidden ? `<div class="sngc-hidden muted">${hidden} empty /${baseBits} range${hidden === 1 ? '' : 's'} not drawn</div>` : '';
       return `<section class="snblock snblock-${b.kind}">${head}<div class="sntiles">${tiles.join('') || '<div class="board-empty">Nothing seen in this range yet.</div>'}</div>${hiddenNote}</section>`;
@@ -2539,16 +2598,22 @@ function mSubnetGridHTML() {
     const cellHTML = [];
     for (let i = 0; i < cells; i += 1) {
       const start = (blockStart + i * cellSize(baseBits)) >>> 0;
-      const cidr = `${ipText(start)}/${baseBits}`;
+      const cellCidr = `${ipText(start)}/${baseBits}`;
       const recs = recsIn(blockRecs, start, cellSize(baseBits));
-      const finished = baseBits === 24 ? rowByCidr[cidr] : null;
+      const unit = unitAt(start);
+      // A unit coarser than the cell spans several cells; each renders as a
+      // "part" of it and selects the whole unit. A unit exactly cell-sized is
+      // the normal square.
+      const exact = unit && unit.bits === baseBits && mCidrBase(unit.parsed) === start;
+      const part = unit && unit.bits < baseBits;
+      const finished = exact || part ? unit : (unit && unit.bits > baseBits ? unit : null);
       const occupied = !!(finished || recs.length);
-      const dim = finished && !visible.has(cidr) ? ' dim' : '';
-      if (!occupied) { cellHTML.push(`<span class="sngc" title="${escapeHtml(cidr)} — nothing seen"></span>`); continue; }
-      const sel = finished && state.subnetSelected === cidr ? ' is-sel' : '';
-      const act = finished ? ` data-action="subnet-select" data-cidr="${escapeHtml(cidr)}" data-pop="1" tabindex="0" role="button" aria-label="${escapeHtml(cidr)}, ${finished.n} hosts"` : '';
-      const chip = finished && finished.declared ? '<i class="sngc-dec" aria-hidden="true"></i>' : '';
-      let cls = 'sngc on'; let style = ''; let body = '';
+      const dim = finished && !visible.has(finished.cidr) ? ' dim' : '';
+      if (!occupied) { cellHTML.push(`<span class="sngc" title="${escapeHtml(cellCidr)} — nothing seen"></span>`); continue; }
+      const sel = finished && state.subnetSelected === finished.cidr ? ' is-sel' : '';
+      const act = finished ? ` data-action="subnet-select" data-cidr="${escapeHtml(finished.cidr)}" data-pop="1" tabindex="0" role="button" aria-label="${escapeHtml(finished.cidr)}${part ? `, ${cellCidr} portion` : ''}, ${finished.n} hosts"` : '';
+      const chip = finished && finished.declared && !part ? '<i class="sngc-dec" aria-hidden="true"></i>' : '';
+      let cls = `sngc on${part ? ' partcell' : ''}`; let style = ''; let body = '';
       if (finished && finished.n > 0) {
         style = ` style="--gc:${MSEV_COLOR[finished.worst]}"`;
         cls += ' hosts';
@@ -2561,10 +2626,10 @@ function mSubnetGridHTML() {
       // Every address in play renders as a little dot at its true offset, even
       // at the coarsest resolution. The dots are not interactive here — clicks
       // bubble to the square — but each still carries its per-IP tooltip.
-      if (recs.length) { body = innerGrid(start, baseBits, 32, recs, blockRecs, false); cls += ' split'; }
+      if (recs.length) { body = innerGrid(start, baseBits, Math.min(baseBits + 8, 32), recs, blockRecs, false); cls += ' split'; }
       const title = finished
-        ? `${cidr} · ${finished.n} host${finished.n === 1 ? '' : 's'} · ${recs.length} address${recs.length === 1 ? '' : 'es'} in play${finished.worst !== 'info' ? ` · worst: ${MSEV_LABEL[finished.worst]}` : ''}`
-        : `${cidr} · ${recs.length} address${recs.length === 1 ? '' : 'es'} in play`;
+        ? `${finished.cidr}${part ? ` · ${cellCidr} portion` : ''} · ${finished.n} host${finished.n === 1 ? '' : 's'} · ${(part ? recs : finished.ips).length} address${(part ? recs : finished.ips).length === 1 ? '' : 'es'} in play${finished.worst !== 'info' ? ` · worst: ${MSEV_LABEL[finished.worst]}` : ''}`
+        : `${cellCidr} · ${recs.length} address${recs.length === 1 ? '' : 'es'} in play`;
       cellHTML.push(`<span class="${cls}${sel}${dim}"${act}${style} title="${escapeHtml(title)}">${chip}${body}</span>`);
     }
     return `<section class="snblock snblock-${b.kind}">${head}
@@ -2602,7 +2667,8 @@ function renderSubnetPops() {
     if (!row) return '';
     const parsed = mParseCidr(p.cidr);
     const start = mCidrBase(parsed);
-    const cap = `${row.n} host${row.n === 1 ? '' : 's'} · ${row.ips.length} address${row.ips.length === 1 ? '' : 'es'} in play${row.worst !== 'info' ? ` · worst: ${MSEV_LABEL[row.worst]}` : ''}`;
+    const panelBits = Math.min(32, row.bits >= 24 ? 32 : row.bits + 8);
+    const cap = `${row.n} host${row.n === 1 ? '' : 's'} · ${row.ips.length} address${row.ips.length === 1 ? '' : 'es'} in play${row.worst !== 'info' ? ` · worst: ${MSEV_LABEL[row.worst]}` : ''}${panelBits < 32 ? ` · cells are /${panelBits} rollups` : ''}`;
     // Cross-panel links: which of the OTHER open panels this subnet has
     // demonstrably touched, and which of them touch it. The chips carry
     // data-cidr, so the shared hover-reach highlighting picks them up too.
@@ -2622,7 +2688,7 @@ function renderSubnetPops() {
       </header>
       <div class="snpop-cap">${escapeHtml(cap)}</div>
       ${links}
-      <div class="snpop-grid">${mIpGridHTML(start, 24, 32, row.ips, row.ips, true, others)}</div>
+      <div class="snpop-grid">${mIpGridHTML(start, row.bits, panelBits, row.ips, row.ips, true, others)}</div>
       <div class="snpop-foot muted">Hover a dot for its address · click a discovered asset to open its dossier</div>
     </section>`;
   }).join('');
@@ -2641,7 +2707,8 @@ function popOutSubnet(cidr) {
   const muted = dark ? '#c9b292' : '#7c6a56';
   const line = dark ? 'rgba(198,169,123,0.25)' : 'rgba(132,106,73,0.3)';
   const parsed = mParseCidr(cidr);
-  const grid = mIpGridHTML(mCidrBase(parsed), 24, 32, row.ips, row.ips, false);
+  const outBits = row.bits >= 24 ? 32 : row.bits + 8;
+  const grid = mIpGridHTML(mCidrBase(parsed), row.bits, outBits, row.ips, row.ips, false);
   const list = row.ips.map((rec) => `<li><span class="dot" style="background:${mIpRecColor(rec)}"></span><span class="mono">${escapeHtml(rec.ip)}</span>${rec.name ? ` · ${escapeHtml(rec.name)}` : ''}<span class="k"> · ${Object.keys(rec.kinds).map((k) => SN_IP_KIND_LABEL[k]).join(', ')}${rec.sev !== 'info' ? ` · ${MSEV_LABEL[rec.sev]}` : ''}</span></li>`).join('');
   const html = `<!doctype html><html><head><meta charset="utf-8"><title>Waypoint — ${escapeHtml(cidr)}</title><style>
     body { margin: 0; padding: 18px 20px; background: ${bg}; color: ${fg}; font: 13px/1.5 Inter, system-ui, sans-serif; }
@@ -2771,8 +2838,8 @@ function mSubnetReachHTML() {
         const selected = state.subnetSelected === r.cidr;
         nodeSVG.push(`<g class="subnet-node${selected ? ' is-sel' : ''}" data-action="subnet-select" data-cidr="${escapeHtml(r.cidr)}" transform="translate(${x.toFixed(0)},${y.toFixed(0)})" tabindex="0" role="button" aria-label="${escapeHtml(r.cidr)}, ${r.n} hosts">
           <rect class="snn-box" x="-48" y="-19" width="96" height="38" rx="10" style="stroke:${MSEV_COLOR[r.worst]}"${r.scannedOnly ? ' stroke-dasharray="5 4"' : ''}/>
-          <text class="snn-cidr mono" y="-1" text-anchor="middle">${escapeHtml(r.cidr.replace('/24', ''))}</text>
-          <text class="snn-meta" y="13" text-anchor="middle">/24 · ${r.n} host${r.n === 1 ? '' : 's'}${r.declared ? ' · ◆' : ''}</text>
+          <text class="snn-cidr mono" y="-1" text-anchor="middle">${escapeHtml(r.cidr.split('/')[0])}</text>
+          <text class="snn-meta" y="13" text-anchor="middle">/${r.bits} · ${r.n} host${r.n === 1 ? '' : 's'}${r.declared ? ' · ◆' : ''}</text>
         </g>`);
       });
     });
@@ -2853,7 +2920,7 @@ async function declareSubnet() {
     state.subnetFormStatus = 'idle';
     state.subnetFormOpen = false;
     state.subnetDraft = { cidr: '', label: '' };
-    if (parsed.bits >= 24) state.subnetSelected = mCidrTo24(parsed);
+    state.subnetSelected = mCidrText(parsed);
     await refreshEntities();
   } catch (error) {
     state.subnetFormStatus = 'idle';
@@ -2911,7 +2978,7 @@ function renderSubnetsView() {
           <div class="afacets sn-facets"><div class="afgroup"><span class="afcap">Way in</span>${reachFacets}</div><div class="afgroup"><span class="afcap">Tier</span>${tierFacets}</div></div>
         </div>
         <div id="subnet-blocks">${state.subnetMode === 'list' ? mSubnetBlocksHTML() : (state.subnetMode === 'reach' ? mSubnetReachHTML() : mSubnetGridHTML())}</div>
-        <p class="sn-foot muted">Boundaries are inferred from the engagement scope, captured ranges and /24 grouping of observed IPv4 hosts — not authoritative topology. Hover a subnet or an address to light up the subnets it has demonstrably reached.</p>
+        <p class="sn-foot muted">Boundaries adapt to what is recorded: scope lines, scanned ranges and declarations keep their actual size; unrecorded hosts fall back to a /24, or to their whole private NAT block when nothing structures them. Not authoritative topology. Hover a subnet or an address to light up the subnets it has demonstrably reached.</p>
       </div>
       <aside class="subnet-side" aria-label="Subnet detail">${mSubnetSideHTML()}</aside>
       ${renderSubnetPops()}
