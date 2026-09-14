@@ -2241,6 +2241,11 @@ function mBuildSubnetData() {
     return [];
   };
   const edgeMap = {};
+  const reachIpSets = {};
+  const noteReach = (ip, cidr) => {
+    if (!ip || !cidr || mSubnet(ip) === cidr) return;
+    (reachIpSets[ip] = reachIpSets[ip] || new Set()).add(cidr);
+  };
   (state.actions || []).forEach((ac) => {
     const net = (ac.capture && ac.capture.network) || {};
     const exec = execAddr(ac);
@@ -2265,12 +2270,17 @@ function mBuildSubnetData() {
       const row = byCidr[cidr];
       if (!row) return;
       if (sweep && !row.sweptBy.includes(sweep)) row.sweptBy.push(sweep);
-      if (exec) addDevice(row, 'demonstrated', { id: execEnt ? execEnt.id : '', name: execEnt ? mEntityName(execEnt) : exec, ip: execEnt ? (mEntityIP(execEnt) || exec) : exec, note: sweep ? `via ${sweep} sweep` : '' });
+      if (exec) {
+        addDevice(row, 'demonstrated', { id: execEnt ? execEnt.id : '', name: execEnt ? mEntityName(execEnt) : exec, ip: execEnt ? (mEntityIP(execEnt) || exec) : exec, note: sweep ? `via ${sweep} sweep` : '' });
+        noteReach(exec, cidr);
+      }
       (net.pivotChain || []).forEach((hop) => {
         const host = hop && hop.host ? String(hop.host) : '';
         if (!host) return;
         const hopEnt = entByName[host.toLowerCase()];
-        addDevice(row, 'pivot', { id: hopEnt ? hopEnt.id : '', name: hopEnt ? mEntityName(hopEnt) : host, ip: hopEnt ? (mEntityIP(hopEnt) || '') : '', note: hop.type ? String(hop.type).replace(/_/g, ' ') : '' });
+        const hopIP = hopEnt ? (mEntityIP(hopEnt) || '') : '';
+        addDevice(row, 'pivot', { id: hopEnt ? hopEnt.id : '', name: hopEnt ? mEntityName(hopEnt) : host, ip: hopIP, note: hop.type ? String(hop.type).replace(/_/g, ' ') : '' });
+        noteReach(hopIP, cidr);
       });
       if (from && from !== cidr) {
         const ek = `${from}>${cidr}`;
@@ -2305,7 +2315,11 @@ function mBuildSubnetData() {
     };
   });
   const edges = Object.values(edgeMap).sort((a, b) => b.count - a.count);
-  return { rows, byCidr, scope, declaredBlocks, edges, inPlay };
+  const edgesFrom = {};
+  edges.forEach((e) => { (edgesFrom[e.from] = edgesFrom[e.from] || []).push(e.to); });
+  const reachByIp = {};
+  Object.keys(reachIpSets).forEach((ip) => { reachByIp[ip] = [...reachIpSets[ip]]; });
+  return { rows, byCidr, scope, declaredBlocks, edges, inPlay, edgesFrom, reachByIp };
 }
 
 // Rows group into blocks: the containing scope/declared range if any, else the
@@ -2452,7 +2466,7 @@ function mSubnetGridHTML() {
   const recsIn = (recs, start, size) => recs.filter((r) => r.int >= start && r.int < start + size);
   // Inner grid for one occupied range: its sub-ranges (rollup colour) or, at
   // full depth, one cell per address — hosts solid, other evidence softened.
-  const innerGrid = (start, baseBits, innerBits, recs, blockRecs) => {
+  const innerGrid = (start, baseBits, innerBits, recs, blockRecs, interactive) => {
     const subCells = Math.pow(2, innerBits - baseBits);
     const subCols = Math.pow(2, Math.ceil((innerBits - baseBits) / 2));
     const subs = [];
@@ -2461,8 +2475,8 @@ function mSubnetGridHTML() {
       if (innerBits === 32) {
         const rec = blockRecs.find((r) => r.int === s2);
         if (!rec) { subs.push(`<span class="sngip" title="${escapeHtml(ipText(s2))}"></span>`); continue; }
-        const open = rec.entityId ? ` data-action="open-asset" data-id="${escapeHtml(rec.entityId)}" tabindex="0" role="button"` : '';
-        subs.push(`<span class="sngip on${rec.kinds.host ? '' : ' soft'}"${open} style="--gc:${mIpRecColor(rec)}" title="${escapeHtml(mIpRecTitle(rec))}" aria-label="${escapeHtml(mIpRecTitle(rec))}"></span>`);
+        const open = interactive && rec.entityId ? ` data-action="open-asset" data-id="${escapeHtml(rec.entityId)}" tabindex="0" role="button"` : '';
+        subs.push(`<span class="sngip on${rec.kinds.host ? '' : ' soft'}"${open} data-ip="${escapeHtml(rec.ip)}" style="--gc:${mIpRecColor(rec)}" title="${escapeHtml(mIpRecTitle(rec))}" aria-label="${escapeHtml(mIpRecTitle(rec))}"></span>`);
       } else {
         const subRecs = recsIn(recs, s2, cellSize(innerBits));
         if (!subRecs.length) { subs.push(`<span class="sngip" title="${escapeHtml(`${ipText(s2)}/${innerBits}`)}"></span>`); continue; }
@@ -2500,7 +2514,7 @@ function mSubnetGridHTML() {
           : `${recs.length} address${recs.length === 1 ? '' : 'es'} in play`;
         tiles.push(`<div class="sntile${sel}${dim}"${act} ${finished ? 'tabindex="0" role="button"' : ''} aria-label="${escapeHtml(cidr)}">
           <div class="sntile-head"><span class="mono">${escapeHtml(cidr)}</span>${finished && finished.declared ? '<i class="sngc-dec" aria-hidden="true"></i>' : ''}<span class="sntile-cap">${escapeHtml(cap)}</span></div>
-          ${recs.length ? innerGrid(start, baseBits, innerBits, recs, blockRecs) : '<div class="sntile-none muted">scanned / declared — nothing seen inside yet</div>'}
+          ${recs.length ? innerGrid(start, baseBits, innerBits, recs, blockRecs, true) : '<div class="sntile-none muted">scanned / declared — nothing seen inside yet</div>'}
         </div>`);
       }
       const hiddenNote = hidden ? `<div class="sngc-hidden muted">${hidden} empty /${baseBits} range${hidden === 1 ? '' : 's'} not drawn</div>` : '';
@@ -2522,13 +2536,16 @@ function mSubnetGridHTML() {
       if (finished && finished.n > 0) {
         style = ` style="--gc:${MSEV_COLOR[finished.worst]}"`;
         cls += ' hosts';
-        body = `<span class="sngc-n">${finished.n}</span>`;
       } else if (finished && (finished.scanned || finished.declared)) {
         cls += ' scanned';
       } else if (recs.length) {
         style = ` style="--gc:${mIpRecColor(mIpRollup(recs))}"`;
         cls += ' hosts';
       }
+      // Every address in play renders as a little dot at its true offset, even
+      // at the coarsest resolution. The dots are not interactive here — clicks
+      // bubble to the square — but each still carries its per-IP tooltip.
+      if (recs.length) { body = innerGrid(start, baseBits, 32, recs, blockRecs, false); cls += ' split'; }
       const title = finished
         ? `${cidr} · ${finished.n} host${finished.n === 1 ? '' : 's'} · ${recs.length} address${recs.length === 1 ? '' : 'es'} in play${finished.worst !== 'info' ? ` · worst: ${MSEV_LABEL[finished.worst]}` : ''}`
         : `${cidr} · ${recs.length} address${recs.length === 1 ? '' : 'es'} in play`;
@@ -2718,9 +2735,6 @@ function renderSubnetsView() {
     const first = blocks.find((b) => b.rows.length);
     if (first) state.subnetSelected = mSortRows(first.rows, mSubnetCols(), state.subnetSort)[0].cidr;
   }
-  const demonstrated = rows.filter((r) => r.groups.demonstrated.length).length;
-  const pivoted = rows.filter((r) => r.groups.pivot.length).length;
-  const placed = rows.reduce((a, r) => a + r.n, 0);
   const reachFacets = SN_TIERS.map((t) => {
     const n = rows.filter((r) => r.groups[t].length).length;
     return `<span class="afacet${state.subnetReach.has(t) ? ' on' : ''}" data-action="subnet-reach" data-val="${t}"><span class="adot" style="background:${SN_TIER_COLOR[t]}"></span>${SN_TIER_LABEL[t]}<span class="an">${n}</span></span>`;
@@ -2749,27 +2763,20 @@ function renderSubnetsView() {
     <main class="app-shell subnets-shell">
       ${renderNav('subnets')}
       <div class="sn-main">
-        <header class="masthead">
-          <div class="masthead-copy"><p class="eyebrow">Waypoint · network boundaries</p><h1>Subnets</h1><p class="subtitle">Boundaries sniffed from scope, captured ranges and observed hosts — not authoritative topology, every row traces to evidence.</p></div>
-          <div class="masthead-actions">
-${renderThemeToggle()}
+        <div class="sn-top">
+          <div class="atoolbar sn-toolbar">
+            <h1 class="sn-title">Subnets</h1>
+            ${modeSeg}
+            ${resCtl}
+            <button type="button" class="sndeclare${state.subnetFormOpen ? ' on' : ''}" data-action="subnet-add-toggle">+ Declare subnet</button>
+            <label class="asearch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5" stroke-linecap="round"/></svg><input data-action="subnet-search" placeholder="Search subnet, host, IP…" value="${escapeHtml(state.subnetQuery)}" aria-label="Search subnets"/></label>
+            ${renderThemeToggle()}
           </div>
-        </header>
-        <div class="akpis">
-          <div class="akpi" style="--kc:${MPAL.trail}"><div class="akpi-l">Subnets sniffed</div><div class="akpi-v">${rows.length}</div><div class="akpi-s">from scope, ranges &amp; hosts</div></div>
-          <div class="akpi" style="--kc:${SN_TIER_COLOR.demonstrated}"><div class="akpi-l">Reached</div><div class="akpi-v">${demonstrated}<small> / ${rows.length}</small></div><div class="akpi-s">a capture demonstrably hit them</div></div>
-          <div class="akpi" style="--kc:${SN_TIER_COLOR.pivot}"><div class="akpi-l">Reached via pivot</div><div class="akpi-v">${pivoted}</div><div class="akpi-s">through a tunnel or jump host</div></div>
-          <div class="akpi" style="--kc:${SN_TIER_COLOR.resident}"><div class="akpi-l">Hosts placed</div><div class="akpi-v">${placed}</div><div class="akpi-s">observed IPv4 hosts in a /24</div></div>
+          ${form}
+          <div class="afacets sn-facets"><div class="afgroup"><span class="afcap">Way in</span>${reachFacets}</div><div class="afgroup"><span class="afcap">Tier</span>${tierFacets}</div></div>
         </div>
-        <div class="atoolbar">
-          ${modeSeg}
-          ${resCtl}
-          <button type="button" class="sndeclare${state.subnetFormOpen ? ' on' : ''}" data-action="subnet-add-toggle">+ Declare subnet</button>
-          <label class="asearch"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-3.5-3.5" stroke-linecap="round"/></svg><input data-action="subnet-search" placeholder="Search subnet, host, IP…" value="${escapeHtml(state.subnetQuery)}" aria-label="Search subnets"/></label>
-        </div>
-        ${form}
-        <div class="afacets"><div class="afgroup"><span class="afcap">Way in</span>${reachFacets}</div><div class="afgroup"><span class="afcap">Tier</span>${tierFacets}</div></div>
         <div id="subnet-blocks">${state.subnetMode === 'list' ? mSubnetBlocksHTML() : (state.subnetMode === 'reach' ? mSubnetReachHTML() : mSubnetGridHTML())}</div>
+        <p class="sn-foot muted">Boundaries are inferred from the engagement scope, captured ranges and /24 grouping of observed IPv4 hosts — not authoritative topology. Hover a subnet or an address to light up the subnets it has demonstrably reached.</p>
       </div>
       <aside class="subnet-side" aria-label="Subnet detail">${mSubnetSideHTML()}</aside>
     </main>`;
@@ -5103,6 +5110,35 @@ async function handleClick(event) {
 
 // Sortable table headers are <th role="columnheader" tabindex="0">, not native
 // buttons, so Enter/Space must be wired to the same sort action as a click.
+// Hover (or keyboard-focus) a subnet — or a single in-play address — anywhere
+// on the Subnets view, and every subnet it has demonstrably reached lights up.
+// An address with its own reach evidence (exec host, pivot) highlights its own
+// footprint; any other address falls back to its subnet's reach. Pure class
+// toggles, no re-render, so it stays smooth while sweeping the pointer.
+function clearReachHighlights() {
+  root.querySelectorAll('.reach-hl, .reach-src').forEach((el) => el.classList.remove('reach-hl', 'reach-src'));
+}
+function applyReachHighlights(target) {
+  if (state.view !== 'subnets') return;
+  clearReachHighlights();
+  const el = target && target.closest ? target.closest('[data-ip], [data-cidr]') : null;
+  if (!el) return;
+  const data = mSubnetData();
+  let reached = null;
+  if (el.dataset.ip && data.reachByIp[el.dataset.ip]) {
+    reached = data.reachByIp[el.dataset.ip];
+  } else {
+    const holder = el.dataset.cidr ? el : el.closest('[data-cidr]');
+    if (holder) reached = data.edgesFrom[holder.dataset.cidr];
+  }
+  if (!reached || !reached.length) return;
+  el.classList.add('reach-src');
+  reached.forEach((c) => {
+    root.querySelectorAll(`[data-cidr="${CSS.escape(c)}"]`).forEach((n) => n.classList.add('reach-hl'));
+  });
+}
+function handleHoverIn(event) { applyReachHighlights(event.target); }
+
 function handleKeydown(event) {
   if (event.key !== 'Enter' && event.key !== ' ') return;
   const target = event.target.closest('th.asort[data-action], tr.thostrow[data-action], tr.snrow[data-action], g.subnet-node[data-action], span.sngc[data-action], span.sngip[data-action]');
@@ -5288,6 +5324,9 @@ async function boot() {
   window.addEventListener('pagehide', () => { state.sseAbort?.abort(); });
   root.addEventListener('click', handleClick);
   root.addEventListener('keydown', handleKeydown);
+  root.addEventListener('mouseover', handleHoverIn);
+  root.addEventListener('mouseleave', clearReachHighlights);
+  root.addEventListener('focusin', handleHoverIn);
   root.addEventListener('submit', handleSubmit);
   root.addEventListener('input', handleInput);
   root.addEventListener('change', handleChange);

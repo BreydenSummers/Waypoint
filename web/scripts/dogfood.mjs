@@ -366,6 +366,20 @@ async function main() {
   // Grid (default): occupied squares, then step the resolution down to IPs
   const snSquares = await $count('.sngc.on');
   if (snSquares === 0) bug('high', 'subnets', 'grid mode drew no occupied squares');
+  // every in-play address renders as a dot even at the coarsest resolution
+  if (await $count('.sngc .sngip.on') === 0) bug('high', 'subnets', 'no in-play address dots inside the squares');
+  // hovering a subnet with reach evidence lights up the subnets it reached
+  const hoverHits = await page.evaluate(() => {
+    const cells = [...document.querySelectorAll('.sngc.on[data-cidr]')];
+    for (const c of cells) {
+      c.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      const n = document.querySelectorAll('.reach-hl').length;
+      if (n > 0) return n;
+    }
+    return 0;
+  });
+  if (hoverHits === 0) notes.push('subnets: no square lit reach highlights on hover (ok if no cross-subnet captures)');
+  await page.evaluate(() => { document.querySelectorAll('.reach-hl, .reach-src').forEach((el) => el.classList.remove('reach-hl', 'reach-src')); });
   await click('[data-action="subnet-res"][data-dir="1"]');
   await sleep(250);
   await click('[data-action="subnet-res"][data-dir="1"]');
